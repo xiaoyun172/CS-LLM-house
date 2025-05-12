@@ -93,7 +93,8 @@ export const sendChatRequest = async (
     };
 
     // 记录API请求
-    logApiRequest('Google AI API', 'POST', {
+    logApiRequest('Google AI API', 'INFO', {
+      method: 'POST',
       model: modelName,
       temperature: model.temperature,
       maxOutputTokens: model.maxTokens,

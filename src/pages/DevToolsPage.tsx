@@ -25,21 +25,28 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useNavigate } from 'react-router-dom';
-import type { LogItem } from '../shared/services/LoggerService';
-import { globalLogs, clearAllLogs } from '../shared/services/LoggerService';
+import LoggerService from '../shared/services/LoggerService';
+
+// 定义新的日志项类型
+interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  data?: any;
+}
 
 // 开发者工具页面
 const DevToolsPage: React.FC = () => {
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
-  const [logs, setLogs] = useState<LogItem[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // 添加日志
-  const addLog = (log: LogItem) => {
+  const addLog = (log: LogEntry) => {
     setLogs(prevLogs => [...prevLogs, log]);
   };
 
@@ -55,14 +62,14 @@ const DevToolsPage: React.FC = () => {
 
   // 清除日志
   const clearLogs = () => {
-    // 清空全局日志
-    clearAllLogs();
+    // 清空日志
+    LoggerService.clearLogs();
 
     // 清空组件状态
     setLogs([]);
 
     // 添加一条清空日志的记录
-    console.info('[开发者工具] 日志已清空');
+    LoggerService.log('INFO', '[开发者工具] 日志已清空');
 
     // 关闭对话框
     setClearDialogOpen(false);
@@ -70,26 +77,28 @@ const DevToolsPage: React.FC = () => {
 
   // 加载日志
   useEffect(() => {
-    // 加载全局日志
-    setLogs([...globalLogs]);
+    // 加载已存储的日志
+    const storedLogs = LoggerService.getRecentLogs();
+    setLogs(storedLogs);
 
     // 添加一条初始日志
-    addLog({
-      id: Date.now().toString(),
+    const initLog: LogEntry = {
       timestamp: new Date().toISOString(),
-      type: 'info',
-      content: '开发者工具已启动',
-    });
+      level: 'INFO',
+      message: '开发者工具已启动',
+    };
+    addLog(initLog);
 
     // 触发一些测试日志
-    console.log('[开发者工具] 测试日志');
-    console.info('[开发者工具] 测试信息');
-    console.warn('[开发者工具] 测试警告');
-    console.error('[开发者工具] 测试错误');
+    LoggerService.log('INFO', '[开发者工具] 测试日志');
+    LoggerService.log('INFO', '[开发者工具] 测试信息');
+    LoggerService.log('WARN', '[开发者工具] 测试警告');
+    LoggerService.log('ERROR', '[开发者工具] 测试错误');
 
     // 定期刷新日志
     const intervalId = setInterval(() => {
-      setLogs([...globalLogs]);
+      const updatedLogs = LoggerService.getRecentLogs();
+      setLogs(updatedLogs);
     }, 1000);
 
     return () => {
@@ -116,25 +125,33 @@ const DevToolsPage: React.FC = () => {
 
   // 过滤日志
   const filteredLogs = logs.filter(log =>
-    log.content.toLowerCase().includes(filter.toLowerCase()) ||
-    log.type.toLowerCase().includes(filter.toLowerCase())
+    log.message.toLowerCase().includes(filter.toLowerCase()) ||
+    log.level.toLowerCase().includes(filter.toLowerCase())
   );
 
-  // 获取日志类型的颜色
-  const getLogTypeColor = (type: string) => {
-    switch (type) {
-      case 'error':
+  // 获取日志级别的颜色
+  const getLogLevelColor = (level: string) => {
+    switch (level.toUpperCase()) {
+      case 'ERROR':
         return '#f44336';
-      case 'warn':
+      case 'WARN':
         return '#ff9800';
-      case 'info':
+      case 'INFO':
         return '#2196f3';
-      case 'api-request':
-        return '#9c27b0';
-      case 'api-response':
+      case 'DEBUG':
         return '#4caf50';
       default:
         return 'inherit';
+    }
+  };
+
+  // 格式化JSON显示
+  const formatJSON = (jsonString: string) => {
+    try {
+      const obj = JSON.parse(jsonString);
+      return JSON.stringify(obj, null, 2);
+    } catch (e) {
+      return jsonString;
     }
   };
 
@@ -212,7 +229,7 @@ const DevToolsPage: React.FC = () => {
         {tabValue === 0 && (
           <List dense sx={{ p: 0 }}>
             {filteredLogs.map((log, index) => (
-              <React.Fragment key={log.id}>
+              <React.Fragment key={log.timestamp}>
                 <ListItem
                   sx={{
                     py: 0.5,
@@ -228,13 +245,13 @@ const DevToolsPage: React.FC = () => {
                         <Typography
                           variant="caption"
                           sx={{
-                            color: getLogTypeColor(log.type),
+                            color: getLogLevelColor(log.level),
                             fontWeight: 'bold',
                             mr: 1,
                             textTransform: 'uppercase',
                           }}
                         >
-                          [{log.type}]
+                          [{log.level}]
                         </Typography>
                       </Box>
                     }
@@ -248,7 +265,7 @@ const DevToolsPage: React.FC = () => {
                           fontSize: '0.85rem',
                         }}
                       >
-                        {log.content}
+                        {log.message}
                       </Typography>
                     }
                   />
@@ -261,8 +278,74 @@ const DevToolsPage: React.FC = () => {
         )}
 
         {tabValue === 1 && (
-          <Box sx={{ p: 2 }}>
-            <Typography>网络请求监控（开发中）</Typography>
+          <Box sx={{ p: 2, overflowY: 'auto', height: '100%' }}>
+            <Typography variant="h6" gutterBottom>网络请求监控</Typography>
+            <List>
+              {filteredLogs
+                .filter(log => log.level === 'DEBUG' || log.level === 'INFO')
+                .map((log, index) => (
+                  <React.Fragment key={log.timestamp}>
+                    <ListItem
+                      alignItems="flex-start"
+                      sx={{
+                        borderLeft: `4px solid ${getLogLevelColor(log.level)}`,
+                        pl: 2,
+                        backgroundColor: log.level === 'INFO' ? 'rgba(76, 175, 80, 0.05)' : 'rgba(156, 39, 176, 0.05)',
+                      }}
+                    >
+                      <Box sx={{ width: '100%' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                          <Typography
+                            variant="subtitle2"
+                            sx={{ color: getLogLevelColor(log.level) }}
+                          >
+                            {log.message}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(log.timestamp).toLocaleTimeString()}
+                          </Typography>
+                        </Box>
+                        {log.data && (
+                          <Paper
+                            variant="outlined"
+                            sx={{
+                              p: 1,
+                              backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                              maxHeight: '300px',
+                              overflow: 'auto',
+                            }}
+                          >
+                            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                              {typeof log.data === 'string' ? formatJSON(log.data) : JSON.stringify(log.data, null, 2)}
+                            </pre>
+                          </Paper>
+                        )}
+                        {log.level === 'INFO' && log.data && log.data.reasoning && (
+                          <Box sx={{ mt: 1 }}>
+                            <Typography variant="subtitle2" sx={{ color: '#2196f3' }}>
+                              思考过程:
+                            </Typography>
+                            <Paper
+                              variant="outlined"
+                              sx={{
+                                p: 1,
+                                backgroundColor: 'rgba(33, 150, 243, 0.05)',
+                                maxHeight: '200px',
+                                overflow: 'auto',
+                              }}
+                            >
+                              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                {log.data.reasoning}
+                              </pre>
+                            </Paper>
+                          </Box>
+                        )}
+                      </Box>
+                    </ListItem>
+                    {index < filteredLogs.filter(l => l.level === 'DEBUG' || l.level === 'INFO').length - 1 && <Divider />}
+                  </React.Fragment>
+                ))}
+            </List>
           </Box>
         )}
 

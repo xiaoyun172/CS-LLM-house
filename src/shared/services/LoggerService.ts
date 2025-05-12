@@ -1,148 +1,96 @@
-// 日志项接口
-export interface LogItem {
-  id: string;
-  timestamp: string;
-  type: 'log' | 'error' | 'warn' | 'info' | 'api-request' | 'api-response';
-  content: string;
-  details?: any;
+/**
+ * 日志记录服务
+ * 提供统一的日志记录功能
+ */
+
+// 日志级别
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+// 日志记录函数
+export function log(level: LogLevel, message: string, data?: any): void {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    level,
+    message,
+    data
+  };
+  
+  // 根据不同级别使用不同的控制台方法
+  switch (level) {
+    case 'DEBUG':
+      console.log(`[${timestamp}] [DEBUG] ${message}`, data || '');
+      break;
+    case 'INFO':
+      console.info(`[${timestamp}] [INFO] ${message}`, data || '');
+      break;
+    case 'WARN':
+      console.warn(`[${timestamp}] [WARN] ${message}`, data || '');
+      break;
+    case 'ERROR':
+      console.error(`[${timestamp}] [ERROR] ${message}`, data || '');
+      break;
+  }
+  
+  // 将日志存储到本地存储（仅保留最近的日志）
+  try {
+    const LOGS_KEY = 'app_logs';
+    const MAX_LOGS = 100;
+    
+    const logsJson = localStorage.getItem(LOGS_KEY) || '[]';
+    const logs = JSON.parse(logsJson);
+    
+    logs.push(logEntry);
+    
+    // 保留最近的日志
+    if (logs.length > MAX_LOGS) {
+      logs.splice(0, logs.length - MAX_LOGS);
+    }
+    
+    localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
+  } catch (error) {
+    console.error('无法写入日志到本地存储:', error);
+  }
 }
 
-// 全局日志存储
-export const globalLogs: LogItem[] = [];
-
-// 原始控制台方法
-let originalConsoleLog: typeof console.log;
-let originalConsoleError: typeof console.error;
-let originalConsoleWarn: typeof console.warn;
-let originalConsoleInfo: typeof console.info;
-
-// 是否已初始化
-let isInitialized = false;
-
-// 处理参数，将对象转换为字符串
-const processArgs = (args: any[]) => {
-  return args.map(arg => {
-    if (arg === null) return 'null';
-    if (arg === undefined) return 'undefined';
-    if (typeof arg === 'object') {
-      try {
-        return JSON.stringify(arg, null, 2);
-      } catch (e) {
-        return '[无法序列化的对象]';
-      }
-    }
-    return String(arg);
-  }).join(' ');
-};
-
-// 添加日志到全局存储
-export const addToGlobalLogs = (log: LogItem) => {
-  globalLogs.push(log);
-  // 限制日志数量，防止内存泄漏
-  if (globalLogs.length > 1000) {
-    globalLogs.shift();
-  }
-};
-
-// 创建日志项
-export const createLogItem = (type: 'log' | 'error' | 'warn' | 'info' | 'api-request' | 'api-response', args: any[]) => {
-  const content = processArgs(args);
-  const logItem: LogItem = {
-    id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-    timestamp: new Date().toISOString(),
-    type,
-    content,
-    details: args.length > 0 ? args[0] : undefined,
-  };
-
-  // 添加到全局日志
-  addToGlobalLogs(logItem);
-
-  return logItem;
-};
-
-// 初始化日志拦截器
-export const initializeLogger = () => {
-  if (isInitialized) return;
-
-  // 保存原始控制台方法
-  originalConsoleLog = console.log;
-  originalConsoleError = console.error;
-  originalConsoleWarn = console.warn;
-  originalConsoleInfo = console.info;
-
-  // 替换控制台方法
-  console.log = (...args) => {
-    originalConsoleLog(...args);
-    createLogItem('log', args);
-  };
-
-  console.error = (...args) => {
-    originalConsoleError(...args);
-    createLogItem('error', args);
-  };
-
-  console.warn = (...args) => {
-    originalConsoleWarn(...args);
-    createLogItem('warn', args);
-  };
-
-  console.info = (...args) => {
-    originalConsoleInfo(...args);
-    createLogItem('info', args);
-  };
-
-  isInitialized = true;
-
-  // 记录初始化日志
-  console.info('[LoggerService] 日志拦截器已初始化');
-};
-
-// 恢复原始控制台方法
-export const restoreConsole = () => {
-  if (!isInitialized) return;
-
-  console.log = originalConsoleLog;
-  console.error = originalConsoleError;
-  console.warn = originalConsoleWarn;
-  console.info = originalConsoleInfo;
-
-  isInitialized = false;
-};
-
 // 记录API请求
-export const logApiRequest = (url: string, method: string, data?: any) => {
-  createLogItem('api-request', [
-    `[API请求] ${method} ${url}`,
-    data || {}
-  ]);
-};
+export function logApiRequest(endpoint: string, level: LogLevel, data: any): void {
+  log(level, `API请求 [${endpoint}]`, data);
+}
 
 // 记录API响应
-export const logApiResponse = (url: string, status: number, data?: any) => {
-  createLogItem('api-response', [
-    `[API响应] ${status} ${url}`,
-    data || {}
-  ]);
-};
+export function logApiResponse(endpoint: string, statusCode: number, data: any): void {
+  const level = statusCode >= 400 ? 'ERROR' : 'INFO';
+  log(level, `API响应 [${endpoint}] 状态码: ${statusCode}`, data);
+}
 
-// 清空所有日志
-export const clearAllLogs = () => {
-  // 清空全局日志数组
-  globalLogs.length = 0;
+// 获取最近的日志
+export function getRecentLogs(count: number = 50): any[] {
+  try {
+    const LOGS_KEY = 'app_logs';
+    const logsJson = localStorage.getItem(LOGS_KEY) || '[]';
+    const logs = JSON.parse(logsJson);
+    
+    return logs.slice(-count);
+  } catch (error) {
+    console.error('无法从本地存储获取日志:', error);
+    return [];
+  }
+}
 
-  // 添加一条清空日志的记录
-  createLogItem('info', ['[LoggerService] 所有日志已清空']);
+// 清除所有日志
+export function clearLogs(): void {
+  try {
+    localStorage.removeItem('app_logs');
+  } catch (error) {
+    console.error('无法清除日志:', error);
+  }
+}
 
-  return true;
-};
-
-// 默认导出
 export default {
-  initializeLogger,
-  restoreConsole,
+  log,
   logApiRequest,
   logApiResponse,
-  clearAllLogs,
-  globalLogs
+  getRecentLogs,
+  clearLogs
 };

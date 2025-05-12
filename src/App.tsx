@@ -4,7 +4,7 @@ import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { useEffect } from 'react';
 import AppRouter from './routes';
 import store from './shared/store';
-import { initializeLogger } from './shared/services/LoggerService';
+import LoggerService from './shared/services/LoggerService';
 
 // 创建主题
 const theme = createTheme({
@@ -30,7 +30,7 @@ const theme = createTheme({
 });
 
 // 初始化日志拦截器
-initializeLogger();
+LoggerService.log('INFO', '应用初始化');
 
 function App() {
   // 记录应用启动日志

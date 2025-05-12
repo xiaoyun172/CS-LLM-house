@@ -8,6 +8,8 @@ export interface Message {
   timestamp: string;
   status?: 'pending' | 'complete' | 'error';
   modelId?: string; // 使用的模型ID
+  reasoning?: string; // 存储模型的思考过程
+  reasoningTime?: number; // 思考过程耗时（单位：毫秒）
 }
 
 // 聊天主题类型
@@ -34,6 +36,7 @@ export interface Model {
   isDefault?: boolean; // 是否为默认模型
   iconUrl?: string; // 模型图标URL
   presetModelId?: string; // 预设模型ID（仅用于参考，不用于API调用）
+  group?: string; // 模型分组
 }
 
 // 设置类型
@@ -48,7 +51,7 @@ export interface Settings {
 }
 
 // 预设模型提供商
-export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'custom';
+export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'grok' | 'custom';
 
 // 预设模型信息
 export interface PresetModel {

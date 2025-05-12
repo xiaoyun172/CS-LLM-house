@@ -92,7 +92,8 @@ export const sendChatRequest = async (
     console.log('[API请求] 消息数量:', openaiMessages.length);
 
     // 记录API请求
-    logApiRequest('OpenAI Chat Completions', 'POST', {
+    logApiRequest('OpenAI Chat Completions', 'INFO', {
+      method: 'POST',
       model: modelId,
       temperature: model.temperature,
       max_tokens: model.maxTokens,

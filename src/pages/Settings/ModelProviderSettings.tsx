@@ -24,6 +24,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import AutofpsSelectIcon from '@mui/icons-material/AutofpsSelect';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../shared/store';
 import { 
@@ -36,6 +37,7 @@ import {
 import type { Model } from '../../shared/types';
 import { isValidUrl } from '../../shared/utils';
 import { alpha } from '@mui/material/styles';
+import ModelManagementDialog from '../../components/ModelManagementDialog';
 
 const ModelProviderSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -56,6 +58,7 @@ const ModelProviderSettings: React.FC = () => {
   const [newModelName, setNewModelName] = useState('');
   const [newModelValue, setNewModelValue] = useState('');
   const [baseUrlError, setBaseUrlError] = useState('');
+  const [openModelManagementDialog, setOpenModelManagementDialog] = useState(false);
 
   // 当provider加载完成后初始化状态
   useEffect(() => {
@@ -152,6 +155,19 @@ const ModelProviderSettings: React.FC = () => {
     setNewModelName(model.name);
     setNewModelValue(model.id); // 使用模型ID作为value
     setOpenEditModelDialog(true);
+  };
+
+  const handleAddModelFromApi = (model: Model) => {
+    if (provider) {
+      dispatch(addModel({
+        providerId: provider.id,
+        model: {
+          ...model,
+          provider: provider.id,
+          enabled: true
+        }
+      }));
+    }
   };
 
   // 如果没有找到对应的提供商，显示错误信息
@@ -399,6 +415,23 @@ const ModelProviderSettings: React.FC = () => {
               可用模型
             </Typography>
             <Button
+              variant="outlined"
+              startIcon={<AutofpsSelectIcon />}
+              onClick={() => setOpenModelManagementDialog(true)}
+              sx={{
+                mr: 2,
+                borderRadius: 2,
+                borderColor: (theme) => alpha(theme.palette.info.main, 0.5),
+                color: 'info.main',
+                '&:hover': {
+                  borderColor: 'info.main',
+                  bgcolor: (theme) => alpha(theme.palette.info.main, 0.1),
+                },
+              }}
+            >
+              自动获取
+            </Button>
+            <Button
               startIcon={<AddIcon />}
               onClick={() => setOpenAddModelDialog(true)}
               sx={{
@@ -410,7 +443,7 @@ const ModelProviderSettings: React.FC = () => {
                 borderRadius: 2,
               }}
             >
-              添加模型
+              手动添加
             </Button>
           </Box>
 
@@ -638,6 +671,18 @@ const ModelProviderSettings: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 自动获取模型对话框 */}
+      {provider && (
+        <ModelManagementDialog
+          open={openModelManagementDialog}
+          onClose={() => setOpenModelManagementDialog(false)}
+          provider={provider}
+          onAddModel={handleAddModelFromApi}
+          onRemoveModel={handleDeleteModel}
+          existingModels={provider.models || []}
+        />
+      )}
     </Box>
   );
 };

@@ -79,6 +79,26 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
   },
+  
+  // Grok 模型
+  {
+    id: 'grok-1',
+    name: 'Grok-1',
+    provider: 'grok',
+    description: 'xAI的Grok模型，擅长幽默风格回复和实时信息。',
+    capabilities: ['实时知识', '网络搜索', '幽默回复', '代码生成'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.x.ai/v1',
+  },
+  {
+    id: 'grok-2',
+    name: 'Grok-2',
+    provider: 'grok',
+    description: 'xAI的最新Grok模型，具有增强的推理能力和更新的知识库。',
+    capabilities: ['复杂推理', '实时知识', '代码生成', '问题解决', '多模态理解'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.x.ai/v1',
+  },
 ];
 
 // 获取模型图标
@@ -90,6 +110,8 @@ export const getModelIcon = (provider: string): string => {
       return '/icons/anthropic.png';
     case 'google':
       return '/icons/google.png';
+    case 'grok':
+      return '/icons/grok.png';
     case 'custom':
       return '/icons/custom.png';
     default:
@@ -106,6 +128,8 @@ export const getProviderName = (provider: string): string => {
       return 'Anthropic';
     case 'google':
       return 'Google';
+    case 'grok':
+      return 'xAI (Grok)';
     case 'custom':
       return '自定义';
     default:

@@ -27,21 +27,47 @@ Cherry Studio移动应用是一个基于现代Web技术构建的跨平台AI助�
 cherry-studio-app2/
 ├── android/                # Android平台相关代码
 ├── public/                 # 静态资源文件
+│   └── assets/             # 公共资源文件
+│       └── models/         # 模型相关静态资源
 ├── src/
 │   ├── assets/             # 图片、字体等资源
 │   ├── components/         # 可复用组件
+│   │   ├── ChatInput/      # 聊天输入组件
+│   │   ├── MessageItem/    # 消息项组件
+│   │   ├── MessageList/    # 消息列表组件
+│   │   ├── ModelManagementDialog.tsx # 模型管理对话框组件
+│   │   └── TopicList/      # 话题列表组件
 │   ├── pages/              # 页面组件
+│   │   ├── ChatPage/       # 聊天页面
+│   │   ├── DevToolsPage/   # 开发者工具页面
 │   │   ├── Home/           # 主页
-│   │   ├── Settings/       # 设置页
+│   │   ├── Settings/       # 设置页面
+│   │   │   ├── ModelProviderSettings.tsx # 模型提供商设置
+│   │   │   └── DefaultModelSettings.tsx  # 默认模型设置
 │   │   └── Welcome/        # 欢迎页
 │   ├── routes/             # 路由配置
 │   └── shared/             # 共享代码
 │       ├── api/            # API接口封装
+│       │   ├── anthropic.ts # Anthropic Claude API
+│       │   ├── google.ts   # Google Gemini API
+│       │   ├── grok.ts     # Grok API
+│       │   ├── index.ts    # API统一导出
+│       │   └── openai.ts   # OpenAI API
 │       ├── data/           # 静态数据
+│       │   └── presetModels.ts # 预设模型配置
 │       ├── services/       # 服务层
+│       │   ├── APIService.ts      # API服务（模型获取等）
+│       │   ├── LoggerService.ts   # 日志服务
+│       │   └── ThinkingService.ts # 思考过程处理服务
 │       ├── store/          # Redux状态管理
+│       │   ├── index.ts    # Store配置
+│       │   └── slices/     # Redux切片
+│       │       ├── messagesSlice.ts # 消息状态管理
+│       │       └── settingsSlice.ts # 设置状态管理
 │       ├── types/          # TypeScript类型定义
+│       │   └── index.ts    # 全局类型定义
 │       └── utils/          # 工具函数
+│           └── index.ts    # 工具函数集合
 ├── .gitignore              # Git忽略配置
 ├── capacitor.config.ts     # Capacitor配置
 ├── index.html              # 应用入口HTML
@@ -116,8 +142,11 @@ npx cap open android
 
 - 添加、编辑和删除AI提供商
 - 配置API密钥和基础URL
+- 自动从API获取可用模型列表
+- 手动添加自定义模型
 - 启用/禁用特定模型
 - 设置默认模型
+- 按组管理模型（如GPT-4系列、Claude系列等）
 
 #### 用户界面
 
@@ -164,3 +193,40 @@ keytool -genkey -v -keystore cherry-studio.keystore -alias cherry-studio -keyalg
 ## 许可证
 
 此项目采用MIT许可证 - 详情见LICENSE文件
+
+## 特色功能
+
+### 自动获取模型列表
+
+Cherry Studio支持从各大AI提供商API自动获取可用模型列表：
+
+- 支持OpenAI、Claude (Anthropic)、Gemini (Google)和Grok (xAI)等主流AI提供商
+- 自动处理不同API格式和端点路径
+- 智能适配自定义中转站API
+- 提供优雅的回退机制，当API请求失败时使用预设模型列表
+- 支持的API端点:
+  - OpenAI: `/v1/models`
+  - Claude: `/v1/models`
+  - Gemini: `/v1beta/models`
+  - 自定义中转站: 自动检测并适配
+
+### AI思考过程
+
+Cherry Studio支持显示AI的思考过程，目前主要支持Grok模型的思考过程展示：
+
+- `ThinkingService`: 专门处理不同AI模型的思考过程，支持从API响应中提取思考内容
+- 支持不同模型的思考过程格式化和显示
+- 可视化思考时间和过程，改善用户体验
+- 支持的模型:
+  - Grok-3-Mini-Beta
+  - Grok-3-Mini-Fast-Beta
+
+### 开发者工具
+
+内置开发者工具，帮助调试和监控应用:
+
+- 控制台日志查看
+- 网络请求监控
+- API请求和响应分析
+- 思考过程监控
+- 模型API调试

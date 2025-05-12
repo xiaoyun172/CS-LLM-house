@@ -30,6 +30,7 @@ import {
 import { createTopic, createMessage } from '../shared/utils';
 import { sendChatRequest } from '../shared/api';
 import type { ChatTopic, Message, Model } from '../shared/types';
+import { isThinkingSupported } from '../shared/services/ThinkingService';
 import MessageList from '../components/MessageList';
 import ChatInput from '../components/ChatInput';
 import TopicList from '../components/TopicList';
@@ -241,6 +242,10 @@ const ChatPage: React.FC = () => {
       // 使用当前选择的模型ID
       const modelId = selectedModel?.id || settings.defaultModelId || 'gpt-3.5-turbo';
       
+      // 检查模型是否支持思考过程
+      const supportsThinking = isThinkingSupported(modelId);
+      console.log(`当前模型 ${modelId} ${supportsThinking ? '支持' : '不支持'}思考过程`);
+      
       // 获取该主题的所有消息 - 不包括刚刚添加的待处理消息
       const allMessages = messagesByTopic[currentTopic.id] || [];
       const messages = allMessages.filter(msg => msg.status !== 'pending');
@@ -288,13 +293,20 @@ const ChatPage: React.FC = () => {
       if (!response.success) {
         throw new Error(response.error || '请求失败');
       } else if (response.content) {
-        // 确保最终内容与API返回一致
+        // 检查响应是否包含思考过程
+        const responseObj = response as any;
+        const reasoning = responseObj.reasoning;
+        const reasoningTime = responseObj.reasoningTime;
+        
+        // 确保最终内容与API返回一致，并添加思考过程
         dispatch(updateMessage({
           topicId: currentTopic.id,
           messageId: assistantMessage.id,
           updates: {
             content: response.content,
-            status: 'complete'
+            status: 'complete',
+            reasoning: reasoning,
+            reasoningTime: reasoningTime
           }
         }));
         

@@ -84,7 +84,8 @@ export const sendChatRequest = async (
     };
 
     // 记录API请求
-    logApiRequest('Anthropic API', 'POST', {
+    logApiRequest('Anthropic API', 'INFO', {
+      method: 'POST',
       model: modelName,
       temperature: model.temperature,
       max_tokens: model.maxTokens,

@@ -2,6 +2,7 @@ import type { Message, Model } from '../types';
 import * as openaiApi from './openai';
 import * as anthropicApi from './anthropic';
 import * as googleApi from './google';
+import * as grokApi from './grok';
 import { logApiRequest, logApiResponse } from '../services/LoggerService';
 
 // 获取实际的提供商类型
@@ -22,6 +23,8 @@ const getApiByProvider = (model: Model) => {
     case 'gemini':
     case 'google':
       return googleApi;
+    case 'grok':
+      return grokApi;
     default:
       throw new Error(`不支持的提供商: ${providerType}`);
   }
@@ -68,7 +71,9 @@ export const sendChatRequestLegacy = async (
     }
 
     // 调用API
-    return await api.sendChatRequest(messages, model, onUpdate);
+    const response = await api.sendChatRequest(messages, model, onUpdate);
+    // 如果返回值是对象（带有reasoning等属性），只取content字段
+    return typeof response === 'string' ? response : response.content;
   } catch (error) {
     console.error('API请求失败:', error);
     logApiResponse('API请求', 500, {
@@ -109,7 +114,7 @@ export const sendChatRequest = async (options: {
   messages: { role: string; content: string }[];
   modelId: string;
   onChunk?: (chunk: string) => void;
-}): Promise<{ success: boolean; content?: string; error?: string }> => {
+}): Promise<{ success: boolean; content?: string; reasoning?: string; reasoningTime?: number; error?: string }> => {
   try {
     // 根据modelId查找对应模型
     const model = await findModelById(options.modelId);
@@ -151,9 +156,16 @@ export const sendChatRequest = async (options: {
       // 调用实际的API
       const response = await api.sendChatRequest(messages, model, onUpdate);
       
+      // 如果返回值是对象（带有reasoning等属性），正确处理response
+      const content = typeof response === 'string' ? response : response.content;
+      const reasoning = typeof response === 'string' ? undefined : response.reasoning;
+      const reasoningTime = typeof response === 'string' ? undefined : response.reasoningTime;
+
       return {
         success: true,
-        content: response
+        content: content,
+        reasoning: reasoning,
+        reasoningTime: reasoningTime
       };
     } catch (error) {
       console.error(`API调用失败: ${error instanceof Error ? error.message : '未知错误'}`);
