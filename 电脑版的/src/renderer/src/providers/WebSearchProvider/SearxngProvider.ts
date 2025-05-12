@@ -1,0 +1,118 @@
+import { SearxngClient } from '@agentic/searxng'
+import { WebSearchState } from '@renderer/store/websearch'
+import { WebSearchProvider, WebSearchResponse, WebSearchResult } from '@renderer/types'
+import { fetchWebContent, noContent } from '@renderer/utils/fetch'
+import axios from 'axios'
+
+import BaseWebSearchProvider from './BaseWebSearchProvider'
+
+export default class SearxngProvider extends BaseWebSearchProvider {
+  private searxng: SearxngClient
+  private engines: string[] = []
+  private isInitialized = false
+
+  constructor(provider: WebSearchProvider) {
+    super(provider)
+    if (!this.apiHost) {
+      throw new Error('API host is required for SearxNG provider')
+    }
+    try {
+      this.searxng = new SearxngClient({ apiBaseUrl: this.apiHost })
+    } catch (error) {
+      throw new Error(
+        `Failed to initialize SearxNG client: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+    this.initEngines().catch((err) => console.error('Failed to initialize SearxNG engines:', err))
+  }
+  private async initEngines(): Promise<void> {
+    try {
+      console.log(`Initializing SearxNG with API host: ${this.apiHost}`)
+      const response = await axios.get(`${this.apiHost}/config`, {
+        timeout: 5000,
+        validateStatus: (status) => status === 200 // 仅接受 200 状态码
+      })
+
+      if (!response.data) {
+        throw new Error('Empty response from SearxNG config endpoint')
+      }
+
+      if (!Array.isArray(response.data.engines)) {
+        throw new Error('Invalid response format: "engines" property not found or not an array')
+      }
+
+      const allEngines = response.data.engines
+      console.log(`Found ${allEngines.length} total engines in SearxNG`)
+
+      this.engines = allEngines
+        .filter(
+          (engine: { enabled: boolean; categories: string[]; name: string }) =>
+            engine.enabled &&
+            Array.isArray(engine.categories) &&
+            engine.categories.includes('general') &&
+            engine.categories.includes('web')
+        )
+        .map((engine) => engine.name)
+
+      if (this.engines.length === 0) {
+        throw new Error('No enabled general web search engines found in SearxNG configuration')
+      }
+
+      this.isInitialized = true
+      console.log(`SearxNG initialized successfully with ${this.engines.length} engines: ${this.engines.join(', ')}`)
+    } catch (err) {
+      this.isInitialized = false
+
+      console.error('Failed to fetch SearxNG engine configuration:', err)
+      throw new Error(`Failed to initialize SearxNG: ${err}`)
+    }
+  }
+
+  public async search(query: string, websearch: WebSearchState): Promise<WebSearchResponse> {
+    try {
+      if (!query) {
+        throw new Error('Search query cannot be empty')
+      }
+
+      // Wait for initialization if it's the first search
+      if (!this.isInitialized) {
+        await this.initEngines().catch(() => {}) // Ignore errors
+      }
+
+      const result = await this.searxng.search({
+        query: query,
+        engines: this.engines as any,
+        language: 'auto'
+      })
+
+      if (!result || !Array.isArray(result.results)) {
+        throw new Error('Invalid search results from SearxNG')
+      }
+      const validItems = result.results
+        .filter((item) => item.url.startsWith('http') || item.url.startsWith('https'))
+        .slice(0, websearch.maxResults)
+      // console.log('Valid search items:', validItems)
+
+      // Fetch content for each URL concurrently
+      const fetchPromises = validItems.map(async (item) => {
+        // console.log(`Fetching content for ${item.url}...`)
+        const result = await fetchWebContent(item.url, 'markdown', this.provider.usingBrowser)
+        if (websearch.contentLimit && result.content.length > websearch.contentLimit) {
+          result.content = result.content.slice(0, websearch.contentLimit) + '...'
+        }
+        return result
+      })
+
+      // Wait for all fetches to complete
+      const results: WebSearchResult[] = await Promise.all(fetchPromises)
+
+      return {
+        query: query,
+        results: results.filter((result) => result.content != noContent)
+      }
+    } catch (error) {
+      console.error('Searxng search failed:', error)
+      throw new Error(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+}
