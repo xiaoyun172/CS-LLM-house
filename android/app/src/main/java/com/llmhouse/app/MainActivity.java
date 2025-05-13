@@ -1,4 +1,4 @@
-package com.cherryhq.studio;
+package com.llmhouse.app;
 
 import com.getcapacitor.BridgeActivity;
 

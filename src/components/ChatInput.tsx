@@ -49,38 +49,38 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
 
   return (
     <div style={{
-      borderTop: '1px solid #f0f0f0',
+        borderTop: '1px solid #f0f0f0',
       backgroundColor: '#f9f9f9',
       padding: '10px',
-      position: 'relative',
+        position: 'relative',
       width: '100%',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center'
     }}>
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
+          display: 'flex',
+          alignItems: 'center',
         padding: '8px',
         borderRadius: '24px',
         backgroundColor: '#ffffff',
-        border: 'none',
+          border: 'none',
         minHeight: '56px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         width: '100%',
         maxWidth: '600px'
       }}>
         {/* 语音图标 */}
-        <IconButton
+          <IconButton
           size="medium"
           style={{
             color: '#797979',
             padding: '8px',
             marginRight: '4px'
           }}
-        >
+          >
           <KeyboardVoiceIcon />
-        </IconButton>
+          </IconButton>
         
         {/* 文本输入区域 */}
         <div style={{
@@ -105,12 +105,12 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
               maxHeight: '80px'
             }}
             placeholder="和LLM小屋聊点什么"
-            value={message}
+          value={message}
             onChange={handleChange}
             onKeyPress={handleKeyPress}
-            disabled={isLoading}
+          disabled={isLoading}
             rows={1}
-          />
+        />
         </div>
         
         {/* 其他功能图标和发送按钮 */}

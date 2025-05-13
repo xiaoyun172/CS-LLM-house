@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
-  Drawer,
   useMediaQuery,
   useTheme,
   IconButton,
@@ -20,23 +19,19 @@ import { useNavigate } from 'react-router-dom';
 import type { RootState } from '../shared/store';
 import {
   setCurrentTopic,
-  createTopic as createTopicAction,
   addMessage,
   setTopicLoading,
   setError,
   updateMessage,
   setTopicStreaming,
-  deleteTopic as deleteTopicAction
 } from '../shared/store/messagesSlice';
-import { createTopic, createMessage } from '../shared/utils';
+import { createMessage } from '../shared/utils';
 import { sendChatRequest } from '../shared/api';
 import type { ChatTopic, Message, Model } from '../shared/types';
 import { isThinkingSupported } from '../shared/services/ThinkingService';
 import MessageList from '../components/MessageList';
 import ChatInput from '../components/ChatInput';
-import TopicList from '../components/TopicList';
-
-const DRAWER_WIDTH = 280;
+import { Sidebar } from '../components/TopicManagement';
 
 const ChatPage: React.FC = () => {
   const dispatch = useDispatch();
@@ -148,47 +143,6 @@ const ChatPage: React.FC = () => {
       localStorage.setItem('chatTopics', JSON.stringify(topics));
     }
   }, [topics]);
-
-  // 处理选择主题
-  const handleSelectTopic = (topic: ChatTopic) => {
-    dispatch(setCurrentTopic(topic));
-    if (isMobile) {
-      setDrawerOpen(false);
-    }
-  };
-
-  // 处理创建新主题
-  const handleNewTopic = () => {
-    const newTopic = createTopic('新聊天');
-    dispatch(createTopicAction(newTopic));
-    setTopics([newTopic, ...topics]);
-    if (isMobile) {
-      setDrawerOpen(false);
-    }
-  };
-
-  // 处理删除话题
-  const handleDeleteTopic = (topicId: string) => {
-    // 从Redux中删除该话题
-    dispatch(deleteTopicAction(topicId));
-    
-    // 从本地状态中删除该话题
-    const updatedTopics = topics.filter(topic => topic.id !== topicId);
-    setTopics(updatedTopics);
-    
-    // 如果删除的是当前话题，选择另一个话题
-    if (currentTopic && currentTopic.id === topicId) {
-      if (updatedTopics.length > 0) {
-        dispatch(setCurrentTopic(updatedTopics[0]));
-      } else {
-        // 如果没有话题了，创建一个新的
-        const newTopic = createTopic('新聊天');
-        dispatch(createTopicAction(newTopic));
-        setTopics([newTopic]);
-        dispatch(setCurrentTopic(newTopic));
-      }
-    }
-  };
 
   // 从本地存储加载主题
   const loadTopics = async (): Promise<ChatTopic[]> => {
@@ -412,14 +366,23 @@ const ChatPage: React.FC = () => {
     : false;
 
   return (
-    <Box
-      sx={{
+    <Box sx={{ 
         display: 'flex',
+      flexDirection: { xs: 'column', sm: 'row' }, 
         height: '100vh',
-        bgcolor: '#ffffff', // 纯白色背景
+      bgcolor: '#ffffff'
+    }}>
+      {/* 桌面端固定显示侧边栏，移动端可隐藏 */}
+      {!isMobile && <Sidebar />}
+      
+      {/* 主内容区域 */}
+      <Box sx={{ 
+        flexGrow: 1, 
+        display: 'flex', 
         flexDirection: 'column',
-      }}
-    >
+        height: '100vh', 
+        overflow: 'hidden'
+      }}>
       {/* 顶部应用栏 */}
       <AppBar 
         position="static" 
@@ -432,6 +395,7 @@ const ChatPage: React.FC = () => {
       >
         <Toolbar sx={{ justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {isMobile && (
             <IconButton
               edge="start"
               color="inherit"
@@ -440,6 +404,7 @@ const ChatPage: React.FC = () => {
             >
               <MenuIcon />
             </IconButton>
+              )}
             <Typography variant="subtitle1" component="div" sx={{ fontWeight: 500 }}>
               对话
             </Typography>
@@ -517,38 +482,21 @@ const ChatPage: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      {/* 侧边栏 - 浮动样式 */}
-      <Drawer
-        variant={isMobile ? 'temporary' : 'temporary'}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        ModalProps={{ keepMounted: true }}
-        sx={{
-          '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
-            boxSizing: 'border-box',
-            boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)',
-          },
-        }}
-      >
-        <TopicList
-          topics={topics}
-          currentTopicId={currentTopic?.id || null}
-          onSelectTopic={handleSelectTopic}
-          onNewTopic={handleNewTopic}
-          onDeleteTopic={handleDeleteTopic}
-        />
-      </Drawer>
+        {/* 移动端侧边栏 */}
+        {isMobile && (
+          <Sidebar 
+            mobileOpen={drawerOpen} 
+            onMobileToggle={() => setDrawerOpen(!drawerOpen)} 
+          />
+        )}
 
-      {/* 主内容区 - 固定布局 */}
+        {/* 聊天内容区域 */}
       <Box
-        component="main"
         sx={{
           flexGrow: 1,
-          pt: '56px', // 为顶部应用栏留出空间
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100vh - 56px)',
+            height: 'calc(100vh - 64px)', // 减去顶部导航栏高度
           width: '100%',
           position: 'relative',
           overflow: 'hidden',
@@ -585,6 +533,7 @@ const ChatPage: React.FC = () => {
             </Typography>
           </Box>
         )}
+        </Box>
       </Box>
     </Box>
   );

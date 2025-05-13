@@ -249,3 +249,83 @@ LLM小屋支持显示AI的思考过程，目前主要支持Grok模型的思考�
 - 思考过程监控
 - 模型API调试
 - 移动端性能监控
+
+## 移动端输入问题解决方案
+
+### 问题描述
+
+在Android平台上，聊天输入框存在以下问题：
+- 复制粘贴功能不正常或无法使用
+- 输入框尺寸过小，不适合触摸操作
+- 在某些设备上输入区域显示异常或无法正常接收输入
+
+### 解决方案
+
+通过以下关键改进解决了输入问题：
+
+1. **移除React Native Web的TextInput组件**
+   - 将`<TextInput>`组件替换为标准HTML的`<textarea>`元素
+   - 使用原生Web元素避免了跨平台兼容性问题
+   - 确保复制粘贴等原生功能正常运行
+
+2. **简化DOM结构与样式**
+   - 使用内联样式替代MUI样式系统，减少样式冲突
+   - 简化组件嵌套层次，提高渲染性能
+   - 直接设置元素样式，避免多层样式覆盖带来的问题
+
+3. **优化触摸体验**
+   - 增大输入区域和按钮尺寸，改善触摸操作体验
+   - 设置合理的内边距和间距，防止误触
+   - 优化聚焦和失焦行为，在某些Android设备上解决键盘弹出问题
+
+4. **焦点管理**
+   - 添加特殊的焦点管理逻辑，解决部分设备上的输入问题
+   - 实现组件挂载后的自动聚焦和模糊处理
+   - 使用延时处理确保DOM完全加载后再处理焦点
+
+### 代码实现
+
+关键实现代码：
+
+```tsx
+// 使用标准HTML textarea替代React Native Web的TextInput
+<textarea
+  ref={textareaRef}
+  style={{
+    fontSize: '16px',
+    padding: '12px 0',
+    border: 'none',
+    outline: 'none',
+    width: '100%',
+    backgroundColor: 'transparent',
+    lineHeight: '1.5',
+    fontFamily: 'inherit',
+    resize: 'none',
+    overflow: 'hidden',
+    minHeight: '24px',
+    maxHeight: '80px'
+  }}
+  placeholder="和ai助手说点什么"
+  value={message}
+  onChange={handleChange}
+  onKeyPress={handleKeyPress}
+  disabled={isLoading}
+  rows={1}
+/>
+
+// 焦点管理代码
+useEffect(() => {
+  // 设置一个延迟以确保组件挂载后聚焦生效
+  const timer = setTimeout(() => {
+    if (textareaRef.current) {
+      // 聚焦后立即模糊，解决某些Android设备上的复制粘贴问题
+      textareaRef.current.focus();
+      textareaRef.current.blur();
+    }
+  }, 300);
+  
+  return () => clearTimeout(timer);
+}, []);
+```
+
+这种方法不仅解决了当前的输入问题，还提高了组件的可维护性和性能。通过使用Web标准元素而非跨平台包装组件，我们避免了额外的抽象层带来的潜在问题，同时确保了更好的平台兼容性。

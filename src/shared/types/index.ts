@@ -19,6 +19,7 @@ export interface ChatTopic {
   lastMessageTime: string;
   messages: Message[];
   modelId?: string; // 默认使用的模型ID
+  prompt?: string; // 话题特定提示词，会覆盖助手的系统提示词
 }
 
 // 模型类型

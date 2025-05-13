@@ -7,6 +7,7 @@ import type { RootState } from '.';
 // 消息状态接口
 export interface MessagesState {
   messagesByTopic: Record<string, Message[]>;
+  topics: ChatTopic[];
   currentTopic: ChatTopic | null;
   loadingByTopic: Record<string, boolean>;
   streamingByTopic: Record<string, boolean>;
@@ -16,6 +17,7 @@ export interface MessagesState {
 // 初始状态
 const initialState: MessagesState = {
   messagesByTopic: {},
+  topics: [],
   currentTopic: null,
   loadingByTopic: {},
   streamingByTopic: {},
@@ -135,6 +137,24 @@ const messagesSlice = createSlice({
       state.currentTopic = action.payload;
     },
 
+    // 加载所有话题
+    loadTopics: (state) => {
+      try {
+        const topicsJson = localStorage.getItem('chatTopics');
+        if (topicsJson) {
+          const topics = JSON.parse(topicsJson);
+          state.topics = topics;
+          
+          // 初始化消息记录
+          topics.forEach((topic: ChatTopic) => {
+            state.messagesByTopic[topic.id] = topic.messages || [];
+          });
+        }
+      } catch (error) {
+        console.error('从localStorage加载话题失败:', error);
+      }
+    },
+
     // 设置主题加载状态
     setTopicLoading: (state, action: PayloadAction<{ topicId: string; loading: boolean }>) => {
       const { topicId, loading } = action.payload;
@@ -228,6 +248,9 @@ const messagesSlice = createSlice({
       const topic = action.payload;
       state.currentTopic = topic;
       state.messagesByTopic[topic.id] = topic.messages || [];
+      
+      // 添加到话题列表
+      state.topics.unshift(topic);
 
       // 保存到localStorage
       try {
@@ -246,6 +269,9 @@ const messagesSlice = createSlice({
 
       // 删除主题的消息
       delete state.messagesByTopic[topicId];
+      
+      // 从topics列表中移除
+      state.topics = state.topics.filter(topic => topic.id !== topicId);
 
       // 如果是当前主题，清除当前主题
       if (state.currentTopic && state.currentTopic.id === topicId) {
@@ -264,6 +290,38 @@ const messagesSlice = createSlice({
         console.error('从localStorage删除主题失败:', error);
       }
     },
+
+    // 更新话题
+    updateTopic: (state, action: PayloadAction<ChatTopic>) => {
+      const updatedTopic = action.payload;
+      
+      // 更新topics中的话题
+      const topicIndex = state.topics.findIndex(topic => topic.id === updatedTopic.id);
+      if (topicIndex !== -1) {
+        state.topics[topicIndex] = updatedTopic;
+      }
+      
+      // 如果是当前话题，也更新当前话题
+      if (state.currentTopic && state.currentTopic.id === updatedTopic.id) {
+        state.currentTopic = updatedTopic;
+      }
+      
+      // 保存到localStorage
+      try {
+        const topicsJson = localStorage.getItem('chatTopics');
+        if (topicsJson) {
+          const topics = JSON.parse(topicsJson);
+          const localTopicIndex = topics.findIndex((t: ChatTopic) => t.id === updatedTopic.id);
+          
+          if (localTopicIndex !== -1) {
+            topics[localTopicIndex] = updatedTopic;
+            localStorage.setItem('chatTopics', JSON.stringify(topics));
+          }
+        }
+      } catch (error) {
+        console.error('保存话题到localStorage失败:', error);
+      }
+    },
   },
 });
 
@@ -276,7 +334,9 @@ export const {
   addMessage,
   updateMessage,
   createTopic,
-  deleteTopic
+  deleteTopic,
+  loadTopics,
+  updateTopic
 } = messagesSlice.actions;
 
 // 导出reducer
