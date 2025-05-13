@@ -24,7 +24,7 @@ LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应
 ## 项目结构
 
 ```
-cherry-studio-app2/
+CS-LLM-house/
 ├── android/                # Android平台相关代码和配置
 ├── public/                 # 静态资源文件和公共资产
 │   └── assets/             # 图标、图片等公共资源
