@@ -3,6 +3,8 @@ import * as openaiApi from './openai';
 import * as anthropicApi from './anthropic';
 import * as googleApi from './google';
 import * as grokApi from './grok';
+import * as siliconflowApi from './siliconflow';
+import * as volcengineApi from './volcengine';
 import { logApiRequest, logApiResponse } from '../services/LoggerService';
 
 // 获取实际的提供商类型
@@ -25,6 +27,10 @@ const getApiByProvider = (model: Model) => {
       return googleApi;
     case 'grok':
       return grokApi;
+    case 'siliconflow':
+      return siliconflowApi;
+    case 'volcengine':
+      return volcengineApi;
     default:
       throw new Error(`不支持的提供商: ${providerType}`);
   }
@@ -113,6 +119,7 @@ export const testApiConnection = async (model: Model): Promise<boolean> => {
 export const sendChatRequest = async (options: {
   messages: { role: string; content: string }[];
   modelId: string;
+  systemPrompt?: string;
   onChunk?: (chunk: string) => void;
 }): Promise<{ success: boolean; content?: string; reasoning?: string; reasoningTime?: number; error?: string }> => {
   try {
@@ -127,10 +134,25 @@ export const sendChatRequest = async (options: {
     // 将简单消息格式转换为完整Message格式以兼容现有API实现
     const messages: Message[] = options.messages.map((msg, index) => ({
       id: `msg-${index}`,
-      role: msg.role as 'user' | 'assistant',
+      role: msg.role as 'user' | 'assistant' | 'system',
       content: msg.content,
       timestamp: new Date().toISOString(),
     }));
+
+    // 如果提供了系统提示词，添加到消息数组最前面
+    if (options.systemPrompt) {
+      const systemMessage: Message = {
+        id: 'system-0',
+        role: 'system',
+        content: options.systemPrompt,
+        timestamp: new Date().toISOString(),
+      };
+      
+      // 确保系统消息位于消息列表最前面
+      messages.unshift(systemMessage);
+      
+      console.log(`使用自定义系统提示词: ${options.systemPrompt.substring(0, 50)}${options.systemPrompt.length > 50 ? '...' : ''}`);
+    }
 
     // 获取对应的API实现
     const providerType = getActualProviderType(model);

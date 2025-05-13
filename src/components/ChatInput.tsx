@@ -8,15 +8,27 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   isLoading?: boolean;
+  allowConsecutiveMessages?: boolean; // 允许连续发送消息，即使AI尚未回复
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false }) => {
+const ChatInput: React.FC<ChatInputProps> = ({ 
+  onSendMessage, 
+  isLoading = false,
+  allowConsecutiveMessages = true // 默认允许连续发送
+}) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // 判断是否允许发送消息
+  const canSendMessage = () => {
+    // 如果允许连续发送，则只要有内容就可以发送
+    // 如果不允许连续发送，则需要检查isLoading状态
+    return message.trim() && (allowConsecutiveMessages || !isLoading);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() && !isLoading) {
+    if (canSendMessage()) {
       onSendMessage(message);
       setMessage('');
     }
@@ -47,6 +59,9 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
     return () => clearTimeout(timer);
   }, []);
 
+  // 显示正在加载的指示器，但不禁用输入框
+  const showLoadingIndicator = isLoading && !allowConsecutiveMessages;
+
   return (
     <div style={{
         borderTop: '1px solid #f0f0f0',
@@ -61,11 +76,11 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
       <div style={{
           display: 'flex',
           alignItems: 'center',
-        padding: '8px',
-        borderRadius: '24px',
+        padding: '5px 8px',
+        borderRadius: '20px',
         backgroundColor: '#ffffff',
           border: 'none',
-        minHeight: '56px',
+        minHeight: '40px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         width: '100%',
         maxWidth: '600px'
@@ -91,26 +106,26 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
           <textarea
             ref={textareaRef}
             style={{
-              fontSize: '16px',
-              padding: '12px 0',
+              fontSize: '15px',
+              padding: '8px 0',
               border: 'none',
               outline: 'none',
               width: '100%',
               backgroundColor: 'transparent',
-              lineHeight: '1.5',
+              lineHeight: '1.4',
               fontFamily: 'inherit',
               resize: 'none',
               overflow: 'hidden',
-              minHeight: '24px',
-              maxHeight: '80px'
+              minHeight: '16px',
+              maxHeight: '60px'
             }}
             placeholder="和LLM小屋聊点什么"
-          value={message}
+            value={message}
             onChange={handleChange}
             onKeyPress={handleKeyPress}
-          disabled={isLoading}
+            disabled={showLoadingIndicator}
             rows={1}
-        />
+          />
         </div>
         
         {/* 其他功能图标和发送按钮 */}
@@ -144,7 +159,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
             <IconButton
               color="primary"
               type="submit"
-              disabled={isLoading}
+              disabled={!canSendMessage()}
               size="medium"
               onClick={handleSubmit}
               style={{
@@ -153,7 +168,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
                 margin: '0 2px'
               }}
             >
-              {isLoading ? <CircularProgress size={24} thickness={5} /> : <SendIcon />}
+              {isLoading && !allowConsecutiveMessages ? <CircularProgress size={24} thickness={5} /> : <SendIcon />}
             </IconButton>
           ) : null}
         </div>

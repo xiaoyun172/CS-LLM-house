@@ -5,9 +5,11 @@ import MessageItem from './MessageItem';
 
 interface MessageListProps {
   messages: Message[];
+  onRegenerate?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 滚动到最新消息
@@ -19,6 +21,17 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // 过滤消息，只显示当前版本或没有版本标记的消息
+  const filteredMessages = messages.filter(message => {
+    // 如果消息没有版本信息，显示它
+    if (message.alternateVersions === undefined) {
+      return true;
+    }
+    
+    // 如果消息有isCurrentVersion标记，仅显示当前版本
+    return message.isCurrentVersion !== false;
+  });
 
   return (
     <Box
@@ -47,7 +60,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         },
       }}
     >
-      {messages.length === 0 ? (
+      {filteredMessages.length === 0 ? (
         <Box 
           sx={{ 
             flex: 1, 
@@ -62,12 +75,12 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
           新的对话开始了，请输入您的问题
         </Box>
       ) : (
-        messages.map((message, index) => (
+        filteredMessages.map((message, index) => (
           <React.Fragment key={message.id}>
             {/* 如果是新的一天，显示日期分隔线 */}
             {index > 0 && 
               new Date(message.timestamp).toLocaleDateString() !== 
-              new Date(messages[index - 1].timestamp).toLocaleDateString() && (
+              new Date(filteredMessages[index - 1].timestamp).toLocaleDateString() && (
                 <Box 
                   sx={{ 
                     textAlign: 'center', 
@@ -101,7 +114,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
             
             {/* 显示时间戳 */}
             {(index === 0 || 
-              new Date(message.timestamp).getTime() - new Date(messages[index - 1].timestamp).getTime() > 5 * 60000) && (
+              new Date(message.timestamp).getTime() - new Date(filteredMessages[index - 1].timestamp).getTime() > 5 * 60000) && (
               <Box 
                 sx={{ 
                   textAlign: 'center',
@@ -117,7 +130,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
               </Box>
             )}
             
-            <MessageItem message={message} />
+            <MessageItem 
+              message={message} 
+              onRegenerate={onRegenerate}
+              onDelete={onDelete}
+            />
           </React.Fragment>
         ))
       )}

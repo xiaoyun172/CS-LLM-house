@@ -19,6 +19,14 @@ import AssistantTab from './AssistantTab';
 import TopicTab from './TopicTab';
 import SettingsTab from './SettingsTab';
 
+// 话题创建事件类型
+interface TopicCreatedEvent extends CustomEvent {
+  detail: {
+    topic: ChatTopic;
+    assistantId: string;
+  };
+}
+
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -60,6 +68,7 @@ export default function SidebarTabs() {
   // 话题状态
   const topics = useSelector((state: RootState) => state.messages.topics);
   const currentTopic = useSelector((state: RootState) => state.messages.currentTopic);
+  const [currentAssistantTopics, setCurrentAssistantTopics] = useState<ChatTopic[]>([]);
 
   // 应用设置
   const [settings, setSettings] = useState({
@@ -76,6 +85,67 @@ export default function SidebarTabs() {
     // 加载助手数据
     loadAssistantsData();
   }, [dispatch]);
+
+  // 监听Redux topics变化，触发更新当前助手的话题列表
+  useEffect(() => {
+    if (currentAssistant) {
+      const assistantTopics = getCurrentAssistantTopics();
+      setCurrentAssistantTopics(assistantTopics);
+      console.log('已更新当前助手的话题列表:', assistantTopics.map(t => t.title));
+    }
+  }, [topics, currentAssistant]);
+  
+  // 监听topicCreated事件，实时更新话题列表
+  useEffect(() => {
+    const handleTopicCreated = (event: Event) => {
+      const customEvent = event as TopicCreatedEvent;
+      console.log('接收到话题创建事件:', customEvent.detail);
+      
+      // 如果当前没有选中的助手，或者不是当前助手的话题，则不处理
+      if (!currentAssistant) {
+        console.log('没有当前助手，不处理话题创建事件');
+        return;
+      }
+      
+      if (currentAssistant.id !== customEvent.detail.assistantId) {
+        console.log('创建的话题不属于当前助手，不处理');
+        return;
+      }
+      
+      const { topic } = customEvent.detail;
+      
+      // 检查话题是否已存在于当前列表中
+      const exists = currentAssistantTopics.some(t => t.id === topic.id);
+      if (exists) {
+        console.log('话题已存在于当前列表中，不重复添加');
+        return;
+      }
+      
+      console.log('添加新话题到当前助手话题列表:', topic.title);
+      
+      // 更新当前助手的话题列表
+      setCurrentAssistantTopics(prev => [topic, ...prev]);
+      
+      // 更新当前助手的topicIds
+      const updatedAssistant = {
+        ...currentAssistant,
+        topicIds: [...(currentAssistant.topicIds || []), topic.id]
+      };
+      
+      setCurrentAssistant(updatedAssistant);
+      
+      // 自动切换到话题标签页
+      setValue(1);
+    };
+    
+    // 注册事件监听器
+    window.addEventListener('topicCreated', handleTopicCreated);
+    
+    // 清理函数
+    return () => {
+      window.removeEventListener('topicCreated', handleTopicCreated);
+    };
+  }, [currentAssistant, currentAssistantTopics]);
 
   // 加载助手数据
   const loadAssistantsData = () => {
@@ -113,6 +183,25 @@ export default function SidebarTabs() {
   const handleSelectAssistant = (assistant: Assistant) => {
     setCurrentAssistant(assistant);
     AssistantService.setCurrentAssistant(assistant.id);
+    
+    // 自动将标签切换到话题面板
+    setValue(1);
+    
+    // 自动选择该助手的第一个话题（如果有的话）
+    if (assistant.topicIds && assistant.topicIds.length > 0) {
+      const firstTopicId = assistant.topicIds[0];
+      
+      // 从topics中查找该话题
+      const firstTopic = topics.find(topic => topic.id === firstTopicId);
+      if (firstTopic) {
+        console.log(`自动选择助手"${assistant.name}"的第一个话题: ${firstTopic.title}`);
+        dispatch(setCurrentTopic(firstTopic));
+      } else {
+        console.warn(`未找到助手"${assistant.name}"的第一个话题(${firstTopicId})`);
+      }
+    } else {
+      console.log(`助手"${assistant.name}"没有关联的话题`);
+    }
   };
 
   // 添加助手
@@ -186,6 +275,10 @@ export default function SidebarTabs() {
     );
     
     setUserAssistants(updatedAssistants);
+    
+    // 直接更新当前助手话题列表
+    const updatedTopics = [...currentAssistantTopics, newTopic];
+    setCurrentAssistantTopics(updatedTopics);
   };
 
   // 删除话题
@@ -214,6 +307,10 @@ export default function SidebarTabs() {
     
     // 从Redux中删除话题
     dispatch(deleteTopicAction(topicId));
+    
+    // 直接更新当前助手话题列表
+    const updatedTopics = currentAssistantTopics.filter(topic => topic.id !== topicId);
+    setCurrentAssistantTopics(updatedTopics);
   };
 
   // 设置变更处理
@@ -260,6 +357,12 @@ export default function SidebarTabs() {
       } else {
         console.error('从localStorage读取话题失败');
       }
+      
+      // 更新本地状态中的话题
+      const updatedTopics = currentAssistantTopics.map(t => 
+        t.id === topic.id ? topic : t
+      );
+      setCurrentAssistantTopics(updatedTopics);
     } catch (error) {
       console.error('更新话题时出错:', error);
     }
@@ -302,7 +405,7 @@ export default function SidebarTabs() {
       <TabPanel value={value} index={1}>
         <TopicTab 
           currentAssistant={currentAssistant}
-          topics={getCurrentAssistantTopics()}
+          topics={currentAssistantTopics.length > 0 ? currentAssistantTopics : getCurrentAssistantTopics()}
           currentTopic={currentTopic}
           onSelectTopic={handleSelectTopic}
           onCreateTopic={handleCreateTopic}

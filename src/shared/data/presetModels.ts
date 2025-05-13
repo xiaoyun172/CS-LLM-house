@@ -31,6 +31,44 @@ export const presetModels: PresetModel[] = [
     defaultBaseUrl: 'https://api.openai.com/v1',
   },
   
+  // SiliconFlow 模型
+  {
+    id: 'deepseek-ai/DeepSeek-V3',
+    name: 'DeepSeek V3',
+    provider: 'siliconflow',
+    description: '由SiliconFlow提供的DeepSeek V3模型，拥有强大的中文理解和生成能力。',
+    capabilities: ['聊天对话', '内容生成', '中文优化', '代码辅助', '思考过程'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+  },
+  {
+    id: 'Qwen/Qwen3-32B',
+    name: 'Qwen3 32B',
+    provider: 'siliconflow',
+    description: '通义千问第三代旗舰大模型，具有卓越的中文理解和创作能力。',
+    capabilities: ['复杂推理', '内容创作', '代码生成', '中文优化'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+  },
+  {
+    id: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+    name: 'Qwen2.5 Coder',
+    provider: 'siliconflow',
+    description: '通义千问专门优化的代码模型，擅长编程和技术文档生成。',
+    capabilities: ['代码生成', '代码解释', '技术文档', 'API设计'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+  },
+  {
+    id: 'Qwen/Qwen2.5-Math-72B-Instruct',
+    name: 'Qwen2.5 Math',
+    provider: 'siliconflow',
+    description: '通义千问数学专精模型，擅长数学推理和解题。',
+    capabilities: ['数学推理', '问题解决', '公式推导', '数据分析'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+  },
+  
   // Anthropic 模型
   {
     id: 'claude-3-opus',
@@ -71,6 +109,24 @@ export const presetModels: PresetModel[] = [
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
   },
   {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    provider: 'google',
+    description: 'Google的快速大模型，具有良好的响应速度和质量的平衡。',
+    capabilities: ['快速响应', '内容生成', '代码辅助'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
+  },
+  {
+    id: 'gemini-2.5-flash-preview-04-17',
+    name: 'Gemini 2.5 Flash Preview 04-17',
+    provider: 'google',
+    description: 'Google最新的思考模型预览版，具有更强的推理能力和思考功能。',
+    capabilities: ['思考过程', '复杂推理', '内容生成', '代码辅助', '支持系统指令'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+  },
+  {
     id: 'gemini-ultra',
     name: 'Gemini Ultra',
     provider: 'google',
@@ -99,6 +155,44 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.x.ai/v1',
   },
+  
+  // 火山引擎模型
+  {
+    id: 'DBV1.5-pro',
+    name: '豆包 1.5 Pro',
+    provider: 'volcengine',
+    description: '火山引擎旗舰级大模型，具有强大的中文理解和生成能力。',
+    capabilities: ['复杂推理', '内容创作', '代码生成', '中文优化'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3/',
+  },
+  {
+    id: 'DBV1.5-lite',
+    name: '豆包 1.5 Lite',
+    provider: 'volcengine',
+    description: '火山引擎轻量级模型，快速响应，适合一般对话场景。',
+    capabilities: ['快速回复', '内容生成', '中文优化', '基础问答'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3/',
+  },
+  {
+    id: 'DBV1.5-thinking-pro',
+    name: '豆包 1.5 思考 Pro',
+    provider: 'volcengine',
+    description: '火山引擎思考增强模型，展示详细的思考过程，提高推理能力。',
+    capabilities: ['思考过程', '复杂推理', '内容创作', '代码生成'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3/',
+  },
+  {
+    id: 'deepseek-r1',
+    name: 'DeepSeek R1',
+    provider: 'volcengine',
+    description: '火山引擎提供的DeepSeek R1模型，具有卓越的代码能力和综合表现。',
+    capabilities: ['代码生成', '复杂推理', '技术文档', 'API设计'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3/',
+  },
 ];
 
 // 获取模型图标
@@ -112,6 +206,10 @@ export const getModelIcon = (provider: string): string => {
       return '/icons/google.png';
     case 'grok':
       return '/icons/grok.png';
+    case 'siliconflow':
+      return '/icons/siliconflow.png';
+    case 'volcengine':
+      return '/icons/volcengine.png';
     case 'custom':
       return '/icons/custom.png';
     default:
@@ -130,6 +228,10 @@ export const getProviderName = (provider: string): string => {
       return 'Google';
     case 'grok':
       return 'xAI (Grok)';
+    case 'siliconflow':
+      return '硅基流动 (SiliconFlow)';
+    case 'volcengine':
+      return '火山引擎 (VolcEngine)';
     case 'custom':
       return '自定义';
     default:

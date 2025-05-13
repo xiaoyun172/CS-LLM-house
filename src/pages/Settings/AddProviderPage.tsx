@@ -27,6 +27,8 @@ const providerTypes = [
   { value: 'gemini', label: 'Gemini' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'grok', label: 'xAI (Grok)' },
+  { value: 'siliconflow', label: '硅基流动 (SiliconFlow)' },
+  { value: 'volcengine', label: '火山引擎' },
   { value: 'custom', label: '其他' },
 ];
 
@@ -84,7 +86,9 @@ const AddProviderPage: React.FC = () => {
       baseUrl: providerType === 'openai' ? 'https://api.openai.com/v1' : 
                providerType === 'anthropic' ? 'https://api.anthropic.com/v1' :
                providerType === 'gemini' ? 'https://generativelanguage.googleapis.com/v1' :
-               providerType === 'grok' ? 'https://api.x.ai/v1' : '',
+               providerType === 'grok' ? 'https://api.x.ai/v1' : 
+               providerType === 'siliconflow' ? 'https://api.siliconflow.cn/v1' :
+               providerType === 'volcengine' ? 'https://ark.cn-beijing.volces.com/api/v3/' : '',
       models: [],
       providerType: providerType // 保存供应商类型以便后续判断API调用
     };
@@ -268,6 +272,8 @@ const AddProviderPage: React.FC = () => {
                  providerType === 'anthropic' ? '添加Anthropic Claude API服务' :
                  providerType === 'gemini' ? '添加Google Gemini API服务' : 
                  providerType === 'grok' ? '添加xAI (Grok) API服务' : 
+                 providerType === 'siliconflow' ? '添加硅基流动 (SiliconFlow) API服务' :
+                 providerType === 'volcengine' ? '添加火山引擎 (豆包/DeepSeek) API服务' :
                  '添加自定义API服务'}
               </Typography>
             )}

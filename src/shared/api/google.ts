@@ -1,40 +1,15 @@
 import type { Message, Model } from '../types';
 import { logApiRequest, logApiResponse } from '../services/LoggerService';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
-// Google API接口
-interface GoogleMessage {
-  role: 'user' | 'model';
-  parts: {
-    text: string;
-  }[];
-}
-
-interface GoogleCompletionRequest {
-  contents: GoogleMessage[];
-  generationConfig?: {
-    temperature?: number;
-    maxOutputTokens?: number;
-  };
-}
-
-interface GoogleCompletionResponse {
-  candidates: {
-    content: {
-      role: string;
-      parts: {
-        text: string;
-      }[];
-    };
-  }[];
-}
-
-// 转换消息格式
-const convertToGoogleMessages = (messages: Message[]): GoogleMessage[] => {
-  return messages.map(msg => ({
-    role: msg.role === 'user' ? 'user' : 'model',
-    parts: [{ text: msg.content }],
-  }));
-};
+// 安全设置默认值 - 设置为最低限制
+const DEFAULT_SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
 
 // 发送聊天请求
 export const sendChatRequest = async (
@@ -46,16 +21,19 @@ export const sendChatRequest = async (
     const apiKey = model.apiKey;
     const baseUrl = model.baseUrl || 'https://generativelanguage.googleapis.com/v1';
 
-    // 直接使用模型名称
-    const modelName = model.name;
+    // 直接使用模型名称或ID
+    const modelName = model.id || model.name;
+    const isGemini2_5 = modelName.includes('gemini-2.5') || modelName.includes('gemini-2-5') || modelName.includes('2.5');
 
-    console.log(`[API请求] 使用Google API，模型名称: ${modelName}，ID: ${model.id}`);
+    console.log(`[API请求] 使用Google API SDK，模型名称: ${modelName}，ID: ${model.id}, 基础URL: ${baseUrl}`);
 
     // 记录模型信息，用于调试
     console.log('[API请求] 模型详情:', {
       id: model.id,
       name: model.name,
-      provider: model.provider
+      provider: model.provider,
+      temperature: model.temperature,
+      maxTokens: model.maxTokens
     });
 
     if (!apiKey) {
@@ -72,25 +50,34 @@ export const sendChatRequest = async (
       timestamp: m.timestamp
     })));
 
-    const googleMessages = convertToGoogleMessages(filteredMessages);
+    // 提取系统消息，如果有的话
+    const systemMessage = filteredMessages.find(msg => msg.role === 'system');
 
-    // 添加系统消息
-    if (googleMessages.length > 0 && googleMessages[0].role !== 'model') {
-      googleMessages.unshift({
-        role: 'model',
-        parts: [{ text: '你是LLM小屋的AI助手，一个有用、友好的助手。' }],
-      });
-    }
+    // 过滤掉系统消息，因为它会在单独的字段中发送
+    const nonSystemMessages = filteredMessages.filter(msg => msg.role !== 'system');
 
-    console.log('[API请求] Google API 消息数量:', googleMessages.length);
+    // 创建SDK实例 - GoogleGenerativeAI只接受一个apiKey参数
+    const genAI = new GoogleGenerativeAI(apiKey);
 
-    const requestBody: GoogleCompletionRequest = {
-      contents: googleMessages,
-      generationConfig: {
+    // 配置生成参数
+    const generationConfig = {
         temperature: model.temperature,
         maxOutputTokens: model.maxTokens,
-      },
+      // 如果是Gemini 2.5，添加思考配置
+      ...(isGemini2_5 ? {
+        thinkingConfig: {
+          thinkingBudget: 8192  // 默认思考预算
+        }
+      } : {})
     };
+
+    // 获取生成模型实例
+    const genModel = genAI.getGenerativeModel({
+      model: modelName,
+      systemInstruction: systemMessage ? systemMessage.content : undefined,
+      safetySettings: DEFAULT_SAFETY_SETTINGS,
+      generationConfig: generationConfig
+    });
 
     // 记录API请求
     logApiRequest('Google AI API', 'INFO', {
@@ -98,62 +85,95 @@ export const sendChatRequest = async (
       model: modelName,
       temperature: model.temperature,
       maxOutputTokens: model.maxTokens,
-      messages: googleMessages.map(m => ({
-        role: m.role,
-        text: m.parts[0].text.substring(0, 50) + (m.parts[0].text.length > 50 ? '...' : '')
-      }))
+      hasSystemInstruction: !!systemMessage,
+      requestDetails: {
+        safetySettings: 'configured',
+        thinkingEnabled: isGemini2_5,
+        messageCount: nonSystemMessages.length,
+        systemInstructionFormat: 'SDK标准格式'
+      }
     });
 
-    // Google API目前不支持流式响应，使用普通响应
-    const response = await fetch(`${baseUrl}/models/${modelName}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
+    // 转换消息格式为SDK格式
+    const chatHistory = nonSystemMessages.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }]
+    }));
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      const errorMessage = errorData.error?.message || '请求失败';
+    console.log('[API请求] 使用SDK生成内容，消息数量:', chatHistory.length);
 
-      // 记录API错误
-      console.error('[API错误] Google API请求失败:', errorData);
-      logApiResponse('Google AI API', response.status, {
-        error: errorMessage,
-        details: errorData
+    // 如果有onUpdate回调，使用流式API
+    if (onUpdate) {
+      // 创建聊天会话并发送最新消息
+      const chat = genModel.startChat({
+        history: chatHistory.slice(0, -1) // 历史消息
       });
 
-      throw new Error(errorMessage);
-    }
-
-    const data: GoogleCompletionResponse = await response.json();
-
-    // 记录API响应
-    logApiResponse('Google AI API', response.status, {
-      model: modelName,
-      content: data.candidates[0].content.parts[0].text.substring(0, 100) +
-        (data.candidates[0].content.parts[0].text.length > 100 ? '...' : '')
-    });
-
-    // 如果提供了onUpdate回调，模拟流式响应
-    if (onUpdate) {
-      const content = data.candidates[0].content.parts[0].text;
-
-      // 模拟流式响应，每20ms发送一个字符
-      let currentContent = '';
-      for (let i = 0; i < content.length; i++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        currentContent += content[i];
-        onUpdate(currentContent);
+      // 获取最后一条消息单独发送
+      const lastMessage = chatHistory[chatHistory.length - 1];
+      
+      // 如果没有消息，直接返回空字符串
+      if (!lastMessage) {
+        return '';
       }
 
-      return content;
+      const lastContent = lastMessage.parts[0].text;
+      console.log('[API请求] 发送流式请求，内容:', lastContent.substring(0, 50) + (lastContent.length > 50 ? '...' : ''));
+      
+      // 发送消息并获取流式响应
+      const streamResult = await chat.sendMessageStream(lastContent);
+      let fullResponse = '';
+
+      // 处理流式响应
+      for await (const chunk of streamResult.stream) {
+        const chunkText = chunk.text();
+        fullResponse += chunkText;
+        onUpdate(fullResponse);
+      }
+
+    // 记录API响应
+      logApiResponse('Google AI API', 200, {
+      model: modelName,
+        content: fullResponse.substring(0, 100) + (fullResponse.length > 100 ? '...' : ''),
+    });
+
+      return fullResponse;
     } else {
-      return data.candidates[0].content.parts[0].text;
+      // 非流式API - 直接生成内容
+      let result;
+      
+      if (chatHistory.length > 1) {
+        // 如果有多条消息，使用聊天模式
+        const chat = genModel.startChat({
+          history: chatHistory.slice(0, -1) // 历史消息
+        });
+
+        // 获取最后一条消息
+        const lastMessage = chatHistory[chatHistory.length - 1];
+        if (!lastMessage) {
+          return '';
+        }
+        
+        // 发送最后一条消息并获取响应
+        result = await chat.sendMessage(lastMessage.parts[0].text);
+      } else {
+        // 如果只有一条消息，直接生成内容
+        const content = chatHistory.length > 0 ? chatHistory[0].parts[0].text : '';
+        result = await genModel.generateContent(content);
+      }
+
+      const text = result.response.text();
+      
+      // 记录API响应
+      logApiResponse('Google AI API', 200, {
+        model: modelName,
+        content: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+      });
+
+      return text;
     }
   } catch (error) {
-    console.error('Google API请求失败:', error);
+    console.error('Google API SDK请求失败:', error);
     throw error;
   }
 };

@@ -2,7 +2,9 @@
 
 ## 项目概述
 
-LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic等）的交互，提供流畅的对话体验，并支持Android平台部署。
+官方交流群Q群 点击链接加入群聊【LLM小屋 官方群】：http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=V-b46WoBNLIM4oc34JMULwoyJ3hyrKac&authKey=q%2FSwCcxda4e55ygtwp3h9adQXhqBLZ9wJdvM0QxTjXQkbxAa2tHoraOGy2fiibyY&noverify=0&group_code=930126592
+
+LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic Claude、Grok等）的交互，提供流畅的对话体验，并支持Android平台部署。应用采用React、TypeScript和Capacitor框架开发，具有高度可定制的模型配置、多主题聊天管理、AI思考过程可视化等特色功能。
 
 ## 技术栈
 
@@ -24,21 +26,40 @@ LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应
 ## 项目结构
 
 ```
-CS-LLM-house/
+LLM小屋/
 ├── android/                # Android平台相关代码和配置
+│   ├── app/                # Android应用主要代码
+│   │   ├── src/            # 源代码目录
+│   │   │   ├── main/       # 主要代码
+│   │   │   │   ├── assets/ # Web资源和配置文件
+│   │   │   │   ├── java/   # Java代码
+│   │   │   │   └── res/    # Android资源文件(布局、图标等)
+│   │   │   └── test/       # 测试代码
+│   │   └── build.gradle    # 应用级构建配置
+│   ├── build.gradle        # 项目级构建配置
+│   ├── capacitor.settings.gradle # Capacitor插件配置
+│   └── variables.gradle    # 全局变量和版本配置
 ├── public/                 # 静态资源文件和公共资产
 │   └── assets/             # 图标、图片等公共资源
 ├── src/                    # 源代码目录
 │   ├── assets/             # 应用内图片、字体等资源
 │   ├── components/         # 可复用UI组件
-│   │   ├── BackButtonHandler/  # Android返回键处理组件
+│   │   ├── BackButtonHandler/ # Android返回键处理组件
 │   │   ├── ChatInput/      # 聊天输入框组件
-│   │   ├── ExitConfirmDialog/  # 退出确认对话框
+│   │   ├── ExitConfirmDialog/ # 退出确认对话框
 │   │   ├── MessageItem/    # 单条消息展示组件
 │   │   ├── MessageList/    # 消息列表容器组件
-│   │   ├── ModelManagement/# 模型管理相关组件
+│   │   ├── ModelManagement/ # 模型管理相关组件
 │   │   ├── RouterWrapper/  # 路由包装组件
-│   │   └── TopicList/      # 聊天主题列表组件
+│   │   ├── TopicList/      # 聊天主题列表组件
+│   │   ├── TopicManagement/ # 话题管理组件
+│   │   ├── ChatToolbar/    # 聊天工具栏组件
+│   │   ├── message/        # 消息相关子组件
+│   │   │   ├── ThinkingProcess/ # AI思考过程展示组件
+│   │   │   └── MessageActions/  # 消息操作按钮组件
+│   │   ├── settings/       # 设置相关组件
+│   │   │   └── ModelCard/  # 模型卡片组件
+│   │   └── toolbar/        # 工具栏相关组件
 │   ├── pages/              # 页面级组件
 │   │   ├── ChatPage/       # 聊天主界面
 │   │   ├── DevToolsPage/   # 开发者调试工具页面
@@ -46,40 +67,54 @@ CS-LLM-house/
 │   │   │   ├── AppearanceSettings/ # 外观设置
 │   │   │   ├── BehaviorSettings/   # 行为设置
 │   │   │   ├── DefaultModelSettings/ # 默认模型设置
-│   │   │   └── ModelProviderSettings/ # 模型提供商设置
-│   │   └── Welcome/        # 欢迎/引导页面
+│   │   │   ├── ModelProviderSettings/ # 模型提供商设置
+│   │   │   ├── AddProviderPage/ # 添加提供商页面
+│   │   │   └── AboutPage/  # 关于页面
+│   │   └── WelcomePage/    # 欢迎/引导页面
 │   ├── routes/             # 路由配置和导航逻辑
-│   └── shared/             # 共享代码和业务逻辑
-│       ├── api/            # API接口封装
-│       │   ├── anthropic/  # Anthropic Claude API集成
-│       │   ├── google/     # Google Gemini API集成
-│       │   ├── grok/       # Grok API集成
-│       │   └── openai/     # OpenAI API集成
-│       ├── data/           # 静态数据和预设配置
-│       │   └── models/     # 预设模型配置
-│       ├── hooks/          # 自定义React Hooks
-│       │   ├── useAppState/# 应用状态管理Hook
-│       │   └── useModels/  # 模型管理Hook
-│       ├── services/       # 业务服务层
-│       │   ├── APIService/ # API服务（模型获取、消息发送等）
-│       │   ├── LoggerService/ # 日志记录服务
-│       │   └── ThinkingService/ # AI思考过程处理服务
-│       ├── store/          # Redux状态管理
-│       │   ├── slices/     # Redux状态切片
-│       │   │   ├── messages/ # 消息状态管理
-│       │   │   ├── models/   # 模型状态管理
-│       │   │   └── settings/ # 设置状态管理
-│       │   └── index.ts    # Store配置和导出
-│       ├── types/          # TypeScript类型定义
-│       └── utils/          # 工具函数和辅助方法
-│           ├── api/        # API相关工具函数
-│           ├── format/     # 格式化工具函数
-│           └── storage/    # 本地存储工具函数
+│   ├── shared/             # 共享代码和业务逻辑
+│   │   ├── api/            # API接口封装
+│   │   │   ├── anthropic/  # Anthropic Claude API集成
+│   │   │   ├── google/     # Google Gemini API集成
+│   │   │   ├── grok/       # Grok API集成
+│   │   │   ├── openai/     # OpenAI API集成
+│   │   │   └── index.ts    # API统一入口和路由
+│   │   ├── data/           # 静态数据和预设配置
+│   │   │   ├── models/     # 预设模型配置
+│   │   │   └── presetModels.ts # 预设模型数据
+│   │   ├── hooks/          # 自定义React Hooks
+│   │   │   ├── useAppState/ # 应用状态管理Hook
+│   │   │   └── useModels/  # 模型管理Hook
+│   │   ├── services/       # 业务服务层
+│   │   │   ├── APIService.ts # API服务（模型获取、消息发送等）
+│   │   │   ├── AssistantService.ts # 助手服务
+│   │   │   ├── LoggerService.ts # 日志记录服务
+│   │   │   ├── ThinkingService.ts # AI思考过程处理服务
+│   │   │   └── storageService.ts # 存储服务(IndexedDB/localStorage)
+│   │   ├── store/          # Redux状态管理
+│   │   │   ├── messagesSlice.ts # 消息状态管理
+│   │   │   ├── settingsSlice.ts # 设置状态管理
+│   │   │   └── index.ts    # Store配置和导出
+│   │   ├── types/          # TypeScript类型定义
+│   │   │   ├── Assistant.ts # 助手类型定义
+│   │   │   └── index.ts    # 核心类型定义
+│   │   └── utils/          # 工具函数和辅助方法
+│   │       ├── api/        # API相关工具函数
+│   │       ├── format/     # 格式化工具函数
+│   │       ├── storage/    # 本地存储工具函数
+│   │       └── index.ts    # 通用工具函数
+│   ├── App.tsx             # 应用根组件
+│   ├── main.tsx            # 应用入口文件
+│   └── index.css           # 全局样式
 ├── capacitor.config.ts     # Capacitor移动应用配置
 ├── index.html              # 应用入口HTML文件
 ├── package.json            # 项目依赖和脚本配置
-├── tsconfig.json           # TypeScript编译配置
-└── vite.config.ts          # Vite构建工具配置
+├── tsconfig.json           # TypeScript编译配置(引用配置)
+├── tsconfig.app.json       # 应用代码TypeScript配置
+├── tsconfig.node.json      # Node环境TypeScript配置
+├── vite.config.ts          # Vite构建工具配置
+├── tailwind.config.js      # Tailwind CSS配置
+└── eslint.config.js        # ESLint代码规范配置
 ```
 
 ## 安装指南
@@ -87,8 +122,8 @@ CS-LLM-house/
 1. **克隆仓库**
 
 ```bash
-git clone https://github.com/1600822305/CS-LLM-house.git
-cd CS-LLM-house
+git clone https://github.com/1600822305/cherry-studio-app2.git
+cd cherry-studio-app2
 ```
 
 2. **安装依赖**
@@ -323,7 +358,7 @@ useEffect(() => {
       textareaRef.current.blur();
     }
   }, 300);
-  
+
   return () => clearTimeout(timer);
 }, []);
 ```

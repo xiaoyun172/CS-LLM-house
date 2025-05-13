@@ -1,3 +1,5 @@
+import { approximateTokenSize } from 'tokenx';
+
 /**
  * 生成唯一ID
  * @returns {string} 唯一ID
@@ -28,17 +30,30 @@ export function formatDate(date: Date): string {
 // 创建新消息
 export function createMessage(options: {
   content: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   status?: 'pending' | 'complete' | 'error';
   modelId?: string;
+  id?: string;
+  parentMessageId?: string;
+  version?: number;
+  alternateVersions?: string[];
+  isCurrentVersion?: boolean;
+  reasoning?: string;
+  reasoningTime?: number;
 }): any {
   return {
-    id: generateId(),
+    id: options.id || generateId(),
     content: options.content,
     role: options.role,
     timestamp: formatDate(new Date()),
     status: options.status || (options.role === 'assistant' ? 'pending' : undefined),
-    modelId: options.modelId
+    modelId: options.modelId,
+    parentMessageId: options.parentMessageId,
+    version: options.version,
+    alternateVersions: options.alternateVersions,
+    isCurrentVersion: options.isCurrentVersion !== undefined ? options.isCurrentVersion : true,
+    reasoning: options.reasoning,
+    reasoningTime: options.reasoningTime
   };
 }
 
@@ -82,4 +97,22 @@ export function getApiModelId(model: any): string {
   
   // 默认回退
   return model.name || model.id || '';
+}
+
+/**
+ * 计算文本的token数量
+ * @param text 文本内容
+ * @returns token数量
+ */
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  try {
+    return approximateTokenSize(text);
+  } catch (error) {
+    console.error('计算token失败:', error);
+    // 简单估算：英文大概每4个字符一个token，中文每个字符约是一个token
+    const chineseCount = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+    const otherCount = text.length - chineseCount;
+    return chineseCount + Math.ceil(otherCount / 4);
+  }
 }

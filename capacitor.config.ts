@@ -22,6 +22,15 @@ const config: CapacitorConfig = {
     Keyboard: {
       resize: 'body',
       resizeOnFullScreen: true
+    },
+    StatusBar: {
+      backgroundColor: '#475569',
+      style: 'light',
+      overlaysWebView: false,
+      translucent: false
+    },
+    SplashScreen: {
+      launchShowDuration: 0
     }
   }
 };

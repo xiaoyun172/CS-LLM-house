@@ -4,12 +4,16 @@
 export interface Message {
   id: string;
   content: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   timestamp: string;
   status?: 'pending' | 'complete' | 'error';
   modelId?: string; // 使用的模型ID
   reasoning?: string; // 存储模型的思考过程
   reasoningTime?: number; // 思考过程耗时（单位：毫秒）
+  version?: number; // 消息版本号，用于标识重新生成的回复
+  parentMessageId?: string; // 关联的用户消息ID
+  alternateVersions?: string[]; // 存储同一回复的其他版本ID数组
+  isCurrentVersion?: boolean; // 是否是当前显示的版本
 }
 
 // 聊天主题类型
@@ -52,7 +56,7 @@ export interface Settings {
 }
 
 // 预设模型提供商
-export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'grok' | 'custom';
+export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'grok' | 'siliconflow' | 'volcengine' | 'custom';
 
 // 预设模型信息
 export interface PresetModel {

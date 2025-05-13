@@ -24,7 +24,11 @@ import {
   setError,
   updateMessage,
   setTopicStreaming,
+  setTopicMessages,
+  createTopic,
+  addAlternateVersion,
 } from '../shared/store/messagesSlice';
+import { setCurrentModel } from '../shared/store/settingsSlice';
 import { createMessage } from '../shared/utils';
 import { sendChatRequest } from '../shared/api';
 import type { ChatTopic, Message, Model } from '../shared/types';
@@ -32,6 +36,8 @@ import { isThinkingSupported } from '../shared/services/ThinkingService';
 import MessageList from '../components/MessageList';
 import ChatInput from '../components/ChatInput';
 import { Sidebar } from '../components/TopicManagement';
+import ChatToolbar from '../components/ChatToolbar';
+import { AssistantService } from '../shared/services/AssistantService';
 
 const ChatPage: React.FC = () => {
   const dispatch = useDispatch();
@@ -61,6 +67,8 @@ const ChatPage: React.FC = () => {
   // 选择模型
   const handleModelSelect = (model: Model) => {
     setSelectedModel(model);
+    // 保存选择的模型ID到Redux和localStorage
+    dispatch(setCurrentModel(model.id));
     handleModelMenuClose();
   };
 
@@ -69,6 +77,7 @@ const ChatPage: React.FC = () => {
   const messagesByTopic = useSelector((state: RootState) => state.messages.messagesByTopic);
   const loadingByTopic = useSelector((state: RootState) => state.messages.loadingByTopic);
   const settings = useSelector((state: RootState) => state.settings);
+  const currentModelId = useSelector((state: RootState) => state.settings.currentModelId);
 
   // 本地状态
   const [topics, setTopics] = useState<ChatTopic[]>([]);
@@ -121,13 +130,44 @@ const ChatPage: React.FC = () => {
             { id: 'deepseek', name: 'DeepSeek', description: '国内领先大模型', provider: 'DeepSeek', enabled: true }
           ];
           setAvailableModels(defaultModels);
-          setSelectedModel(defaultModels[0]);
+          
+          // 如果存储了当前模型ID，查找匹配的模型
+          if (currentModelId) {
+            const model = defaultModels.find(m => m.id === currentModelId);
+            if (model) {
+              setSelectedModel(model);
+            } else {
+              setSelectedModel(defaultModels[0]);
+            }
+          } else {
+            setSelectedModel(defaultModels[0]);
+          }
         } else {
           setAvailableModels(availableModels);
           
-          // 选择默认模型：优先选择用户标记为默认的模型，否则选择第一个
-          const defaultModel = availableModels.find(model => model.isDefault) || availableModels[0];
-          setSelectedModel(defaultModel);
+          // 使用Redux中存储的当前模型ID，如果没有则使用默认模型
+          if (currentModelId) {
+            const model = availableModels.find(m => m.id === currentModelId);
+            if (model) {
+              setSelectedModel(model);
+            } else {
+              // 如果找不到匹配的模型（可能是模型被删除了），选择默认或第一个
+              const defaultModel = availableModels.find(model => model.isDefault) || availableModels[0];
+              setSelectedModel(defaultModel);
+              // 更新Redux中的当前模型ID
+              if (defaultModel) {
+                dispatch(setCurrentModel(defaultModel.id));
+              }
+            }
+          } else {
+            // 没有当前模型ID，选择默认或第一个
+            const defaultModel = availableModels.find(model => model.isDefault) || availableModels[0];
+            setSelectedModel(defaultModel);
+            // 更新Redux中的当前模型ID
+            if (defaultModel) {
+              dispatch(setCurrentModel(defaultModel.id));
+            }
+          }
         }
       } catch (error) {
         console.error('加载数据失败', error);
@@ -135,7 +175,7 @@ const ChatPage: React.FC = () => {
     };
 
     loadData();
-  }, [dispatch, settings]);
+  }, [dispatch, settings, currentModelId]);
 
   // 当主题变化时保存到本地存储
   useEffect(() => {
@@ -191,10 +231,14 @@ const ChatPage: React.FC = () => {
       return;
     }
 
+    // 生成唯一ID，用于关联这次请求相关的消息
+    const requestId = Date.now().toString();
+    
     // 创建用户消息
     const userMessage = createMessage({
       content,
-      role: 'user'
+      role: 'user',
+      id: `user-${requestId}` // 使用requestId确保ID唯一性
     });
 
     // 添加到Redux
@@ -204,13 +248,18 @@ const ChatPage: React.FC = () => {
     const assistantMessage = createMessage({
       content: '',
       role: 'assistant',
-      status: 'pending'
+      status: 'pending',
+      id: `assistant-${requestId}` // 使用requestId确保ID唯一性
     });
 
     // 将占位消息添加到Redux
     dispatch(addMessage({ topicId: currentTopic.id, message: assistantMessage }));
     
-    // 设置正在加载状态
+    // 启动单独的加载状态追踪器，而不是使用全局的主题加载状态
+    // 这样即使有多个请求同时发送，输入框也不会被禁用
+    let isRequestPending = true;
+    
+    // 设置加载状态，但不会影响用户发送新消息的能力
     dispatch(setTopicLoading({ topicId: currentTopic.id, loading: true }));
     
     try {
@@ -218,24 +267,63 @@ const ChatPage: React.FC = () => {
       dispatch(setTopicStreaming({ topicId: currentTopic.id, streaming: true }));
       
       // 使用当前选择的模型ID
-      const modelId = selectedModel?.id || settings.defaultModelId || 'gpt-3.5-turbo';
+      const modelId = selectedModel?.id || currentModelId || settings.defaultModelId || 'gpt-3.5-turbo';
       
       // 检查模型是否支持思考过程
       const supportsThinking = isThinkingSupported(modelId);
       console.log(`当前模型 ${modelId} ${supportsThinking ? '支持' : '不支持'}思考过程`);
       
-      // 获取该主题的所有消息 - 不包括刚刚添加的待处理消息
+      // 获取到目前为止的所有历史消息 - 不包括刚刚添加的待处理消息和其他正在处理的消息
       const allMessages = messagesByTopic[currentTopic.id] || [];
-      const messages = allMessages.filter(msg => msg.status !== 'pending');
+      const messages = allMessages.filter(msg => msg.status !== 'pending' && msg.id !== assistantMessage.id);
       
-      // 确保用户消息被包含在请求中
-      const requestMessages = [...messages];
+      // 获取系统提示词 - 优先使用话题的提示词，其次使用当前助手的系统提示词
+      let systemPrompt: string | undefined;
       
-      // 如果消息历史为空，添加新的用户消息
-      if (requestMessages.length === 0 || !requestMessages.some(msg => msg.role === 'user' && msg.content === content)) {
-        if (!requestMessages.includes(userMessage)) {
-          requestMessages.push(userMessage);
+      // 1. 直接从当前话题对象中获取提示词
+      if (currentTopic.prompt) {
+        systemPrompt = currentTopic.prompt;
+        console.log('使用话题提示词:', systemPrompt.substring(0, 30) + (systemPrompt.length > 30 ? '...' : ''));
+      } 
+      // 2. 从localStorage中获取助手信息
+      else {
+        try {
+          console.log('当前话题ID:', currentTopic.id);
+          
+          // 尝试从localStorage获取userAssistants数据
+          const assistantsJson = localStorage.getItem('userAssistants');
+          if (assistantsJson) {
+            const assistants = JSON.parse(assistantsJson);
+            
+            // 查找关联到当前话题的助手
+            const currentAssistant = assistants.find((a: any) => 
+              a.topicIds && Array.isArray(a.topicIds) && a.topicIds.includes(currentTopic.id)
+            );
+            
+            if (currentAssistant?.systemPrompt) {
+              systemPrompt = currentAssistant.systemPrompt;
+              console.log('使用助手提示词:', systemPrompt);
+            } else {
+              console.log('未找到助手提示词');
+            }
+          } else {
+            console.log('localStorage中不存在userAssistants数据');
+          }
+        } catch (error) {
+          console.error('获取助手信息失败:', error);
         }
+      }
+      
+      // 如果找到系统提示词，将其作为系统消息添加到请求中
+      const requestMessages = [...messages, userMessage];
+      
+      // 添加系统消息到请求的开始，如果有的话
+      if (systemPrompt) {
+        // 为API请求创建一个简化的系统消息对象
+        requestMessages.unshift({
+          role: 'system',
+          content: systemPrompt
+        } as any); // 使用类型断言，因为这里我们只关心API请求格式
       }
       
       console.log('发送API请求的消息列表:', requestMessages.map(m => ({
@@ -265,8 +353,8 @@ const ChatPage: React.FC = () => {
         }
       });
       
-      // 完成流式响应
-      dispatch(setTopicStreaming({ topicId: currentTopic.id, streaming: false }));
+      // 当前的流式响应已完成
+      isRequestPending = false;
       
       if (!response.success) {
         throw new Error(response.error || '请求失败');
@@ -309,8 +397,16 @@ const ChatPage: React.FC = () => {
         }
       }));
     } finally {
-      // 设置加载状态为false
-      dispatch(setTopicLoading({ topicId: currentTopic.id, loading: false }));
+      // 如果消息的处理已经完成，检查是否有其他待处理的消息
+      if (!isRequestPending) {
+        const pendingMessages = (messagesByTopic[currentTopic.id] || []).filter(msg => msg.status === 'pending');
+        
+        // 如果没有其他待处理的消息，才完全关闭加载状态
+        if (pendingMessages.length === 0) {
+          dispatch(setTopicLoading({ topicId: currentTopic.id, loading: false }));
+          dispatch(setTopicStreaming({ topicId: currentTopic.id, streaming: false }));
+        }
+      }
     }
   };
   
@@ -364,6 +460,341 @@ const ChatPage: React.FC = () => {
   const isLoading = currentTopic
     ? loadingByTopic[currentTopic.id] || false
     : false;
+
+  // 处理消息删除
+  const handleDeleteMessage = (messageId: string) => {
+    if (!currentTopic) return;
+    
+    // 找到要删除的消息在数组中的索引
+    const messages = messagesByTopic[currentTopic.id] || [];
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    
+    if (messageIndex === -1) return;
+    
+    // 创建一个删除了特定消息的新数组
+    const updatedMessages = messages.filter(msg => msg.id !== messageId);
+    
+    // 更新Redux状态
+    dispatch(setTopicMessages({
+      topicId: currentTopic.id,
+      messages: updatedMessages
+    }));
+    
+    // 不需要手动更新本地存储，setTopicMessages action会自动处理
+  };
+
+  // 处理消息重新生成
+  const handleRegenerateMessage = async (messageId: string) => {
+    if (!currentTopic || !selectedModel) return;
+    
+    const messages = messagesByTopic[currentTopic.id] || [];
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    
+    if (messageIndex === -1 || messages[messageIndex].role !== 'assistant') return;
+    
+    // 找到这条AI回复之前的用户消息
+    let previousUserMessageIndex = -1;
+    for (let i = messageIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        previousUserMessageIndex = i;
+        break;
+      }
+    }
+    
+    if (previousUserMessageIndex === -1) return;
+    
+    // 生成唯一ID，用于关联这次请求相关的消息
+    const requestId = Date.now().toString();
+    
+    // 创建AI助手的新回复消息（占位）
+    const newAssistantMessage = createMessage({
+      content: '',
+      role: 'assistant',
+      status: 'pending',
+      id: `assistant-regen-${requestId}`,
+      parentMessageId: messages[previousUserMessageIndex].id // 关联到用户消息
+    });
+    
+    // 设置加载状态，但不会影响用户发送新消息的能力
+    dispatch(setTopicLoading({ topicId: currentTopic.id, loading: true }));
+    
+    // 启动单独的加载状态追踪器
+    let isRequestPending = true;
+    
+    try {
+      // 开始流式响应
+      dispatch(setTopicStreaming({ topicId: currentTopic.id, streaming: true }));
+      
+      // 使用当前选择的模型ID
+      const modelId = selectedModel?.id || currentModelId || settings.defaultModelId || 'gpt-3.5-turbo';
+      
+      // 获取系统提示词 - 优先使用话题的提示词，其次使用当前助手的系统提示词
+      let systemPrompt: string | undefined;
+      
+      // 1. 直接从当前话题对象中获取提示词
+      if (currentTopic.prompt) {
+        systemPrompt = currentTopic.prompt;
+        console.log('使用话题提示词:', systemPrompt.substring(0, 30) + (systemPrompt.length > 30 ? '...' : ''));
+      } 
+      // 2. 从localStorage中获取助手信息
+      else {
+        try {
+          console.log('当前话题ID:', currentTopic.id);
+          
+          // 尝试从localStorage获取userAssistants数据
+          const assistantsJson = localStorage.getItem('userAssistants');
+          if (assistantsJson) {
+            const assistants = JSON.parse(assistantsJson);
+            
+            // 查找关联到当前话题的助手
+            const currentAssistant = assistants.find((a: any) => 
+              a.topicIds && Array.isArray(a.topicIds) && a.topicIds.includes(currentTopic.id)
+            );
+            
+            if (currentAssistant?.systemPrompt) {
+              systemPrompt = currentAssistant.systemPrompt;
+              console.log('使用助手提示词:', systemPrompt);
+            } else {
+              console.log('未找到助手提示词');
+            }
+          } else {
+            console.log('localStorage中不存在userAssistants数据');
+          }
+        } catch (error) {
+          console.error('获取助手信息失败:', error);
+        }
+      }
+      
+      // 获取到目前为止的所有历史消息 - 不包括被重新生成的消息
+      // 只取用户消息和直到重新生成消息之前的助手消息
+      const filteredMessages = messages.filter((msg, idx) => {
+        // 包含所有用户消息
+        if (msg.role === 'user') return true;
+        
+        // 只包含在当前要重生成的消息之前的助手消息
+        return msg.role === 'assistant' && idx < messageIndex;
+      });
+      
+      // 添加用户消息
+      const requestMessages = [...filteredMessages];
+      
+      // 添加系统消息到请求的开始，如果有的话
+      if (systemPrompt) {
+        // 为API请求创建一个简化的系统消息对象
+        requestMessages.unshift({
+          role: 'system',
+          content: systemPrompt
+        } as any); // 使用类型断言，因为这里我们只关心API请求格式
+      }
+      
+      console.log('重新生成消息的请求列表:', requestMessages.map(m => ({
+        role: m.role,
+        content: m.content.substring(0, 20) + (m.content.length > 20 ? '...' : '')
+      })));
+      
+      // 使用addAlternateVersion action添加新的消息版本占位符
+      dispatch(addAlternateVersion({
+        topicId: currentTopic.id,
+        originalMessageId: messageId,
+        newMessage: newAssistantMessage
+      }));
+      
+      // 发送请求
+      const response = await sendChatRequest({
+        messages: requestMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        modelId,
+        onChunk: (chunk) => {
+          if (chunk) {
+            // 更新消息内容 - 直接使用字符串拼接
+            dispatch(updateMessage({
+              topicId: currentTopic.id,
+              messageId: newAssistantMessage.id,
+              updates: {
+                content: newAssistantMessage.content + chunk,
+                status: 'complete'
+              }
+            }));
+          }
+        }
+      });
+      
+      // 当前的流式响应已完成
+      isRequestPending = false;
+      
+      if (!response.success) {
+        throw new Error(response.error || '请求失败');
+      } else if (response.content) {
+        // 检查响应是否包含思考过程
+        const responseObj = response as any;
+        const reasoning = responseObj.reasoning;
+        const reasoningTime = responseObj.reasoningTime;
+        
+        // 确保最终内容与API返回一致，并添加思考过程
+        dispatch(updateMessage({
+          topicId: currentTopic.id,
+          messageId: newAssistantMessage.id,
+          updates: {
+            content: response.content,
+            status: 'complete',
+            reasoning: reasoning,
+            reasoningTime: reasoningTime
+          }
+        }));
+        
+        // 保存消息到本地缓存
+        updateTopicInLocalStorage(currentTopic.id, newAssistantMessage.id, response.content);
+      }
+    } catch (error) {
+      console.error('重新生成消息失败:', error);
+      
+      // 设置错误状态
+      dispatch(setError(
+        `重新生成消息失败: ${error instanceof Error ? error.message : String(error)}`
+      ));
+      
+      // 更新消息状态为错误
+      dispatch(updateMessage({
+        topicId: currentTopic.id,
+        messageId: newAssistantMessage.id,
+        updates: {
+          content: '很抱歉，请求处理失败，请稍后再试。',
+          status: 'error'
+        }
+      }));
+    } finally {
+      // 如果消息的处理已经完成，检查是否有其他待处理的消息
+      if (!isRequestPending) {
+        const pendingMessages = (messagesByTopic[currentTopic.id] || []).filter(msg => msg.status === 'pending');
+        
+        // 如果没有其他待处理的消息，才完全关闭加载状态
+        if (pendingMessages.length === 0) {
+          dispatch(setTopicLoading({ topicId: currentTopic.id, loading: false }));
+          dispatch(setTopicStreaming({ topicId: currentTopic.id, streaming: false }));
+        }
+      }
+    }
+  };
+
+  // 处理新建话题
+  const handleNewTopic = () => {
+    try {
+      // 创建一个新的话题
+      const newTopic = {
+        id: generateId(),
+        title: '新话题 ' + new Date().toLocaleTimeString(),
+        lastMessageTime: new Date().toISOString(),
+        messages: []
+      };
+      
+      // 添加到Redux
+      dispatch(createTopic(newTopic));
+      
+      // 刷新话题列表
+      setTopics([newTopic, ...topics]);
+
+      // 获取当前助手ID
+      const currentAssistantId = localStorage.getItem('currentAssistant');
+      console.log('当前助手ID:', currentAssistantId);
+
+      if (!currentAssistantId) {
+        console.error('未找到当前助手ID，无法关联话题');
+        return;
+      }
+
+      // 获取助手列表
+      const assistants = AssistantService.getUserAssistants();
+      const currentAssistant = assistants.find(a => a.id === currentAssistantId);
+      
+      if (!currentAssistant) {
+        console.error(`未找到ID为${currentAssistantId}的助手`);
+        return;
+      }
+
+      console.log(`正在将话题"${newTopic.title}"(${newTopic.id})关联到助手"${currentAssistant.name}"(${currentAssistant.id})`);
+      
+      // 将话题与当前助手关联 - 更新助手对象
+      const updatedAssistant = {
+        ...currentAssistant,
+        topicIds: [...(currentAssistant.topicIds || []), newTopic.id]
+      };
+      
+      // 保存更新的助手到localStorage
+      const success = AssistantService.updateAssistant(updatedAssistant);
+      
+      if (success) {
+        console.log(`成功将话题"${newTopic.title}"关联到助手"${currentAssistant.name}"`);
+        
+        // 再次验证关联是否成功
+        const updatedAssistants = AssistantService.getUserAssistants();
+        const updatedCurrentAssistant = updatedAssistants.find(a => a.id === currentAssistantId);
+        
+        if (updatedCurrentAssistant && updatedCurrentAssistant.topicIds?.includes(newTopic.id)) {
+          console.log('验证成功：话题已成功关联到助手的话题列表');
+          console.log('助手的话题ID列表:', updatedCurrentAssistant.topicIds);
+        } else {
+          console.error('验证失败：话题未显示在助手的话题列表中');
+          // 使用另一种方法尝试关联
+          AssistantService.addTopicToAssistant(currentAssistantId, newTopic.id);
+        }
+      } else {
+        console.error(`无法更新助手"${currentAssistant.name}"的话题列表`);
+        // 使用另一种方法尝试关联
+        AssistantService.addTopicToAssistant(currentAssistantId, newTopic.id);
+      }
+      
+      // 设置为当前话题
+      dispatch(setCurrentTopic(newTopic));
+      
+      // 派发一个自定义事件，通知应用新话题已创建
+      const topicCreatedEvent = new CustomEvent('topicCreated', { 
+        detail: { topic: newTopic, assistantId: currentAssistantId } 
+      });
+      window.dispatchEvent(topicCreatedEvent);
+      
+      // 手动触发Redux store的变化，确保所有相关组件都能感知到更新
+      dispatch({ type: 'FORCE_TOPICS_UPDATE' });
+      
+      console.log('已派发话题创建事件，通知应用刷新话题列表');
+    } catch (error) {
+      console.error('创建新话题时出错:', error);
+    }
+  };
+  
+  // 生成唯一ID
+  const generateId = (): string => {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  };
+
+  // 清空当前话题内容
+  const handleClearTopic = () => {
+    if (!currentTopic) return;
+    
+    // 创建一个空的消息数组
+    dispatch(setTopicMessages({
+      topicId: currentTopic.id,
+      messages: []
+    }));
+    
+    // 更新本地存储
+    try {
+      const topicsJson = localStorage.getItem('chatTopics');
+      if (topicsJson) {
+        const savedTopics = JSON.parse(topicsJson);
+        const updatedTopics = savedTopics.map((topic: ChatTopic) => {
+          if (topic.id === currentTopic.id) {
+            return { ...topic, messages: [] };
+          }
+          return topic;
+        });
+        localStorage.setItem('chatTopics', JSON.stringify(updatedTopics));
+      }
+    } catch (error) {
+      console.error('更新本地存储失败:', error);
+    }
+  };
 
   return (
     <Box sx={{ 
@@ -504,8 +935,23 @@ const ChatPage: React.FC = () => {
       >
         {currentTopic ? (
           <>
-            <MessageList messages={currentMessages} />
-            <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+            <MessageList 
+              messages={currentMessages} 
+              onRegenerate={handleRegenerateMessage}
+              onDelete={handleDeleteMessage}
+            />
+            
+            {/* 添加工具栏 */}
+            <ChatToolbar 
+              onNewTopic={handleNewTopic}
+              onClearTopic={handleClearTopic}
+            />
+            
+            <ChatInput 
+              onSendMessage={handleSendMessage} 
+              isLoading={isLoading} 
+              allowConsecutiveMessages={true} // 允许连续发送消息，即使AI尚未回复
+            />
           </>
         ) : (
           <Box

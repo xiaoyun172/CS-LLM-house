@@ -16,13 +16,16 @@
     "rebuild": "npm run clean && npm run build"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.50.4",
     "@capacitor/android": "^7.2.0",
     "@capacitor/app": "^7.0.1",
     "@capacitor/cli": "^7.2.0",
     "@capacitor/core": "^7.2.0",
     "@capacitor/keyboard": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
+    "@google/generative-ai": "^0.24.1",
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
     "@reduxjs/toolkit": "^2.8.1",
@@ -40,6 +43,7 @@
     "react-router-dom": "^7.6.0",
     "react-syntax-highlighter": "^15.6.1",
     "redux-persist": "^6.0.0",
+    "tokenx": "^0.4.1",
     "uuid": "^11.1.0",
     "zustand": "^5.0.4"
   },

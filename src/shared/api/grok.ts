@@ -188,19 +188,22 @@ export const sendChatRequest = async (
     // 转换消息格式
     const grokMessages = convertToGrokMessages(filteredMessages);
 
-    // 添加系统消息 - 仅当没有用户消息时才添加
+    // 只有当没有任何消息时，添加默认用户消息
     if (grokMessages.length === 0) {
+      // 如果消息列表为空，添加一个空的用户消息以确保API调用有效
       grokMessages.push({
-        role: 'system',
-        content: '你是LLM小屋的AI助手，一个有用、友好的助手。',
+        role: 'user',
+        content: '你好'
       });
-    } else if (!grokMessages.some(msg => msg.role === 'system')) {
-      // 如果有消息但没有系统消息，添加系统消息到最前面
-      grokMessages.unshift({
-        role: 'system',
-        content: '你是LLM小屋的AI助手，一个有用、友好的助手。',
-      });
-    }
+    } 
+
+    // 打印详细的消息列表用于调试
+    console.log('[API请求] 最终发送的消息列表:', grokMessages.map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string' 
+        ? (m.content.substring(0, 30) + (m.content.length > 30 ? '...' : ''))
+        : '[复杂内容]'
+    })));
 
     // 确保至少有一条用户消息
     if (!grokMessages.some(msg => msg.role === 'user')) {

@@ -112,10 +112,10 @@ async function fetchGeminiModels(provider: any): Promise<any[]> {
     try {
       console.log(`[fetchGeminiModels] 尝试从API获取Gemini模型列表`);
 
-      // 构建API端点
+      // 构建API端点 - 确保使用v1beta端点
       let endpoint = '';
       if (baseUrl.includes('/v1')) {
-        // 如果baseUrl已经包含/v1，直接添加beta/models
+        // 如果baseUrl已经包含/v1，确保使用v1beta
         endpoint = baseUrl.includes('/v1beta')
           ? `${baseUrl}/models`
           : `${baseUrl.replace('/v1', '/v1beta')}/models`;
@@ -139,25 +139,59 @@ async function fetchGeminiModels(provider: any): Promise<any[]> {
       const url = new URL(endpoint);
       url.searchParams.append('key', apiKey);
 
+      // 添加详细的请求日志
+      console.log(`[fetchGeminiModels] 完整请求URL: ${url.toString()}`);
+      console.log(`[fetchGeminiModels] 请求头: ${JSON.stringify(headers)}`);
+
       const response = await fetch(url.toString(), {
         method: 'GET',
         headers: headers
       });
 
+      // 记录响应状态
+      console.log(`[fetchGeminiModels] 响应状态: ${response.status}`);
+
       if (!response.ok) {
         const errorText = await response.text();
         console.warn(`[fetchGeminiModels] API请求失败: ${response.status}, ${errorText}`);
-        throw new Error('API请求失败');
+
+        // 尝试解析错误响应
+        try {
+          const errorJson = JSON.parse(errorText);
+          console.warn(`[fetchGeminiModels] 错误详情:`, errorJson);
+
+          // 检查是否是API密钥错误
+          if (errorJson.error && (
+              errorJson.error.status === 'PERMISSION_DENIED' ||
+              errorJson.error.status === 'UNAUTHENTICATED' ||
+              errorJson.error.message?.includes('API key')
+            )) {
+            throw new Error(`API密钥无效或权限不足: ${errorJson.error.message}`);
+          }
+        } catch (e) {
+          // 解析JSON失败，使用原始错误文本
+        }
+
+        throw new Error(`API请求失败: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
+      console.log(`[fetchGeminiModels] 响应数据:`, JSON.stringify(data).substring(0, 200) + '...');
 
       // 处理不同的响应格式
       if (data.models && Array.isArray(data.models) && data.models.length > 0) {
         console.log(`[fetchGeminiModels] 成功从API获取到 ${data.models.length} 个模型`);
 
+        // 过滤出支持generateContent的模型
+        const supportedModels = data.models.filter((model: any) =>
+          model.supportedGenerationMethods &&
+          model.supportedGenerationMethods.includes('generateContent')
+        );
+
+        console.log(`[fetchGeminiModels] 支持generateContent的模型: ${supportedModels.length}个`);
+
         // 转换为标准格式
-        return data.models.map((m: any) => {
+        return supportedModels.map((m: any) => {
           // 处理不同的命名约定
           const modelId = m.name ? m.name.replace('models/', '') : m.id;
           const modelName = m.displayName || m.name || modelId;
@@ -168,7 +202,10 @@ async function fetchGeminiModels(provider: any): Promise<any[]> {
             description: m.description || '',
             object: 'model',
             created: Date.now(),
-            owned_by: 'Google'
+            owned_by: 'Google',
+            // 添加额外的模型信息，可能对UI有用
+            inputTokenLimit: m.inputTokenLimit,
+            outputTokenLimit: m.outputTokenLimit
           };
         });
       } else if (Array.isArray(data) && data.length > 0) {
@@ -188,23 +225,28 @@ async function fetchGeminiModels(provider: any): Promise<any[]> {
             owned_by: 'Google'
           };
         });
+      } else {
+        console.warn(`[fetchGeminiModels] API返回了空数据或未知格式:`, data);
+        throw new Error('API返回了空数据或未知格式');
       }
-
-      throw new Error('未找到模型数据');
     } catch (apiError) {
-      console.warn(`[fetchGeminiModels] 从API获取失败，使用预设模型列表: ${apiError}`);
+      console.warn(`[fetchGeminiModels] 从API获取失败，使用预设模型列表:`, apiError);
 
-      // 如果API获取失败，回退到预设列表
+      // 如果API获取失败，回退到预设列表 - 更新为最新的Gemini模型
       return [
-        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', owned_by: 'Google' },
-        { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', owned_by: 'Google' },
-        { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash Latest', owned_by: 'Google' },
-        { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro Latest', owned_by: 'Google' },
-        { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash 8B', owned_by: 'Google' },
-        { id: 'gemini-1.0-pro', name: 'Gemini 1.0 Pro', owned_by: 'Google' },
-        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', owned_by: 'Google' },
-        { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro', owned_by: 'Google' },
-        { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Experimental', owned_by: 'Google' }
+        // Gemini 2.5系列
+        { id: 'gemini-2.5-flash-preview-04-17', name: 'Gemini 2.5 Flash Preview', owned_by: 'Google', description: '最新的Gemini 2.5 Flash预览版，具有出色的性价比' },
+        { id: 'gemini-2.5-pro-preview-05-06', name: 'Gemini 2.5 Pro Preview', owned_by: 'Google', description: '最新的Gemini 2.5 Pro预览版，Google最强大的思考模型' },
+
+        // Gemini 2.0系列
+        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', owned_by: 'Google', description: '具有下一代功能和改进能力的多模态模型' },
+        { id: 'gemini-2.0-flash-preview-image-generation', name: 'Gemini 2.0 Flash Image Generation', owned_by: 'Google', description: '支持图像生成的Gemini模型' },
+        { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', owned_by: 'Google', description: '为成本效益和低延迟优化的模型' },
+
+        // Gemini 1.5系列
+        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', owned_by: 'Google', description: '快速多功能的多模态模型' },
+        { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', owned_by: 'Google', description: '为复杂推理任务优化的中型多模态模型' },
+        { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash 8B', owned_by: 'Google', description: '为低智能任务设计的小型模型' }
       ];
     }
   } catch (error) {

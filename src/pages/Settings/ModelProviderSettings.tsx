@@ -27,12 +27,9 @@ import EditIcon from '@mui/icons-material/Edit';
 import AutofpsSelectIcon from '@mui/icons-material/AutofpsSelect';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../shared/store';
-import { 
-  updateProvider, 
-  deleteProvider, 
-  addModelToProvider as addModel, 
-  updateModel, 
-  deleteModel 
+import {
+  updateProvider,
+  deleteProvider
 } from '../../shared/store/settingsSlice';
 import type { Model } from '../../shared/types';
 import { isValidUrl } from '../../shared/utils';
@@ -43,11 +40,11 @@ const ModelProviderSettings: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { providerId } = useParams<{ providerId: string }>();
-  
-  const provider = useAppSelector(state => 
+
+  const provider = useAppSelector(state =>
     state.settings.providers.find(p => p.id === providerId)
   );
-  
+
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [isEnabled, setIsEnabled] = useState(true);
@@ -80,7 +77,7 @@ const ModelProviderSettings: React.FC = () => {
         setBaseUrlError('请输入有效的URL');
         return;
       }
-      
+
       dispatch(updateProvider({
         id: provider.id,
         updates: {
@@ -103,20 +100,28 @@ const ModelProviderSettings: React.FC = () => {
 
   const handleAddModel = () => {
     if (provider && newModelName && newModelValue) {
+      // 创建新模型对象
       const newModel: Model = {
         id: newModelValue,
         name: newModelName,
         provider: provider.id,
-        providerType: (provider as any).providerType,
+        providerType: provider.providerType,
         enabled: true,
         isDefault: false
       };
-      
-      dispatch(addModel({
-        providerId: provider.id,
-        model: newModel
+
+      // 创建更新后的模型数组
+      const updatedModels = [...provider.models, newModel];
+
+      // 更新provider
+      dispatch(updateProvider({
+        id: provider.id,
+        updates: {
+          models: updatedModels
+        }
       }));
-      
+
+      // 清理状态
       setNewModelName('');
       setNewModelValue('');
       setOpenAddModelDialog(false);
@@ -125,18 +130,29 @@ const ModelProviderSettings: React.FC = () => {
 
   const handleEditModel = () => {
     if (provider && modelToEdit && newModelName && newModelValue) {
+      // 创建更新后的模型对象
       const updatedModel: Model = {
         ...modelToEdit,
         name: newModelName,
-        id: newModelValue, // 使用value作为模型ID
-        providerType: modelToEdit.providerType || (provider as any).providerType // 确保保留providerType
+        id: newModelValue, // 使用新输入的value作为模型ID
+        providerType: modelToEdit.providerType || provider.providerType // 确保保留providerType
       };
-      
-      dispatch(updateModel({
-        id: modelToEdit.id,
-        updates: updatedModel
+
+      // 从provider的models数组中删除旧模型
+      const updatedModels = provider.models.filter(m => m.id !== modelToEdit.id);
+
+      // 添加更新后的模型到provider的models数组
+      updatedModels.push(updatedModel);
+
+      // 更新provider
+      dispatch(updateProvider({
+        id: provider.id,
+        updates: {
+          models: updatedModels
+        }
       }));
-      
+
+      // 清理状态
       setModelToEdit(null);
       setNewModelName('');
       setNewModelValue('');
@@ -146,7 +162,15 @@ const ModelProviderSettings: React.FC = () => {
 
   const handleDeleteModel = (modelId: string) => {
     if (provider) {
-      dispatch(deleteModel(modelId));
+      // 使用provider的更新方法，直接从provider的models数组中删除模型
+      const updatedModels = provider.models.filter(model => model.id !== modelId);
+
+      dispatch(updateProvider({
+        id: provider.id,
+        updates: {
+          models: updatedModels
+        }
+      }));
     }
   };
 
@@ -159,12 +183,29 @@ const ModelProviderSettings: React.FC = () => {
 
   const handleAddModelFromApi = (model: Model) => {
     if (provider) {
-      dispatch(addModel({
-        providerId: provider.id,
-        model: {
-          ...model,
-          provider: provider.id,
-          enabled: true
+      // 创建新模型对象
+      const newModel: Model = {
+        ...model,
+        provider: provider.id,
+        providerType: provider.providerType,
+        enabled: true
+      };
+
+      // 检查模型是否已存在
+      const modelExists = provider.models.some(m => m.id === model.id);
+      if (modelExists) {
+        // 如果模型已存在，不添加
+        return;
+      }
+
+      // 创建更新后的模型数组
+      const updatedModels = [...provider.models, newModel];
+
+      // 更新provider
+      dispatch(updateProvider({
+        id: provider.id,
+        updates: {
+          models: updatedModels
         }
       }));
     }
@@ -181,16 +222,16 @@ const ModelProviderSettings: React.FC = () => {
   }
 
   return (
-    <Box sx={{ 
-      flexGrow: 1, 
-      display: 'flex', 
-      flexDirection: 'column', 
+    <Box sx={{
+      flexGrow: 1,
+      display: 'flex',
+      flexDirection: 'column',
       height: '100vh',
       bgcolor: (theme) => theme.palette.mode === 'light'
         ? alpha(theme.palette.primary.main, 0.02)
         : alpha(theme.palette.background.default, 0.9),
     }}>
-      <AppBar 
+      <AppBar
         position="fixed"
         elevation={0}
         sx={{
@@ -226,7 +267,7 @@ const ModelProviderSettings: React.FC = () => {
           >
             {provider.name}
           </Typography>
-          <Button 
+          <Button
             onClick={handleSave}
             sx={{
               bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
@@ -234,8 +275,6 @@ const ModelProviderSettings: React.FC = () => {
               '&:hover': {
                 bgcolor: (theme) => alpha(theme.palette.primary.main, 0.2),
               },
-              px: 3,
-              py: 1,
               borderRadius: 2,
             }}
           >
@@ -244,9 +283,9 @@ const ModelProviderSettings: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
+      <Box
+        sx={{
+          flexGrow: 1,
           overflowY: 'auto',
           p: 2,
           mt: 8,
@@ -273,9 +312,9 @@ const ModelProviderSettings: React.FC = () => {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
             <Avatar
-              sx={{ 
-                width: 56, 
-                height: 56, 
+              sx={{
+                width: 56,
+                height: 56,
                 bgcolor: provider.color || '#9333EA',
                 fontSize: '1.5rem',
                 mr: 2,
@@ -285,8 +324,8 @@ const ModelProviderSettings: React.FC = () => {
               {provider.avatar}
             </Avatar>
             <Box>
-              <Typography 
-                variant="h6" 
+              <Typography
+                variant="h6"
                 sx={{
                   fontWeight: 600,
                   backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
@@ -297,14 +336,14 @@ const ModelProviderSettings: React.FC = () => {
                 {provider.name}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {provider.providerType === 'openai' ? 'OpenAI API' : 
+                {provider.providerType === 'openai' ? 'OpenAI API' :
                  provider.providerType === 'anthropic' ? 'Anthropic API' :
                  provider.providerType === 'gemini' ? 'Google Generative AI API' : '自定义API'}
               </Typography>
             </Box>
             <Box sx={{ ml: 'auto' }}>
-              <IconButton 
-                color="error" 
+              <IconButton
+                color="error"
                 onClick={() => setOpenDeleteDialog(true)}
                 sx={{
                   bgcolor: (theme) => alpha(theme.palette.error.main, 0.1),
@@ -320,10 +359,10 @@ const ModelProviderSettings: React.FC = () => {
 
           <Divider sx={{ my: 3 }} />
 
-          <Typography 
-            variant="subtitle1" 
-            sx={{ 
-              mb: 2, 
+          <Typography
+            variant="subtitle1"
+            sx={{
+              mb: 2,
               fontWeight: 600,
               color: 'text.primary'
             }}
@@ -404,9 +443,9 @@ const ModelProviderSettings: React.FC = () => {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <Typography 
-              variant="subtitle1" 
-              sx={{ 
+            <Typography
+              variant="subtitle1"
+              sx={{
                 fontWeight: 600,
                 flex: 1,
                 color: 'text.primary'
@@ -468,8 +507,8 @@ const ModelProviderSettings: React.FC = () => {
                 <ListItem
                   secondaryAction={
                     <Box>
-                      <IconButton 
-                        edge="end" 
+                      <IconButton
+                        edge="end"
                         aria-label="edit"
                         onClick={() => openModelEditDialog(model)}
                         sx={{
@@ -482,8 +521,8 @@ const ModelProviderSettings: React.FC = () => {
                       >
                         <EditIcon color="info" />
                       </IconButton>
-                      <IconButton 
-                        edge="end" 
+                      <IconButton
+                        edge="end"
                         aria-label="delete"
                         onClick={() => handleDeleteModel(model.id)}
                         sx={{
@@ -541,10 +580,10 @@ const ModelProviderSettings: React.FC = () => {
           </List>
         </Paper>
       </Box>
-      
+
       {/* 添加模型对话框 */}
       <Dialog open={openAddModelDialog} onClose={() => setOpenAddModelDialog(false)}>
-        <DialogTitle sx={{ 
+        <DialogTitle sx={{
           fontWeight: 600,
           backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
           backgroundClip: 'text',
@@ -578,7 +617,7 @@ const ModelProviderSettings: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenAddModelDialog(false)}>取消</Button>
-          <Button 
+          <Button
             onClick={handleAddModel}
             disabled={!newModelName || !newModelValue}
             sx={{
@@ -597,7 +636,7 @@ const ModelProviderSettings: React.FC = () => {
 
       {/* 编辑模型对话框 */}
       <Dialog open={openEditModelDialog} onClose={() => setOpenEditModelDialog(false)}>
-        <DialogTitle sx={{ 
+        <DialogTitle sx={{
           fontWeight: 600,
           backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
           backgroundClip: 'text',
@@ -629,7 +668,7 @@ const ModelProviderSettings: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenEditModelDialog(false)}>取消</Button>
-          <Button 
+          <Button
             onClick={handleEditModel}
             disabled={!newModelName || !newModelValue}
             sx={{
@@ -656,7 +695,7 @@ const ModelProviderSettings: React.FC = () => {
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenDeleteDialog(false)}>取消</Button>
-          <Button 
+          <Button
             onClick={handleDelete}
             color="error"
             sx={{
@@ -687,4 +726,4 @@ const ModelProviderSettings: React.FC = () => {
   );
 };
 
-export default ModelProviderSettings; 
+export default ModelProviderSettings;
