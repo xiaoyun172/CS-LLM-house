@@ -36,7 +36,7 @@ const initialProviders: ModelProvider[] = [
     isEnabled: true,
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
-    models: [
+  models: [
       { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', enabled: true, isDefault: true },
       { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', enabled: true, isDefault: false },
       { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', enabled: true, isDefault: false },
@@ -122,7 +122,7 @@ const loadFromStorage = (): SettingsState => {
   } catch (e) {
     console.error('Failed to load settings from localStorage', e);
   }
-
+  
   // 初始状态
   const defaultState = {
     theme: 'system' as 'light' | 'dark' | 'system',
@@ -237,7 +237,7 @@ const settingsSlice = createSlice({
       const providerIndex = state.providers.findIndex(provider => provider.id === id);
       if (providerIndex !== -1) {
         state.providers[providerIndex] = { ...state.providers[providerIndex], ...updates };
-
+        
         // 如果apiKey或baseUrl更新了，也要更新所有关联模型
         if (updates.apiKey !== undefined || updates.baseUrl !== undefined) {
           state.providers[providerIndex].models = state.providers[providerIndex].models.map(model => ({
@@ -246,7 +246,7 @@ const settingsSlice = createSlice({
             baseUrl: updates.baseUrl !== undefined ? updates.baseUrl : model.baseUrl
           }));
         }
-
+        
         saveToStorage(state);
       }
     },
@@ -335,11 +335,11 @@ const saveToStorage = (state: SettingsState) => {
   }
 };
 
-export const {
-  setTheme,
-  setFontSize,
-  setLanguage,
-  setSendWithEnter,
+export const { 
+  setTheme, 
+  setFontSize, 
+  setLanguage, 
+  setSendWithEnter, 
   setEnableNotifications,
   addModel,
   updateModel,

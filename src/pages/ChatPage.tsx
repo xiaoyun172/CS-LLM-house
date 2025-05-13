@@ -137,7 +137,7 @@ const ChatPage: React.FC = () => {
             if (model) {
               setSelectedModel(model);
             } else {
-              setSelectedModel(defaultModels[0]);
+          setSelectedModel(defaultModels[0]);
             }
           } else {
             setSelectedModel(defaultModels[0]);
@@ -152,8 +152,8 @@ const ChatPage: React.FC = () => {
               setSelectedModel(model);
             } else {
               // 如果找不到匹配的模型（可能是模型被删除了），选择默认或第一个
-              const defaultModel = availableModels.find(model => model.isDefault) || availableModels[0];
-              setSelectedModel(defaultModel);
+          const defaultModel = availableModels.find(model => model.isDefault) || availableModels[0];
+          setSelectedModel(defaultModel);
               // 更新Redux中的当前模型ID
               if (defaultModel) {
                 dispatch(setCurrentModel(defaultModel.id));
@@ -340,12 +340,12 @@ const ChatPage: React.FC = () => {
         modelId,
         onChunk: (chunk) => {
           if (chunk) {
-            // 更新消息内容 - 直接使用字符串拼接
+            // 更新消息内容 - 直接使用收到的chunk作为完整内容，而不是追加
             dispatch(updateMessage({
               topicId: currentTopic.id,
               messageId: assistantMessage.id,
               updates: {
-                content: assistantMessage.content + chunk,
+                content: chunk,  // 直接使用chunk作为完整内容
                 status: 'complete'
               }
             }));
@@ -574,7 +574,7 @@ const ChatPage: React.FC = () => {
         // 只包含在当前要重生成的消息之前的助手消息
         return msg.role === 'assistant' && idx < messageIndex;
       });
-      
+    
       // 添加用户消息
       const requestMessages = [...filteredMessages];
       
@@ -608,12 +608,12 @@ const ChatPage: React.FC = () => {
         modelId,
         onChunk: (chunk) => {
           if (chunk) {
-            // 更新消息内容 - 直接使用字符串拼接
+            // 更新消息内容 - 直接使用收到的chunk作为完整内容，而不是追加
             dispatch(updateMessage({
               topicId: currentTopic.id,
               messageId: newAssistantMessage.id,
               updates: {
-                content: newAssistantMessage.content + chunk,
+                content: chunk,  // 直接使用chunk作为完整内容
                 status: 'complete'
               }
             }));
@@ -681,19 +681,19 @@ const ChatPage: React.FC = () => {
   // 处理新建话题
   const handleNewTopic = () => {
     try {
-      // 创建一个新的话题
-      const newTopic = {
-        id: generateId(),
-        title: '新话题 ' + new Date().toLocaleTimeString(),
-        lastMessageTime: new Date().toISOString(),
-        messages: []
-      };
-      
-      // 添加到Redux
-      dispatch(createTopic(newTopic));
-      
-      // 刷新话题列表
-      setTopics([newTopic, ...topics]);
+    // 创建一个新的话题
+    const newTopic = {
+      id: generateId(),
+      title: '新话题 ' + new Date().toLocaleTimeString(),
+      lastMessageTime: new Date().toISOString(),
+      messages: []
+    };
+    
+    // 添加到Redux
+    dispatch(createTopic(newTopic));
+    
+    // 刷新话题列表
+    setTopics([newTopic, ...topics]);
 
       // 获取当前助手ID
       const currentAssistantId = localStorage.getItem('currentAssistant');

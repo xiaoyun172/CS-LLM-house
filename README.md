@@ -4,24 +4,30 @@
 
 官方交流群Q群 点击链接加入群聊【LLM小屋 官方群】：http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=V-b46WoBNLIM4oc34JMULwoyJ3hyrKac&authKey=q%2FSwCcxda4e55ygtwp3h9adQXhqBLZ9wJdvM0QxTjXQkbxAa2tHoraOGy2fiibyY&noverify=0&group_code=930126592
 
-LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic Claude、Grok等）的交互，提供流畅的对话体验，并支持Android平台部署。应用采用React、TypeScript和Capacitor框架开发，具有高度可定制的模型配置、多主题聊天管理、AI思考过程可视化等特色功能。
+LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic Claude、Grok、硅基流动、火山方舟等）的交互，提供流畅的对话体验，并支持Android平台部署。应用采用React、TypeScript和Capacitor框架开发，具有高度可定制的模型配置、多主题聊天管理、AI思考过程可视化、语音合成等特色功能。
 
 ## 技术栈
 
-- **前端框架**: React、Material UI
-- **构建工具**: Vite
-- **编程语言**: TypeScript
-- **移动框架**: Capacitor
-- **状态管理**: Redux & Redux Toolkit
-- **API集成**: OpenAI、Google Gemini、Anthropic Claude等AI模型
+- **前端框架**: React 19、Material UI 7
+- **构建工具**: Vite 6
+- **编程语言**: TypeScript 5.8
+- **移动框架**: Capacitor 7
+- **状态管理**: Redux & Redux Toolkit 2.8
+- **API集成**: OpenAI、Google Gemini、Anthropic Claude、Grok、硅基流动、火山方舟等AI模型
+- **存储**: IndexedDB (idb)、localStorage
 - **样式**: MUI组件 + 自定义CSS
+- **语音合成**: 硅基流动TTS API、Web Speech API
 
 ## 系统要求
 
-- **Node.js**: v16.x 或更高
-- **npm**: v8.x 或更高
+- **Node.js**: v18.x 或更高
+- **npm**: v9.x 或更高
 - **Android Studio**: 用于Android平台开发
 - **JDK**: Java 11 或更高版本
+- **Vite**: 6.x 或更高版本
+- **Capacitor CLI**: 7.x 或更高版本
+- **React**: 19.x
+- **TypeScript**: 5.8.x
 
 ## 项目结构
 
@@ -69,6 +75,7 @@ LLM小屋/
 │   │   │   ├── DefaultModelSettings/ # 默认模型设置
 │   │   │   ├── ModelProviderSettings/ # 模型提供商设置
 │   │   │   ├── AddProviderPage/ # 添加提供商页面
+│   │   │   ├── VoiceSettings/ # 语音设置
 │   │   │   └── AboutPage/  # 关于页面
 │   │   └── WelcomePage/    # 欢迎/引导页面
 │   ├── routes/             # 路由配置和导航逻辑
@@ -78,6 +85,8 @@ LLM小屋/
 │   │   │   ├── google/     # Google Gemini API集成
 │   │   │   ├── grok/       # Grok API集成
 │   │   │   ├── openai/     # OpenAI API集成
+│   │   │   ├── siliconflow/ # 硅基流动API集成
+│   │   │   ├── volcengine/ # 火山方舟API集成
 │   │   │   └── index.ts    # API统一入口和路由
 │   │   ├── data/           # 静态数据和预设配置
 │   │   │   ├── models/     # 预设模型配置
@@ -90,6 +99,7 @@ LLM小屋/
 │   │   │   ├── AssistantService.ts # 助手服务
 │   │   │   ├── LoggerService.ts # 日志记录服务
 │   │   │   ├── ThinkingService.ts # AI思考过程处理服务
+│   │   │   ├── TTSService.ts # 文本到语音转换服务
 │   │   │   └── storageService.ts # 存储服务(IndexedDB/localStorage)
 │   │   ├── store/          # Redux状态管理
 │   │   │   ├── messagesSlice.ts # 消息状态管理
@@ -122,8 +132,8 @@ LLM小屋/
 1. **克隆仓库**
 
 ```bash
-git clone https://github.com/1600822305/cherry-studio-app2.git
-cd cherry-studio-app2
+git clone https://github.com/1600822305/CS-LLM-house.git
+cd CS-LLM-house
 ```
 
 2. **安装依赖**
@@ -214,7 +224,7 @@ npx cap open android
 1. 创建签名密钥:
 
 ```bash
-keytool -genkey -v -keystore cherry-studio.keystore -alias cherry-studio -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore cs-llm-house.keystore -alias cs-llm-house -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 2. 配置签名信息(在`android/app/build.gradle`中)
@@ -241,7 +251,7 @@ keytool -genkey -v -keystore cherry-studio.keystore -alias cherry-studio -keyalg
 
 LLM小屋支持从各大AI提供商API自动获取可用模型列表：
 
-- 支持OpenAI、Claude (Anthropic)、Gemini (Google)和Grok (xAI)等主流AI提供商
+- 支持OpenAI、Claude (Anthropic)、Gemini (Google)、Grok (xAI)、硅基流动和火山方舟等主流AI提供商
 - 自动处理不同API格式和端点路径
 - 智能适配自定义中转站API
 - 提供优雅的回退机制，当API请求失败时使用预设模型列表
@@ -249,6 +259,9 @@ LLM小屋支持从各大AI提供商API自动获取可用模型列表：
   - OpenAI: `/v1/models`
   - Claude: `/v1/models`
   - Gemini: `/v1beta/models`
+  - Grok: `/v1/models`
+  - 硅基流动: `/v1/models`
+  - 火山方舟: `/api/v3/models`
   - 自定义中转站: 自动检测并适配
 
 ### 移动端优化
@@ -284,6 +297,22 @@ LLM小屋支持显示AI的思考过程，目前主要支持Grok模型的思考�
 - 思考过程监控
 - 模型API调试
 - 移动端性能监控
+
+### 语音合成功能
+
+LLM小屋支持将AI回复转换为语音：
+
+- **多种语音合成选项**：
+  - 硅基流动TTS API：高质量的中文语音合成
+  - Web Speech API：作为备选方案的浏览器原生语音合成
+- **语音控制功能**：
+  - 播放/暂停控制
+  - 语音选择
+  - 语速调整
+- **集成到消息界面**：
+  - 每条AI消息都有语音播放按钮
+  - 播放状态可视化
+  - 流式响应完成后自动启用语音播放功能
 
 ## 移动端输入问题解决方案
 
@@ -364,3 +393,34 @@ useEffect(() => {
 ```
 
 这种方法不仅解决了当前的输入问题，还提高了组件的可维护性和性能。通过使用Web标准元素而非跨平台包装组件，我们避免了额外的抽象层带来的潜在问题，同时确保了更好的平台兼容性。
+
+## 文件夹结构说明
+
+### 核心文件夹
+
+- **android/**: 包含Android平台相关的代码和配置，由Capacitor生成和管理
+- **src/**: 包含应用的主要源代码
+  - **components/**: 可复用UI组件，按功能分组
+  - **pages/**: 页面级组件，每个主要页面一个文件夹
+  - **shared/**: 共享业务逻辑和数据处理
+    - **api/**: 各AI提供商的API集成
+    - **services/**: 核心服务实现
+    - **store/**: Redux状态管理
+    - **types/**: TypeScript类型定义
+    - **utils/**: 工具函数
+
+### 主要功能模块
+
+- **聊天系统**: 在`src/pages/ChatPage`和`src/components/MessageList`中实现
+- **模型管理**: 在`src/pages/Settings/ModelProviderSettings`和`src/shared/api`中实现
+- **主题管理**: 在`src/components/TopicManagement`中实现
+- **语音合成**: 在`src/shared/services/TTSService.ts`中实现
+- **思考过程**: 在`src/shared/services/ThinkingService.ts`中实现
+- **存储系统**: 在`src/shared/services/storageService.ts`中实现
+
+### 构建和配置文件
+
+- **capacitor.config.ts**: Capacitor配置，定义应用ID、插件配置等
+- **vite.config.ts**: Vite构建配置，包括优化策略和分包设置
+- **tsconfig.*.json**: TypeScript编译配置
+- **package.json**: 项目依赖和脚本定义

@@ -10,6 +10,7 @@ const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSe
 const ModelProviderSettings = lazy(() => import('../pages/Settings/ModelProviderSettings'));
 const AddProviderPage = lazy(() => import('../pages/Settings/AddProviderPage'));
 const AboutPage = lazy(() => import('../pages/Settings/AboutPage'));
+const VoiceSettings = lazy(() => import('../pages/Settings/VoiceSettings'));
 const DevToolsPage = lazy(() => import('../pages/DevToolsPage'));
 
 // 加载中组件
@@ -56,6 +57,7 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/model-provider/:providerId" element={<ModelProviderSettings />} />
         <Route path="/settings/add-provider" element={<AddProviderPage />} />
         <Route path="/settings/about" element={<AboutPage />} />
+        <Route path="/settings/voice" element={<VoiceSettings />} />
         <Route path="/devtools" element={<DevToolsPage />} />
       </Routes>
     </Suspense>

@@ -24,38 +24,41 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
   const isError = message.status === 'error';
   const isPending = message.status === 'pending';
   
-  // 使用消息中实际的思考过程数据
+  // 获取思考过程
   const reasoning = message.reasoning;
   const reasoningTime = message.reasoningTime;
-
-  // 计算token数量
+  
+  // Token计数
   const tokenCount = estimateTokens(message.content);
+  const tokenStr = `~${tokenCount} tokens`;
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        justifyContent: isUser ? 'flex-end' : 'flex-start',
-        mb: 3,
+    <Box 
+      sx={{ 
+        display: 'flex', 
+        flexDirection: isUser ? 'row-reverse' : 'row',
+        mb: 2,
         mx: 2,
+        alignItems: 'flex-start',
         position: 'relative',
       }}
     >
-      {!isUser && (
-        <Avatar
-          src="/assets/ai-avatar.png"
-          alt="AI"
-          sx={{
-            width: 36,
-            height: 36,
-            mr: 1.5,
-            mt: 0.5,
-            alignSelf: 'flex-start',
-          }}
-        />
-      )}
+      <Avatar 
+        alt={isUser ? "用户" : "AI"}
+        src={isUser ? "" : "/assets/ai-avatar.png"}
+        sx={{ 
+          width: 36, 
+          height: 36, 
+          bgcolor: isUser ? '#87d068' : '#1677ff',
+          mr: isUser ? 0 : 1.5,
+          ml: isUser ? 1.5 : 0,
+          mt: '4px'
+        }}
+      >
+        {isUser ? "我" : "AI"}
+      </Avatar>
       
-      <Box sx={{ maxWidth: '70%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ maxWidth: { xs: '85%', sm: '75%', md: '70%' }, display: 'flex', flexDirection: 'column' }}>
         {/* 思考过程组件 */}
         {!isUser && reasoning && <ThinkingProcess reasoning={reasoning} reasoningTime={reasoningTime} />}
         
@@ -71,6 +74,8 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
               border: isUser ? 'none' : '1px solid #f0f0f0',
               position: 'relative',
               pr: 4, // 为操作按钮留出空间
+              mt: message.alternateVersions?.length ? 2.5 : 0, // 调整空间大小，确保版本标签显示完整
+              minWidth: '120px', // 确保最小宽度足够显示版本标签
             }}
           >
             {isError && (
@@ -81,184 +86,66 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
                 </Typography>
               </Box>
             )}
-
-            {isUser ? (
-              <Typography
-                variant="body1"
-                sx={{
-                  lineHeight: 1.6,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  fontSize: '15px',
-                }}
-              >
-                {message.content}
-              </Typography>
+            
+            {isPending ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                <CircularProgress size={24} />
+              </Box>
             ) : (
-              <Box
-                sx={{
-                  '& .markdown': {
-                    lineHeight: 1.6,
-                    wordBreak: 'break-word',
-                    fontSize: '15px',
-                    '& p': {
-                      mt: 0,
-                      mb: 1.5,
-                      '&:last-child': { mb: 0 }
-                    },
-                    '& h1, & h2, & h3, & h4, & h5, & h6': {
-                      mt: 2,
-                      mb: 1,
-                      fontWeight: 600,
-                      lineHeight: 1.25
-                    },
-                    '& h1': { fontSize: '1.5rem' },
-                    '& h2': { fontSize: '1.3rem' },
-                    '& h3': { fontSize: '1.15rem' },
-                    '& h4': { fontSize: '1rem' },
-                    '& h5': { fontSize: '0.9rem' },
-                    '& h6': { fontSize: '0.85rem' },
-                    '& ul, & ol': {
-                      pl: 2.5,
-                      mb: 1.5
-                    },
-                    '& li': { mb: 0.5 },
-                    '& a': {
-                      color: '#576b95', // 微信链接颜色
-                      textDecoration: 'none',
-                      '&:hover': {
-                        textDecoration: 'underline'
-                      }
-                    },
-                    '& blockquote': {
-                      borderLeft: '3px solid #f0f0f0',
-                      pl: 2,
-                      ml: 0,
-                      color: '#888888'
-                    },
-                    '& code': {
-                      fontFamily: 'monospace',
-                      backgroundColor: '#f5f5f5',
-                      padding: '2px 4px',
-                      borderRadius: '3px',
-                      fontSize: '0.9em'
-                    },
-                    '& pre': {
-                      margin: 0,
-                      padding: 0,
-                      backgroundColor: 'transparent',
-                      '& div': {
-                        borderRadius: '6px',
-                        margin: '8px 0',
-                      },
-                      '& code': {
-                        backgroundColor: 'transparent',
-                        padding: 0
-                      }
-                    },
-                    '& img': {
-                      maxWidth: '100%',
-                      borderRadius: 1
-                    },
-                    '& table': {
-                      borderCollapse: 'collapse',
-                      width: '100%',
-                      mb: 1.5,
-                      '& th, & td': {
-                        border: '1px solid #f0f0f0',
-                        padding: '6px 13px'
-                      },
-                      '& th': {
-                        fontWeight: 600,
-                        backgroundColor: '#f5f5f5'
-                      }
-                    }
+              <ReactMarkdown
+                components={{
+                  code({className, children, ...props}) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    const isInline = !match && !className;
+                    return !isInline && match ? (
+                      <SyntaxHighlighter
+                        // @ts-ignore
+                        style={vscDarkPlus}
+                        language={match[1]}
+                        PreTag="div"
+                        {...props}
+                      >
+                        {String(children).replace(/\n$/, '')}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    )
                   }
                 }}
               >
-                <div className="markdown">
-                  <ReactMarkdown
-                    components={{
-                      code: ({className, children}) => {
-                        // 检查是否是代码块（有语言标记）
-                        const match = /language-(\w+)/.exec(className || '');
-                        const language = match ? match[1] : '';
-                        const codeContent = String(children).replace(/\n$/, '');
-
-                        // 如果有语言标记，使用语法高亮
-                        if (language) {
-                          return (
-                            <SyntaxHighlighter
-                              style={vscDarkPlus}
-                              language={language}
-                              PreTag="div"
-                            >
-                              {codeContent}
-                            </SyntaxHighlighter>
-                          );
-                        }
-
-                        // 否则使用普通代码标签
-                        return <code className={className}>{children}</code>;
-                      }
-                    }}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
-                </div>
-              </Box>
-            )}
-
-            {isPending && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
-                <CircularProgress size={16} thickness={6} sx={{ color: '#999999' }} />
-              </Box>
+                {message.content}
+              </ReactMarkdown>
             )}
             
-            {/* 在气泡内底部显示Token数量 */}
-            {!isPending && (
-              <Typography 
-                variant="caption" 
+            {/* 显示Token计数 */}
+            {!isPending && message.content && (
+              <Box 
                 sx={{ 
-                  display: 'block', 
-                  textAlign: 'right', 
-                  mt: 1.5,
-                  color: '#888888',
-                  fontSize: '11px',
-                  fontWeight: 'normal',
-                  opacity: 0.9,
-                  userSelect: 'text',
+                  display: 'flex', 
+                  justifyContent: 'flex-end', 
+                  mt: 1,
+                  opacity: 0.5,
+                  fontSize: '0.7rem'
                 }}
               >
-                {tokenCount} tokens
-              </Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                  {tokenStr}
+                </Typography>
+              </Box>
             )}
             
-            {/* 消息操作按钮 */}
+            {/* 添加消息操作组件 */}
             <MessageActions 
-              message={message}
+              message={message} 
+              topicId={currentTopic?.id}
               onRegenerate={onRegenerate}
               onDelete={onDelete}
-              topicId={currentTopic?.id}
             />
           </Paper>
         </Box>
       </Box>
-      
-      {isUser && (
-        <Avatar
-          sx={{
-            width: 36,
-            height: 36,
-            ml: 1.5,
-            mt: 0.5,
-            alignSelf: 'flex-start',
-            bgcolor: '#3b88fd', // 用户头像颜色
-          }}
-        >
-          U
-        </Avatar>
-      )}
     </Box>
   );
 };

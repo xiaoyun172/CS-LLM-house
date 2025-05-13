@@ -185,20 +185,24 @@ const streamCompletion = async (
       stream: true,
     });
 
-    let content = '';
+    // 用于保存完整的响应内容
+    let fullContent = '';
 
     for await (const chunk of stream) {
       // 记录首个token的时间
-      if (content === '' && firstTokenTime === 0) {
+      if (fullContent === '' && firstTokenTime === 0) {
         firstTokenTime = new Date().getTime() - startTime;
         console.log(`首个token响应时间: ${firstTokenTime}ms`);
       }
 
       const delta = chunk.choices[0]?.delta?.content || '';
       if (delta) {
-        content += delta;
+        // 追加到完整内容
+        fullContent += delta;
+        
+        // 发送完整的累积内容，与其他API保持一致
         if (onUpdate) {
-          onUpdate(content);
+          onUpdate(fullContent);
         }
       }
     }
@@ -207,20 +211,20 @@ const streamCompletion = async (
     console.log(`[API流式响应] 完成响应时间: ${completionTime}ms`);
     console.log('[API流式响应] 完整内容:', {
       model: modelId,
-      content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-      totalLength: content.length,
+      content: fullContent.substring(0, 100) + (fullContent.length > 100 ? '...' : ''),
+      totalLength: fullContent.length,
       completionTimeMs: completionTime
     });
 
     // 记录API响应
     logApiResponse('VolcEngine Chat Completions Stream', 200, {
       model: modelId,
-      content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-      totalLength: content.length,
+      content: fullContent.substring(0, 100) + (fullContent.length > 100 ? '...' : ''),
+      totalLength: fullContent.length,
       completionTimeMs: completionTime
     });
 
-    return content;
+    return fullContent;
   } catch (error: any) {
     console.error('流式响应处理失败:', error);
     console.error('错误详情:', error.message);
