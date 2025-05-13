@@ -73,7 +73,7 @@ export const sendChatRequest = async (
     const anthropicMessages = convertToAnthropicMessages(filteredMessages);
 
     // 提取系统消息
-    let systemMessage = '你是Cherry Studio的AI助手，一个有用、友好的助手。';
+    let systemMessage = '你是LLM小屋的AI助手，一个有用、友好的助手。';
 
     const requestBody: AnthropicCompletionRequest = {
       model: modelName,

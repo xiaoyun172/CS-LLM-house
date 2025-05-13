@@ -73,13 +73,13 @@ export const sendChatRequest = async (
     if (openaiMessages.length === 0) {
       openaiMessages.push({
         role: 'system',
-        content: '你是Cherry Studio的AI助手，一个有用、友好的助手。',
+        content: '你是LLM小屋的AI助手，一个有用、友好的助手。',
       });
     } else if (!openaiMessages.some(msg => msg.role === 'system')) {
       // 如果有消息但没有系统消息，添加系统消息到最前面
       openaiMessages.unshift({
         role: 'system',
-        content: '你是Cherry Studio的AI助手，一个有用、友好的助手。',
+        content: '你是LLM小屋的AI助手，一个有用、友好的助手。',
       });
     }
 

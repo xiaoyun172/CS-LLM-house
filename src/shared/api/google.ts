@@ -78,7 +78,7 @@ export const sendChatRequest = async (
     if (googleMessages.length > 0 && googleMessages[0].role !== 'model') {
       googleMessages.unshift({
         role: 'model',
-        parts: [{ text: '你是Cherry Studio的AI助手，一个有用、友好的助手。' }],
+        parts: [{ text: '你是LLM小屋的AI助手，一个有用、友好的助手。' }],
       });
     }
 

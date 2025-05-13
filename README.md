@@ -1,8 +1,8 @@
-# Cherry Studio 移动应用开发文档
+# LLM小屋 移动应用开发文档
 
 ## 项目概述
 
-Cherry Studio移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic等）的交互，提供流畅的对话体验，并支持Android平台部署。
+LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic等）的交互，提供流畅的对话体验，并支持Android平台部署。
 
 ## 技术栈
 
@@ -25,55 +25,61 @@ Cherry Studio移动应用是一个基于现代Web技术构建的跨平台AI助�
 
 ```
 cherry-studio-app2/
-├── android/                # Android平台相关代码
-├── public/                 # 静态资源文件
-│   └── assets/             # 公共资源文件
-│       └── models/         # 模型相关静态资源
-├── src/
-│   ├── assets/             # 图片、字体等资源
-│   ├── components/         # 可复用组件
-│   │   ├── ChatInput/      # 聊天输入组件
-│   │   ├── MessageItem/    # 消息项组件
-│   │   ├── MessageList/    # 消息列表组件
-│   │   ├── ModelManagementDialog.tsx # 模型管理对话框组件
-│   │   └── TopicList/      # 话题列表组件
-│   ├── pages/              # 页面组件
-│   │   ├── ChatPage/       # 聊天页面
-│   │   ├── DevToolsPage/   # 开发者工具页面
-│   │   ├── Home/           # 主页
-│   │   ├── Settings/       # 设置页面
-│   │   │   ├── ModelProviderSettings.tsx # 模型提供商设置
-│   │   │   └── DefaultModelSettings.tsx  # 默认模型设置
-│   │   └── Welcome/        # 欢迎页
-│   ├── routes/             # 路由配置
-│   └── shared/             # 共享代码
+├── android/                # Android平台相关代码和配置
+├── public/                 # 静态资源文件和公共资产
+│   └── assets/             # 图标、图片等公共资源
+├── src/                    # 源代码目录
+│   ├── assets/             # 应用内图片、字体等资源
+│   ├── components/         # 可复用UI组件
+│   │   ├── BackButtonHandler/  # Android返回键处理组件
+│   │   ├── ChatInput/      # 聊天输入框组件
+│   │   ├── ExitConfirmDialog/  # 退出确认对话框
+│   │   ├── MessageItem/    # 单条消息展示组件
+│   │   ├── MessageList/    # 消息列表容器组件
+│   │   ├── ModelManagement/# 模型管理相关组件
+│   │   ├── RouterWrapper/  # 路由包装组件
+│   │   └── TopicList/      # 聊天主题列表组件
+│   ├── pages/              # 页面级组件
+│   │   ├── ChatPage/       # 聊天主界面
+│   │   ├── DevToolsPage/   # 开发者调试工具页面
+│   │   ├── Settings/       # 设置相关页面
+│   │   │   ├── AppearanceSettings/ # 外观设置
+│   │   │   ├── BehaviorSettings/   # 行为设置
+│   │   │   ├── DefaultModelSettings/ # 默认模型设置
+│   │   │   └── ModelProviderSettings/ # 模型提供商设置
+│   │   └── Welcome/        # 欢迎/引导页面
+│   ├── routes/             # 路由配置和导航逻辑
+│   └── shared/             # 共享代码和业务逻辑
 │       ├── api/            # API接口封装
-│       │   ├── anthropic.ts # Anthropic Claude API
-│       │   ├── google.ts   # Google Gemini API
-│       │   ├── grok.ts     # Grok API
-│       │   ├── index.ts    # API统一导出
-│       │   └── openai.ts   # OpenAI API
-│       ├── data/           # 静态数据
-│       │   └── presetModels.ts # 预设模型配置
-│       ├── services/       # 服务层
-│       │   ├── APIService.ts      # API服务（模型获取等）
-│       │   ├── LoggerService.ts   # 日志服务
-│       │   └── ThinkingService.ts # 思考过程处理服务
+│       │   ├── anthropic/  # Anthropic Claude API集成
+│       │   ├── google/     # Google Gemini API集成
+│       │   ├── grok/       # Grok API集成
+│       │   └── openai/     # OpenAI API集成
+│       ├── data/           # 静态数据和预设配置
+│       │   └── models/     # 预设模型配置
+│       ├── hooks/          # 自定义React Hooks
+│       │   ├── useAppState/# 应用状态管理Hook
+│       │   └── useModels/  # 模型管理Hook
+│       ├── services/       # 业务服务层
+│       │   ├── APIService/ # API服务（模型获取、消息发送等）
+│       │   ├── LoggerService/ # 日志记录服务
+│       │   └── ThinkingService/ # AI思考过程处理服务
 │       ├── store/          # Redux状态管理
-│       │   ├── index.ts    # Store配置
-│       │   └── slices/     # Redux切片
-│       │       ├── messagesSlice.ts # 消息状态管理
-│       │       └── settingsSlice.ts # 设置状态管理
+│       │   ├── slices/     # Redux状态切片
+│       │   │   ├── messages/ # 消息状态管理
+│       │   │   ├── models/   # 模型状态管理
+│       │   │   └── settings/ # 设置状态管理
+│       │   └── index.ts    # Store配置和导出
 │       ├── types/          # TypeScript类型定义
-│       │   └── index.ts    # 全局类型定义
-│       └── utils/          # 工具函数
-│           └── index.ts    # 工具函数集合
-├── .gitignore              # Git忽略配置
-├── capacitor.config.ts     # Capacitor配置
-├── index.html              # 应用入口HTML
-├── package.json            # 项目依赖管理
-├── tsconfig.json           # TypeScript配置
-└── vite.config.ts          # Vite构建配置
+│       └── utils/          # 工具函数和辅助方法
+│           ├── api/        # API相关工具函数
+│           ├── format/     # 格式化工具函数
+│           └── storage/    # 本地存储工具函数
+├── capacitor.config.ts     # Capacitor移动应用配置
+├── index.html              # 应用入口HTML文件
+├── package.json            # 项目依赖和脚本配置
+├── tsconfig.json           # TypeScript编译配置
+└── vite.config.ts          # Vite构建工具配置
 ```
 
 ## 安装指南
@@ -81,8 +87,8 @@ cherry-studio-app2/
 1. **克隆仓库**
 
 ```bash
-git clone https://github.com/1600822305/cherry-studio-app2.git
-cd cherry-studio-app2
+git clone https://github.com/1600822305/CS-LLM-house.git
+cd CS-LLM-house
 ```
 
 2. **安装依赖**
@@ -198,7 +204,7 @@ keytool -genkey -v -keystore cherry-studio.keystore -alias cherry-studio -keyalg
 
 ### 自动获取模型列表
 
-Cherry Studio支持从各大AI提供商API自动获取可用模型列表：
+LLM小屋支持从各大AI提供商API自动获取可用模型列表：
 
 - 支持OpenAI、Claude (Anthropic)、Gemini (Google)和Grok (xAI)等主流AI提供商
 - 自动处理不同API格式和端点路径
@@ -210,9 +216,21 @@ Cherry Studio支持从各大AI提供商API自动获取可用模型列表：
   - Gemini: `/v1beta/models`
   - 自定义中转站: 自动检测并适配
 
+### 移动端优化
+
+LLM小屋针对移动设备进行了多项优化：
+
+- **返回键智能处理**：根据当前页面上下文智能处理Android返回键行为
+  - 在聊天和欢迎页面显示退出确认对话框
+  - 在其他页面返回上一级页面
+  - 防止意外退出应用
+- **响应式布局**：自适应不同屏幕尺寸和方向
+- **触摸优化**：针对触摸交互优化的UI元素和手势
+- **性能优化**：减少不必要的渲染和计算，确保在移动设备上流畅运行
+
 ### AI思考过程
 
-Cherry Studio支持显示AI的思考过程，目前主要支持Grok模型的思考过程展示：
+LLM小屋支持显示AI的思考过程，目前主要支持Grok模型的思考过程展示：
 
 - `ThinkingService`: 专门处理不同AI模型的思考过程，支持从API响应中提取思考内容
 - 支持不同模型的思考过程格式化和显示
@@ -230,3 +248,4 @@ Cherry Studio支持显示AI的思考过程，目前主要支持Grok模型的思�
 - API请求和响应分析
 - 思考过程监控
 - 模型API调试
+- 移动端性能监控

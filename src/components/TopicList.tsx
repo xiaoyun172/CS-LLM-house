@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   List,
   ListItemButton,
@@ -8,10 +8,14 @@ import {
   Divider,
   Typography,
   alpha,
-  ListItemIcon
+  ListItemIcon,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import type { ChatTopic } from '../shared/types';
 
 interface TopicListProps {
@@ -19,6 +23,7 @@ interface TopicListProps {
   currentTopicId: string | null;
   onSelectTopic: (topic: ChatTopic) => void;
   onNewTopic: () => void;
+  onDeleteTopic?: (topicId: string) => void;
 }
 
 const TopicList: React.FC<TopicListProps> = ({
@@ -26,7 +31,13 @@ const TopicList: React.FC<TopicListProps> = ({
   currentTopicId,
   onSelectTopic,
   onNewTopic,
+  onDeleteTopic,
 }) => {
+  // 用于跟踪当前准备删除的话题ID
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // 用于追踪删除确认的定时器
+  const deleteTimerRef = useRef<number | null>(null);
+
   // 格式化日期函数
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -52,6 +63,65 @@ const TopicList: React.FC<TopicListProps> = ({
     // 其他情况显示年月日
     return date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
   };
+
+  // 点击删除按钮的处理函数
+  const handleDeleteClick = (e: React.MouseEvent, topicId: string) => {
+    e.stopPropagation(); // 阻止事件冒泡，避免触发选择话题
+    
+    if (pendingDeleteId === topicId) {
+      // 如果是第二次点击同一个话题的删除按钮，执行删除
+      if (onDeleteTopic) {
+        onDeleteTopic(topicId);
+      }
+      // 重置状态
+      setPendingDeleteId(null);
+      if (deleteTimerRef.current) {
+        window.clearTimeout(deleteTimerRef.current);
+        deleteTimerRef.current = null;
+      }
+    } else {
+      // 如果已经有一个待删除的话题，先清除它
+      if (pendingDeleteId && deleteTimerRef.current) {
+        window.clearTimeout(deleteTimerRef.current);
+      }
+      
+      // 设置当前话题为待删除状态
+      setPendingDeleteId(topicId);
+      
+      // 设置定时器，3秒后自动取消删除状态
+      deleteTimerRef.current = window.setTimeout(() => {
+        setPendingDeleteId(null);
+        deleteTimerRef.current = null;
+      }, 3000);
+    }
+  };
+
+  // 组件卸载时清除定时器
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) {
+        window.clearTimeout(deleteTimerRef.current);
+      }
+    };
+  }, []);
+
+  // 当点击列表项外的区域时，取消删除状态
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (pendingDeleteId) {
+        setPendingDeleteId(null);
+        if (deleteTimerRef.current) {
+          window.clearTimeout(deleteTimerRef.current);
+          deleteTimerRef.current = null;
+        }
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [pendingDeleteId]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: (theme) => alpha(theme.palette.background.paper, 0.7) }}>
@@ -122,6 +192,9 @@ const TopicList: React.FC<TopicListProps> = ({
                 },
                 '&:hover': {
                   bgcolor: (theme) => alpha(theme.palette.action.hover, 0.7),
+                  '& .delete-button': {
+                    opacity: 1,
+                  },
                 },
                 '&::after': topic.id === currentTopicId ? {
                   content: '""',
@@ -174,9 +247,35 @@ const TopicList: React.FC<TopicListProps> = ({
                 }
                 secondaryTypographyProps={{ component: 'div' }}
               />
-              <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem', ml: 1 }}>
-                {formatDate(topic.lastMessageTime)}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                  {formatDate(topic.lastMessageTime)}
+                </Typography>
+                {onDeleteTopic && (
+                  <Tooltip title={pendingDeleteId === topic.id ? "再次点击确认删除" : "删除话题"} placement="top">
+                    <IconButton
+                      className="delete-button"
+                      size="small"
+                      onClick={(e) => handleDeleteClick(e, topic.id)}
+                      sx={{
+                        ml: 1,
+                        color: pendingDeleteId === topic.id ? 'error.main' : 'text.disabled',
+                        opacity: pendingDeleteId === topic.id ? 1 : 0,
+                        transition: 'all 0.2s ease',
+                        '&:hover': {
+                          color: 'error.main',
+                        },
+                      }}
+                    >
+                      {pendingDeleteId === topic.id ? (
+                        <CheckCircleOutlineIcon fontSize="small" />
+                      ) : (
+                        <DeleteOutlineIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Box>
             </ListItemButton>
           ))
         )}

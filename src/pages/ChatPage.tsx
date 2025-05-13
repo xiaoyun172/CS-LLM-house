@@ -25,7 +25,8 @@ import {
   setTopicLoading,
   setError,
   updateMessage,
-  setTopicStreaming
+  setTopicStreaming,
+  deleteTopic as deleteTopicAction
 } from '../shared/store/messagesSlice';
 import { createTopic, createMessage } from '../shared/utils';
 import { sendChatRequest } from '../shared/api';
@@ -163,6 +164,29 @@ const ChatPage: React.FC = () => {
     setTopics([newTopic, ...topics]);
     if (isMobile) {
       setDrawerOpen(false);
+    }
+  };
+
+  // 处理删除话题
+  const handleDeleteTopic = (topicId: string) => {
+    // 从Redux中删除该话题
+    dispatch(deleteTopicAction(topicId));
+    
+    // 从本地状态中删除该话题
+    const updatedTopics = topics.filter(topic => topic.id !== topicId);
+    setTopics(updatedTopics);
+    
+    // 如果删除的是当前话题，选择另一个话题
+    if (currentTopic && currentTopic.id === topicId) {
+      if (updatedTopics.length > 0) {
+        dispatch(setCurrentTopic(updatedTopics[0]));
+      } else {
+        // 如果没有话题了，创建一个新的
+        const newTopic = createTopic('新聊天');
+        dispatch(createTopicAction(newTopic));
+        setTopics([newTopic]);
+        dispatch(setCurrentTopic(newTopic));
+      }
     }
   };
 
@@ -512,6 +536,7 @@ const ChatPage: React.FC = () => {
           currentTopicId={currentTopic?.id || null}
           onSelectTopic={handleSelectTopic}
           onNewTopic={handleNewTopic}
+          onDeleteTopic={handleDeleteTopic}
         />
       </Drawer>
 

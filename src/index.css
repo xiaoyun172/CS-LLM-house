@@ -26,6 +26,41 @@ body {
   padding: 0;
 }
 
+/* 输入框样式覆盖，确保复制粘贴在移动端正常工作 */
+input, textarea, .RNTextInput {
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
+  -webkit-touch-callout: auto !important;
+  touch-action: auto !important;
+  cursor: text !important;
+}
+
+/* 让MUI输入框支持手机粘贴 */
+.MuiInputBase-input {
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
+  -webkit-touch-callout: auto !important;
+  touch-action: auto !important;
+  cursor: text !important;
+}
+
+/* React Native Web TextInput样式增强 */
+.RNTextInput {
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
+  -webkit-touch-callout: auto !important;
+  touch-action: auto !important;
+  cursor: text !important;
+  caret-color: #007AFF;
+}
+
+/* 移除可能影响输入的全局样式 */
+*[contenteditable="true"] {
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
+  -webkit-touch-callout: auto !important;
+}
+
 /* 自定义滚动条样式 */
 ::-webkit-scrollbar {
   width: 6px;

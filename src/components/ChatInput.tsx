@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { TextField, IconButton, Box, CircularProgress, Paper } from '@mui/material';
+import React, { useState, useRef, useEffect } from 'react';
+import { IconButton, CircularProgress } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PhotoIcon from '@mui/icons-material/Photo';
 import KeyboardVoiceIcon from '@mui/icons-material/KeyboardVoice';
@@ -12,6 +12,7 @@ interface ChatInputProps {
 
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false }) => {
   const [message, setMessage] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,80 +22,122 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessage(e.target.value);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
+  };
+
+  // 添加焦点管理以确保复制粘贴功能正常工作
+  useEffect(() => {
+    // 设置一个延迟以确保组件挂载后聚焦生效
+    const timer = setTimeout(() => {
+      if (textareaRef.current) {
+        // 聚焦后立即模糊，这有助于解决某些Android设备上的复制粘贴问题
+        textareaRef.current.focus();
+        textareaRef.current.blur();
+      }
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <Box
-      component="form"
-      onSubmit={handleSubmit}
-      sx={{
-        borderTop: '1px solid #f0f0f0',
-        bgcolor: '#f9f9f9', // 微信输入框背景色
-        p: 1.5,
-        position: 'relative',
-      }}
-    >
-      <Paper
-        elevation={0}
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          p: 0.5,
-          borderRadius: 3,
-          bgcolor: '#ffffff',
-          border: 'none',
-        }}
-      >
-        {/* 功能图标区域 */}
-        <Box sx={{ display: 'flex', mx: 1 }}>
-          <IconButton
-            size="small"
-            sx={{ color: '#797979' }}
-          >
-            <KeyboardVoiceIcon fontSize="small" />
-          </IconButton>
-        </Box>
+    <div style={{
+      borderTop: '1px solid #f0f0f0',
+      backgroundColor: '#f9f9f9',
+      padding: '10px',
+      position: 'relative',
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        padding: '8px',
+        borderRadius: '24px',
+        backgroundColor: '#ffffff',
+        border: 'none',
+        minHeight: '56px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        width: '100%',
+        maxWidth: '600px'
+      }}>
+        {/* 语音图标 */}
+        <IconButton
+          size="medium"
+          style={{
+            color: '#797979',
+            padding: '8px',
+            marginRight: '4px'
+          }}
+        >
+          <KeyboardVoiceIcon />
+        </IconButton>
         
-        {/* 输入框 */}
-        <TextField
-          fullWidth
-          variant="standard"
-          placeholder="和Cherry说点什么"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          disabled={isLoading}
-          sx={{
-            '& .MuiInput-underline:before': { borderBottom: 'none' },
-            '& .MuiInput-underline:after': { borderBottom: 'none' },
-            '& .MuiInput-underline:hover:not(.Mui-disabled):before': { borderBottom: 'none' },
-            mx: 1,
-            '& .MuiInputBase-input': {
-              py: 1,
-              fontSize: '15px',
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit(e);
-            }
-          }}
-          multiline
-          maxRows={4}
-        />
+        {/* 文本输入区域 */}
+        <div style={{
+          flexGrow: 1,
+          margin: '0 8px',
+          position: 'relative'
+        }}>
+          <textarea
+            ref={textareaRef}
+            style={{
+              fontSize: '16px',
+              padding: '12px 0',
+              border: 'none',
+              outline: 'none',
+              width: '100%',
+              backgroundColor: 'transparent',
+              lineHeight: '1.5',
+              fontFamily: 'inherit',
+              resize: 'none',
+              overflow: 'hidden',
+              minHeight: '24px',
+              maxHeight: '80px'
+            }}
+            placeholder="和LLM小屋聊点什么"
+            value={message}
+            onChange={handleChange}
+            onKeyPress={handleKeyPress}
+            disabled={isLoading}
+            rows={1}
+          />
+        </div>
         
         {/* 其他功能图标和发送按钮 */}
-        <Box sx={{ display: 'flex' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center'
+        }}>
           <IconButton
-            size="small"
-            sx={{ color: '#797979', mx: 0.5 }}
+            size="medium"
+            style={{
+              color: '#797979',
+              padding: '8px',
+              margin: '0 2px'
+            }}
           >
-            <PhotoIcon fontSize="small" />
+            <PhotoIcon />
           </IconButton>
           
           <IconButton
-            size="small"
-            sx={{ color: '#797979', mx: 0.5 }}
+            size="medium"
+            style={{
+              color: '#797979',
+              padding: '8px',
+              margin: '0 2px'
+            }}
           >
-            <AddCircleOutlineIcon fontSize="small" />
+            <AddCircleOutlineIcon />
           </IconButton>
           
           {message.trim() ? (
@@ -102,17 +145,20 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading = false 
               color="primary"
               type="submit"
               disabled={isLoading}
-              sx={{
-                color: '#07c160', // 微信发送按钮绿色
-                mx: 0.5,
+              size="medium"
+              onClick={handleSubmit}
+              style={{
+                color: '#07c160',
+                padding: '8px',
+                margin: '0 2px'
               }}
             >
-              {isLoading ? <CircularProgress size={20} thickness={5} /> : <SendIcon />}
+              {isLoading ? <CircularProgress size={24} thickness={5} /> : <SendIcon />}
             </IconButton>
           ) : null}
-        </Box>
-      </Paper>
-    </Box>
+        </div>
+      </div>
+    </div>
   );
 };
 
