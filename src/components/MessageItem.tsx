@@ -290,6 +290,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
         elevation={0}
         sx={{
           maxWidth: '85%',
+          minWidth: isUser ? 'auto' : '150px',
           p: 1.5,
           borderRadius: isUser ? '20px 4px 20px 20px' : '4px 20px 20px 20px',
           bgcolor: isUser 
@@ -301,6 +302,17 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
             : (theme.palette.mode === 'dark' ? '#ffffff' : '#333333'), // AI消息文字颜色
         }}
       >
+        {/* 消息操作按钮 - 移到Paper内部，使其相对于气泡定位 */}
+        {!isUser && !isPending && !isError && (
+          <MessageActions 
+            message={message}
+            topicId={currentTopic?.id}
+            onRegenerate={onRegenerate}
+            onDelete={onDelete}
+            onSwitchVersion={onSwitchVersion}
+          />
+        )}
+
         {/* 错误状态显示 */}
         {isError && (
           <Box sx={{ 
@@ -399,17 +411,6 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
           </Typography>
         )}
       </Paper>
-
-      {/* 消息操作按钮 */}
-      {!isUser && !isPending && !isError && (
-        <MessageActions 
-          message={message}
-          topicId={currentTopic?.id}
-          onRegenerate={onRegenerate}
-          onDelete={onDelete}
-          onSwitchVersion={onSwitchVersion}
-        />
-      )}
     </Box>
   );
 };

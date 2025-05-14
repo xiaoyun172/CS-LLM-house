@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Box, useTheme } from '@mui/material';
 import type { Message } from '../shared/types';
 import MessageItem from './MessageItem';
@@ -13,16 +13,43 @@ interface MessageListProps {
 const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete, onSwitchVersion }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
+  const [forceRender, setForceRender] = useState(0);
 
   // 滚动到最新消息
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // 添加事件监听器，处理话题清空和强制更新事件
+  useEffect(() => {
+    console.log('MessageList: 设置事件监听器');
+    
+    const handleTopicCleared = (event: CustomEvent) => {
+      console.log('MessageList: 接收到topicCleared事件', event.detail);
+      setForceRender(prev => prev + 1);
+    };
+    
+    const handleForceUpdate = () => {
+      console.log('MessageList: 接收到强制更新事件');
+      setForceRender(prev => prev + 1);
+    };
+    
+    // 添加事件监听
+    window.addEventListener('topicCleared', handleTopicCleared as EventListener);
+    window.addEventListener('FORCE_MESSAGES_UPDATE', handleForceUpdate);
+    
+    // 清理事件监听
+    return () => {
+      window.removeEventListener('topicCleared', handleTopicCleared as EventListener);
+      window.removeEventListener('FORCE_MESSAGES_UPDATE', handleForceUpdate);
+    };
+  }, []);
+
   // 当消息列表更新时滚动到底部
   useEffect(() => {
+    console.log('MessageList: 消息列表更新，消息数量:', messages.length);
     scrollToBottom();
-  }, [messages]);
+  }, [messages, forceRender]);
 
   // 过滤消息，只显示当前版本或没有版本标记的消息
   const filteredMessages = messages.filter(message => {

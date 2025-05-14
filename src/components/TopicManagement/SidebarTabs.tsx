@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, Tabs, Tab } from '@mui/material';
 import { 
@@ -8,7 +8,6 @@ import {
   loadTopics,
   updateTopic
 } from '../../shared/store/messagesSlice';
-import { createTopic } from '../../shared/utils';
 import type { RootState } from '../../shared/store';
 import type { ChatTopic } from '../../shared/types';
 import type { Assistant } from '../../shared/types/Assistant';
@@ -190,6 +189,16 @@ export default function SidebarTabs() {
     // 自动将标签切换到话题面板
     setValue(1);
     
+    // 检查该助手是否有话题
+    if (!assistant.topicIds || assistant.topicIds.length === 0) {
+      console.log(`助手"${assistant.name}"没有话题，自动创建一个新话题`);
+      // 需要先设置currentAssistant，然后再创建话题
+      setTimeout(() => {
+        handleCreateTopic();
+      }, 100);
+      return;
+    }
+    
     // 自动选择该助手的第一个话题（如果有的话）
     if (assistant.topicIds && assistant.topicIds.length > 0) {
       const firstTopicId = assistant.topicIds[0];
@@ -199,16 +208,13 @@ export default function SidebarTabs() {
       if (firstTopic) {
         console.log(`自动选择助手"${assistant.name}"的第一个话题: ${firstTopic.title}`);
         dispatch(setCurrentTopic(firstTopic));
-      } else {
-        console.warn(`未找到助手"${assistant.name}"的第一个话题(${firstTopicId})`);
       }
-    } else {
-      console.log(`助手"${assistant.name}"没有关联的话题`);
     }
   };
 
   // 添加助手
   const handleAddAssistant = (assistant: Assistant) => {
+    console.log('添加新助手:', assistant.name, '助手ID:', assistant.id);
     if (AssistantService.addAssistant(assistant)) {
       setUserAssistants([...userAssistants, assistant]);
       setCurrentAssistant(assistant);
@@ -241,7 +247,26 @@ export default function SidebarTabs() {
       
       // 如果删除的是当前助手，设置第一个助手为当前助手
       if (currentAssistant?.id === assistantId && updatedAssistants.length > 0) {
-        setCurrentAssistant(updatedAssistants[0]);
+        const newCurrentAssistant = updatedAssistants[0];
+        setCurrentAssistant(newCurrentAssistant);
+        
+        // 检查新选择的助手是否有话题
+        if (!newCurrentAssistant.topicIds || newCurrentAssistant.topicIds.length === 0) {
+          console.log('新选择的助手没有话题，将自动创建一个');
+          
+          // 设置一个标志，需要在currentAssistant更新后创建话题
+          localStorage.setItem('_needTopicForAssistant', newCurrentAssistant.id);
+          
+          // 通过事件触发，延迟执行以确保状态已更新
+          setTimeout(() => {
+            const event = new CustomEvent('assistantNeedsTopic', {
+              detail: {
+                assistantId: newCurrentAssistant.id
+              }
+            });
+            window.dispatchEvent(event);
+          }, 200);
+        }
       } else if (updatedAssistants.length === 0) {
         setCurrentAssistant(null);
       }
@@ -250,19 +275,70 @@ export default function SidebarTabs() {
 
   // 选择话题
   const handleSelectTopic = (topic: ChatTopic) => {
+    console.log('准备切换到话题:', topic);
+    try {
+      // 确保话题完整性
+      if (!topic || !topic.id) {
+        console.error('话题对象无效:', topic);
+        return;
+      }
+      
+      // 从Redux中获取最新话题
+      const topicsJson = localStorage.getItem('chatTopics');
+      if (topicsJson) {
+        const allTopics = JSON.parse(topicsJson);
+        // 查找最新版本的话题
+        const latestTopic = allTopics.find((t: ChatTopic) => t.id === topic.id);
+        if (latestTopic) {
+          console.log('使用最新版本的话题:', latestTopic);
+          // 使用最新版本的话题
+          dispatch(setCurrentTopic(latestTopic));
+          return;
+        }
+      }
+      
+      // 如果找不到最新版本，直接使用传入的话题
     dispatch(setCurrentTopic(topic));
+      console.log('话题切换成功:', topic.id);
+    } catch (error) {
+      console.error('切换话题时出错:', error);
+    }
   };
 
-  // 创建新话题
-  const handleCreateTopic = () => {
-    if (!currentAssistant) return;
+  // 创建新话题 (使用useCallback优化)
+  const handleCreateTopic = useCallback(() => {
+    if (!currentAssistant) {
+      console.error('无法创建话题: 当前没有选中的助手');
+      return;
+    }
     
-    const newTopic = createTopic('新聊天');
+    try {
+      console.log('创建新话题，当前助手:', currentAssistant);
+      
+      // 生成唯一ID
+      const uniqueId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      
+      // 创建新话题
+      const newTopic = {
+        id: uniqueId,
+        title: '新话题 ' + new Date().toLocaleTimeString(),
+        lastMessageTime: new Date().toISOString(),
+        messages: []
+      };
+      
+      console.log('新话题已创建:', newTopic);
+      
+      // 添加到Redux
     dispatch(createTopicAction(newTopic));
+      console.log('新话题已添加到Redux状态');
+      
+      // 设置为当前话题
     dispatch(setCurrentTopic(newTopic));
+      console.log('新话题已设置为当前话题');
     
     // 将话题与当前助手关联
     AssistantService.addTopicToAssistant(currentAssistant.id, newTopic.id);
+      console.log('话题已关联到助手:', currentAssistant.id);
     
     // 更新当前助手
     const updatedAssistant = {
@@ -279,16 +355,38 @@ export default function SidebarTabs() {
     
     setUserAssistants(updatedAssistants);
     
-    // 直接更新当前助手话题列表
-    const updatedTopics = [...currentAssistantTopics, newTopic];
-    setCurrentAssistantTopics(updatedTopics);
-  };
+      // 更新本地状态中的话题列表
+      setCurrentAssistantTopics([newTopic, ...currentAssistantTopics]);
+      
+      // 保存到localStorage确保立即更新
+      const topicsJson = localStorage.getItem('chatTopics');
+      if (topicsJson) {
+        const savedTopics = JSON.parse(topicsJson);
+        localStorage.setItem('chatTopics', JSON.stringify([newTopic, ...savedTopics]));
+        console.log('新话题已保存到localStorage');
+      } else {
+        localStorage.setItem('chatTopics', JSON.stringify([newTopic]));
+        console.log('创建了新的话题列表并保存到localStorage');
+      }
+    } catch (error) {
+      console.error('创建新话题时出错:', error);
+    }
+  }, [currentAssistant, currentAssistantTopics, dispatch, userAssistants]);
 
   // 删除话题
   const handleDeleteTopic = (topicId: string, event: React.MouseEvent) => {
     event.stopPropagation(); // 阻止事件冒泡
     
     if (!currentAssistant) return;
+    
+    // 检查是否正在删除当前话题
+    const isDeletingCurrentTopic = currentTopic && currentTopic.id === topicId;
+    
+    // 如果正在删除当前话题，设置一个标记
+    if (isDeletingCurrentTopic) {
+      localStorage.setItem('_justDeletedTopic', 'true');
+      console.log('设置标记: 刚刚删除当前话题');
+    }
     
     // 从助手中移除话题
     AssistantService.removeTopicFromAssistant(currentAssistant.id, topicId);
@@ -308,12 +406,28 @@ export default function SidebarTabs() {
     
     setUserAssistants(updatedAssistants);
     
-    // 从Redux中删除话题
-    dispatch(deleteTopicAction(topicId));
-    
     // 直接更新当前助手话题列表
     const updatedTopics = currentAssistantTopics.filter(topic => topic.id !== topicId);
     setCurrentAssistantTopics(updatedTopics);
+    
+    // 从Redux中删除话题
+    dispatch(deleteTopicAction(topicId));
+    
+    // 如果删除的是当前话题，需要自动切换到其他话题
+    if (isDeletingCurrentTopic) {
+      console.log('删除的是当前话题，需要切换到其他话题');
+      
+      // 查找当前助手的其他话题
+      if (updatedTopics.length > 0) {
+        // 有其他话题，选择第一个话题
+        console.log('切换到该助手的第一个话题:', updatedTopics[0].title);
+        dispatch(setCurrentTopic(updatedTopics[0]));
+      } else {
+        // 没有其他话题，创建一个新话题
+        console.log('当前助手没有其他话题，创建一个新话题');
+        handleCreateTopic();
+      }
+    }
   };
 
   // 更新设置状态处理回调函数
@@ -425,12 +539,41 @@ export default function SidebarTabs() {
     }
   };
 
-  // 获取当前助手的话题
+  // 获取当前助手的话题列表
   const getCurrentAssistantTopics = () => {
-    if (!currentAssistant || !currentAssistant.topicIds) return [];
+    if (!currentAssistant || !currentAssistant.topicIds) {
+      return [];
+    }
     
-    return topics.filter((topic: ChatTopic) => currentAssistant.topicIds?.includes(topic.id));
+    return topics.filter(topic => currentAssistant.topicIds?.includes(topic.id));
   };
+
+  // 监听assistantNeedsTopic事件，在助手清空话题后自动创建新话题
+  useEffect(() => {
+    const handleAssistantNeedsTopic = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { assistantId } = customEvent.detail;
+      
+      console.log('接收到助手需要话题事件:', assistantId);
+      
+      // 确保当前助手与事件中的助手一致
+      if (currentAssistant && currentAssistant.id === assistantId) {
+        console.log('准备为当前助手创建新话题');
+        // 延迟创建话题，确保其他状态已更新
+        setTimeout(() => {
+          handleCreateTopic();
+        }, 100);
+      }
+    };
+    
+    // 注册事件监听器
+    window.addEventListener('assistantNeedsTopic', handleAssistantNeedsTopic);
+    
+    // 清理函数
+    return () => {
+      window.removeEventListener('assistantNeedsTopic', handleAssistantNeedsTopic);
+  };
+  }, [currentAssistant, handleCreateTopic]);
 
   return (
     <Box sx={{ width: '100%', height: '100%', bgcolor: 'background.paper' }}>

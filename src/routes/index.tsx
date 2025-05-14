@@ -11,8 +11,11 @@ const ModelProviderSettings = lazy(() => import('../pages/Settings/ModelProvider
 const AddProviderPage = lazy(() => import('../pages/Settings/AddProviderPage'));
 const AboutPage = lazy(() => import('../pages/Settings/AboutPage'));
 const VoiceSettings = lazy(() => import('../pages/Settings/VoiceSettings'));
+const WebSearchSettings = lazy(() => import('../pages/Settings/WebSearchSettings'));
 const DevToolsPage = lazy(() => import('../pages/DevToolsPage'));
 import DataSettingsPage from '../pages/Settings/DataSettings';
+// 导入高级备份页面
+const AdvancedBackupPage = lazy(() => import('../pages/Settings/DataSettings/AdvancedBackupPage'));
 
 // 加载中组件
 const LoadingFallback = () => (
@@ -27,9 +30,9 @@ const LoadingFallback = () => (
   </div>
 );
 
-// 检查是否是首次使用
-const isFirstTimeUser = (): boolean => {
-  return !localStorage.getItem('chatTopics') && !localStorage.getItem('settings');
+// 检查是否是第一次使用
+const isFirstTimeUser = () => {
+  return localStorage.getItem('first-time-user') === null;
 };
 
 // 路由提供者组件
@@ -60,6 +63,8 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/about" element={<AboutPage />} />
         <Route path="/settings/voice" element={<VoiceSettings />} />
         <Route path="/settings/data" element={<DataSettingsPage />} />
+        <Route path="/settings/data/advanced-backup" element={<AdvancedBackupPage />} />
+        <Route path="/settings/web-search" element={<WebSearchSettings />} />
         <Route path="/devtools" element={<DevToolsPage />} />
       </Routes>
     </Suspense>

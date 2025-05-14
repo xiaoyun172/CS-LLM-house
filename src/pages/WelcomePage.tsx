@@ -88,6 +88,9 @@ const WelcomePage: React.FC = () => {
         dispatch(addModel(model));
         dispatch(setDefaultModel(model.id));
         
+        // 设置first-time-user标记，防止再次显示欢迎页面
+        localStorage.setItem('first-time-user', 'false');
+        
         // 模拟API测试延迟
         await new Promise(resolve => setTimeout(resolve, 1500));
         
@@ -108,6 +111,8 @@ const WelcomePage: React.FC = () => {
   
   // 处理跳过
   const handleSkip = () => {
+    // 设置first-time-user标记，防止再次显示欢迎页面
+    localStorage.setItem('first-time-user', 'false');
     navigate('/chat');
   };
   

@@ -112,6 +112,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
   // 处理新建话题
   const handleNewTopic = () => {
+    console.log('useTopicManagement: 开始创建新话题');
     try {
       // 创建一个新的话题
       const newTopic = {
@@ -121,77 +122,70 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
         messages: []
       };
 
+      console.log('useTopicManagement: 新话题已创建:', newTopic);
+
       // 添加到Redux
       dispatch(createTopic(newTopic));
+      console.log('useTopicManagement: 新话题已添加到Redux');
 
       // 刷新话题列表
-      setTopics([newTopic, ...topics]);
+      setTopics(prevTopics => [newTopic, ...prevTopics]);
+      console.log('useTopicManagement: 本地话题列表已更新');
 
       // 获取当前助手ID
       const currentAssistantId = localStorage.getItem('currentAssistant');
-      console.log('当前助手ID:', currentAssistantId);
+      console.log('useTopicManagement: 当前助手ID:', currentAssistantId);
 
       if (!currentAssistantId) {
-        console.error('未找到当前助手ID，无法关联话题');
-        return;
-      }
-
-      // 获取助手列表
-      const assistants = AssistantService.getUserAssistants();
-      const currentAssistant = assistants.find(a => a.id === currentAssistantId);
-
-      if (!currentAssistant) {
-        console.error(`未找到ID为${currentAssistantId}的助手`);
-        return;
-      }
-
-      console.log(`正在将话题"${newTopic.title}"(${newTopic.id})关联到助手"${currentAssistant.name}"(${currentAssistant.id})`);
-
-      // 将话题与当前助手关联 - 更新助手对象
-      const updatedAssistant = {
-        ...currentAssistant,
-        topicIds: [...(currentAssistant.topicIds || []), newTopic.id]
-      };
-
-      // 保存更新的助手到localStorage
-      const success = AssistantService.updateAssistant(updatedAssistant);
-
-      if (success) {
-        console.log(`成功将话题"${newTopic.title}"关联到助手"${currentAssistant.name}"`);
-
-        // 再次验证关联是否成功
-        const updatedAssistants = AssistantService.getUserAssistants();
-        const updatedCurrentAssistant = updatedAssistants.find(a => a.id === currentAssistantId);
-
-        if (updatedCurrentAssistant && updatedCurrentAssistant.topicIds?.includes(newTopic.id)) {
-          console.log('验证成功：话题已成功关联到助手的话题列表');
-          console.log('助手的话题ID列表:', updatedCurrentAssistant.topicIds);
-        } else {
-          console.error('验证失败：话题未显示在助手的话题列表中');
-          // 使用另一种方法尝试关联
-          AssistantService.addTopicToAssistant(currentAssistantId, newTopic.id);
-        }
+        console.error('useTopicManagement: 未找到当前助手ID，无法关联话题');
       } else {
-        console.error(`无法更新助手"${currentAssistant.name}"的话题列表`);
-        // 使用另一种方法尝试关联
-        AssistantService.addTopicToAssistant(currentAssistantId, newTopic.id);
+        // 使用AssistantService的addTopicToAssistant方法关联话题
+        const success = AssistantService.addTopicToAssistant(currentAssistantId, newTopic.id);
+        console.log(`useTopicManagement: 将话题关联到助手 ${success ? '成功' : '失败'}`);
+        
+        if (!success) {
+          console.error('useTopicManagement: 添加话题到助手失败，尝试检查助手存储');
+      const assistants = AssistantService.getUserAssistants();
+          console.log('useTopicManagement: 当前助手列表:', assistants.map(a => ({id: a.id, name: a.name, topicIds: a.topicIds})));
+        } else {
+          // 验证关联是否成功
+          const assistants = AssistantService.getUserAssistants();
+          const assistant = assistants.find(a => a.id === currentAssistantId);
+          if (assistant && assistant.topicIds?.includes(newTopic.id)) {
+            console.log('useTopicManagement: 验证成功 - 话题已成功关联到助手的话题列表');
+            
+            // 新增：派发自定义事件通知侧边栏组件更新话题列表
+            const event = new CustomEvent('topicCreated', {
+              detail: { 
+                topic: newTopic,
+                assistantId: currentAssistantId
+              }
+            });
+            window.dispatchEvent(event);
+            console.log('useTopicManagement: 已派发topicCreated事件，通知组件更新');
+          } else {
+            console.error('useTopicManagement: 验证失败 - 话题未显示在助手的话题列表中');
+          }
+        }
       }
 
       // 设置为当前话题
       dispatch(setCurrentTopic(newTopic));
-
-      // 派发一个自定义事件，通知应用新话题已创建
-      const topicCreatedEvent = new CustomEvent('topicCreated', {
-        detail: { topic: newTopic, assistantId: currentAssistantId }
-      });
-      window.dispatchEvent(topicCreatedEvent);
+      console.log('useTopicManagement: 新话题已设置为当前话题');
 
       // 手动触发Redux store的变化，确保所有相关组件都能感知到更新
       dispatch({ type: 'FORCE_TOPICS_UPDATE' });
+      console.log('useTopicManagement: 已派发强制更新事件');
+      
+      // 确保localStorage也被更新
+      const currentTopics = [...topics, newTopic];
+      localStorage.setItem('chatTopics', JSON.stringify(currentTopics));
+      console.log('useTopicManagement: 已将更新后的话题列表保存到localStorage');
 
-      console.log('已派发话题创建事件，通知应用刷新话题列表');
+      return newTopic;
     } catch (error) {
-      console.error('创建新话题时出错:', error);
+      console.error('useTopicManagement: 创建新话题时出错:', error);
+      return null;
     }
   };
 
@@ -199,11 +193,15 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
   const handleClearTopic = () => {
     if (!currentTopic) return;
 
+    console.log('useTopicManagement: 开始清空话题内容', currentTopic.id);
+
     // 创建一个空的消息数组
     dispatch(setTopicMessages({
       topicId: currentTopic.id,
       messages: []
     }));
+
+    console.log('useTopicManagement: 已派发清空消息的action');
 
     // 更新本地存储
     try {
@@ -217,10 +215,26 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
           return topic;
         });
         localStorage.setItem('chatTopics', JSON.stringify(updatedTopics));
+        console.log('useTopicManagement: 已更新localStorage中的话题消息');
+        
+        // 更新本地状态
+        setTopics(updatedTopics);
+        console.log('useTopicManagement: 已更新本地状态中的话题消息');
       }
     } catch (error) {
       console.error('更新本地存储失败:', error);
     }
+
+    // 手动触发强制刷新事件，确保所有组件都能接收到更新
+    dispatch({ type: 'FORCE_MESSAGES_UPDATE' });
+    console.log('useTopicManagement: 已派发强制更新事件');
+    
+    // 派发自定义事件通知其他组件更新
+    const event = new CustomEvent('topicCleared', {
+      detail: { topicId: currentTopic.id }
+    });
+    window.dispatchEvent(event);
+    console.log('useTopicManagement: 已派发topicCleared事件');
   };
 
   // 生成唯一ID

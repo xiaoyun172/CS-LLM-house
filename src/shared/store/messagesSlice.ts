@@ -166,7 +166,47 @@ const messagesSlice = createSlice({
   reducers: {
     // 设置当前主题
     setCurrentTopic: (state, action: PayloadAction<ChatTopic>) => {
-      state.currentTopic = action.payload;
+      const topic = action.payload;
+      
+      console.log('设置当前主题:', topic.id);
+      
+      // 通过ID查找已有主题，确保使用最新版本
+      const existingTopicIndex = state.topics.findIndex(t => t.id === topic.id);
+      
+      if (existingTopicIndex !== -1) {
+        // 使用已有主题的最新状态
+        state.currentTopic = state.topics[existingTopicIndex];
+        console.log('使用Redux中存在的主题:', state.topics[existingTopicIndex].id);
+      } else {
+        // 如果不存在，则添加到主题列表并设置为当前主题
+        state.topics.push(topic);
+        state.currentTopic = topic;
+        
+        // 初始化消息数组（如果不存在）
+        if (!state.messagesByTopic[topic.id]) {
+          state.messagesByTopic[topic.id] = topic.messages || [];
+        }
+        
+        console.log('主题不存在，已添加到Redux:', topic.id);
+        
+        // 保存到localStorage
+        try {
+          const topicsJson = localStorage.getItem('chatTopics');
+          if (topicsJson) {
+            const topics = JSON.parse(topicsJson);
+            const topicIndex = topics.findIndex((t: ChatTopic) => t.id === topic.id);
+            
+            if (topicIndex === -1) {
+              // 如果不存在，添加到列表
+              topics.push(topic);
+              localStorage.setItem('chatTopics', JSON.stringify(topics));
+              console.log('主题已添加到localStorage:', topic.id);
+            }
+          }
+        } catch (error) {
+          console.error('保存主题到localStorage失败:', error);
+        }
+      }
     },
 
     // 加载所有话题
@@ -466,19 +506,39 @@ const messagesSlice = createSlice({
 
     // 创建新主题
     createTopic: (state, action: PayloadAction<ChatTopic>) => {
-      const topic = action.payload;
-      state.currentTopic = topic;
-      state.messagesByTopic[topic.id] = topic.messages || [];
+      const newTopic = action.payload;
       
-      // 添加到话题列表
-      state.topics.unshift(topic);
+      console.log('创建新主题:', newTopic);
+      
+      // 检查主题是否已存在
+      const exists = state.topics.some(topic => topic.id === newTopic.id);
+      if (exists) {
+        console.warn(`主题ID ${newTopic.id} 已存在, 不会重复创建`);
+        return;
+      }
+      
+      // 添加到topics数组
+      state.topics.unshift(newTopic);
+      
+      // 初始化消息数组
+      state.messagesByTopic[newTopic.id] = newTopic.messages || [];
+      
+      // 设置为当前主题
+      state.currentTopic = newTopic;
 
       // 保存到localStorage
       try {
         const topicsJson = localStorage.getItem('chatTopics');
-        const topics = topicsJson ? JSON.parse(topicsJson) : [];
-        topics.unshift(topic);
+        if (topicsJson) {
+          const topics = JSON.parse(topicsJson);
+          // 将新主题添加到列表开头
+          topics.unshift(newTopic);
         localStorage.setItem('chatTopics', JSON.stringify(topics));
+        } else {
+          // 如果没有现有主题，创建新数组
+          localStorage.setItem('chatTopics', JSON.stringify([newTopic]));
+        }
+        console.log('主题已保存到localStorage:', newTopic.id);
       } catch (error) {
         console.error('保存主题到localStorage失败:', error);
       }
@@ -494,9 +554,18 @@ const messagesSlice = createSlice({
       // 从topics列表中移除
       state.topics = state.topics.filter(topic => topic.id !== topicId);
 
-      // 如果是当前主题，清除当前主题
+      // 如果是当前主题，尝试选择另一个话题
       if (state.currentTopic && state.currentTopic.id === topicId) {
-        state.currentTopic = null;
+        // 检查是否还有其他话题
+        if (state.topics.length > 0) {
+          // 有其他话题，选择第一个作为当前话题
+          state.currentTopic = state.topics[0];
+          console.log('删除当前话题后，自动切换到话题:', state.currentTopic.title);
+        } else {
+          // 没有其他话题，设置为null
+          state.currentTopic = null;
+          console.log('删除最后一个话题，当前话题设置为null');
+        }
       }
 
       // 从localStorage中删除
@@ -548,15 +617,18 @@ const messagesSlice = createSlice({
     setTopicMessages: (state, action: PayloadAction<{ topicId: string; messages: Message[] }>) => {
       const { topicId, messages } = action.payload;
       
+      console.log(`[setTopicMessages] 正在设置话题 ${topicId} 的消息列表，消息数量:`, messages.length);
+      
       // 更新消息列表
-      state.messagesByTopic[topicId] = messages;
+      state.messagesByTopic[topicId] = messages.slice(); // 使用slice()创建一个新数组，避免引用问题
       
       // 如果是当前主题，也更新当前主题的消息
       if (state.currentTopic && state.currentTopic.id === topicId) {
-        state.currentTopic.messages = messages;
+        state.currentTopic.messages = messages.slice();
+        console.log(`[setTopicMessages] 已更新当前话题 ${topicId} 的消息列表`);
       }
       
-      // 保存到localStorage
+      // 保存到localStorage - 首先读取完整数据，然后只修改相关部分
       try {
         const topicsJson = localStorage.getItem('chatTopics');
         if (topicsJson) {
@@ -566,11 +638,20 @@ const messagesSlice = createSlice({
           if (topicIndex !== -1) {
             topics[topicIndex].messages = messages;
             localStorage.setItem('chatTopics', JSON.stringify(topics));
+            console.log(`[setTopicMessages] 已更新localStorage中话题 ${topicId} 的消息列表`);
+          } else {
+            console.warn(`[setTopicMessages] 无法在localStorage中找到话题 ${topicId}`);
           }
+        } else {
+          console.warn('[setTopicMessages] localStorage中不存在chatTopics');
         }
       } catch (error) {
-        console.error('保存消息到localStorage失败:', error);
+        console.error('[setTopicMessages] 保存消息到localStorage失败:', error);
       }
+      
+      // 直接添加自定义事件，通知其他组件更新
+      // 这里只是设置标记，真正的事件会在组件中触发
+      console.log(`[setTopicMessages] 已完成更新话题 ${topicId} 的消息列表操作`);
     },
   },
 });

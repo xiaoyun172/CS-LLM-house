@@ -3,16 +3,20 @@ import { Box, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import ImageIcon from '@mui/icons-material/Image';
+import SearchIcon from '@mui/icons-material/Search';
 import { AssistantService } from '../shared/services/AssistantService';
 import { createTopic } from '../shared/utils';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { createTopic as createTopicAction, setCurrentTopic } from '../shared/store/messagesSlice';
+import type { RootState } from '../shared/store';
 
 interface ChatToolbarProps {
   onNewTopic?: () => void;
   onClearTopic?: () => void;
   imageGenerationMode?: boolean; // 是否处于图像生成模式
   toggleImageGenerationMode?: () => void; // 切换图像生成模式
+  webSearchActive?: boolean; // 是否处于网络搜索模式
+  toggleWebSearch?: () => void; // 切换网络搜索模式
 }
 
 /**
@@ -24,13 +28,18 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   onNewTopic,
   onClearTopic,
   imageGenerationMode = false,
-  toggleImageGenerationMode
+  toggleImageGenerationMode,
+  webSearchActive = false,
+  toggleWebSearch
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const dispatch = useDispatch();
+  
+  // 从Redux获取网络搜索设置
+  const webSearchEnabled = useSelector((state: RootState) => state.webSearch?.enabled || false);
 
   // 创建新话题的安全实现
   const safeCreateTopic = () => {
@@ -163,8 +172,19 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
       color: imageGenerationMode ? '#FFFFFF' : '#9C27B0', // 紫色
       bgColor: imageGenerationMode ? '#9C27B0' : '#FFFFFF' // 激活时背景色变成紫色
     }
-    // 未来可以在这里添加更多按钮
   ];
+  
+  // 如果网络搜索已启用，添加网络搜索按钮
+  if (webSearchEnabled && toggleWebSearch) {
+    buttons.push({
+      id: 'web-search',
+      icon: <SearchIcon sx={{ fontSize: '18px', color: webSearchActive ? '#FFFFFF' : '#3b82f6' }} />,
+      label: webSearchActive ? '关闭搜索' : '网络搜索',
+      onClick: toggleWebSearch,
+      color: webSearchActive ? '#FFFFFF' : '#3b82f6', // 蓝色
+      bgColor: webSearchActive ? '#3b82f6' : '#FFFFFF' // 激活时背景色变成蓝色
+    });
+  }
 
   return (
     <Box
@@ -210,7 +230,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
             sx={{
               display: 'flex',
               alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.85)', // 半透明背景
+              background: button.bgColor || 'rgba(255, 255, 255, 0.85)', // 使用按钮指定的背景色或默认色
               backdropFilter: 'blur(5px)', // 毛玻璃效果
               WebkitBackdropFilter: 'blur(5px)', // Safari支持
               color: button.color,
@@ -225,7 +245,11 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
               userSelect: 'none',
               '&:hover': {
                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                background: 'rgba(255, 255, 255, 0.95)'
+                background: button.id === 'web-search' && webSearchActive
+                  ? button.bgColor // 保持激活状态的背景色
+                  : button.id === 'generate-image' && imageGenerationMode
+                    ? button.bgColor // 保持图片生成模式的背景色
+                    : 'rgba(255, 255, 255, 0.95)' // 默认悬停背景色
               },
               '&:active': {
                 transform: 'scale(0.98)'

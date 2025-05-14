@@ -28,7 +28,8 @@ import {
   Radio,
   RadioGroup,
   FormControl,
-  FormLabel
+  FormLabel,
+  Avatar
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import BackupIcon from '@mui/icons-material/Backup';
@@ -39,11 +40,15 @@ import FolderIcon from '@mui/icons-material/Folder';
 import InfoIcon from '@mui/icons-material/Info';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
+import SettingsBackupRestoreIcon from '@mui/icons-material/SettingsBackupRestore';
+import BackupTableIcon from '@mui/icons-material/BackupTable';
+import CloudSyncIcon from '@mui/icons-material/CloudSync';
 import { useNavigate } from 'react-router-dom';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { FileOpener } from '@capacitor-community/file-opener';
 import { Share } from '@capacitor/share';
 import { getAllTopicsFromDB, getAllAssistantsFromDB, saveTopicToDB, saveAssistantToDB } from '../../../shared/services/storageService';
+import { alpha } from '@mui/material/styles';
 
 // 默认备份目录
 const DEFAULT_BACKUP_DIRECTORY = 'AetherLink/backups';
@@ -743,25 +748,58 @@ const DataSettingsPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ flexGrow: 1 }}>
-      <AppBar position="static">
+    <Box sx={{
+      flexGrow: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      bgcolor: (theme) => theme.palette.mode === 'light'
+        ? alpha(theme.palette.primary.main, 0.02)
+        : alpha(theme.palette.background.default, 0.9),
+    }}>
+      <AppBar
+        position="fixed"
+        elevation={0}
+        sx={{
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          borderBottom: 1,
+          borderColor: 'divider',
+          backdropFilter: 'blur(8px)',
+        }}
+      >
         <Toolbar>
           <IconButton
             edge="start"
-            color="inherit"
             onClick={handleBack}
             aria-label="back"
+            sx={{
+              color: (theme) => theme.palette.primary.main,
+            }}
           >
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              flexGrow: 1,
+              fontWeight: 600,
+              backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
+              backgroundClip: 'text',
+              color: 'transparent',
+            }}
+          >
             数据设置
           </Typography>
           <Tooltip title="备份设置">
             <IconButton 
-              color="inherit"
               onClick={openBackupSettings}
               aria-label="backup settings"
+              sx={{
+                color: (theme) => theme.palette.primary.main,
+              }}
             >
               <SettingsIcon />
             </IconButton>
@@ -769,280 +807,495 @@ const DataSettingsPage: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="sm" sx={{ mt: 2, mb: 2 }}>
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            数据备份与恢复
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-          
-          <Alert severity="info" sx={{ mb: 2 }}>
-            备份您的对话和助手数据，以便在更换设备或重新安装应用后恢复。
-            {backupPath && (
-              <Box mt={1}>
-                <Typography variant="caption" component="div" sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
-                  <span>备份存储位置:</span>
-                  <Tooltip title="点击复制完整路径">
-                    <Chip 
-                      icon={<FolderIcon fontSize="small" />} 
-                      label={getLocationDisplay()} 
-                      size="small" 
-                      onClick={openBackupFolder}
-                      color="primary"
-                      variant="outlined"
-                      sx={{ 
-                        cursor: 'pointer',
-                        '&:hover': {
-                          bgcolor: 'rgba(25, 118, 210, 0.08)'
-                        }
-                      }}
-                    />
-                  </Tooltip>
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflowY: 'auto',
+          p: 2,
+          mt: 8,
+          '&::-webkit-scrollbar': {
+            width: '6px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: 'rgba(0,0,0,0.1)',
+            borderRadius: '3px',
+          },
+        }}
+      >
+        <Container maxWidth="sm" sx={{ my: 2 }}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              mb: 3,
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <Avatar
+                sx={{
+                  width: 56,
+                  height: 56,
+                  bgcolor: '#9333EA',
+                  fontSize: '1.5rem',
+                  mr: 2,
+                  boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                }}
+              >
+                <BackupTableIcon />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 600,
+                    backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                  }}
+                >
+                  数据备份与恢复
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  备份您的对话和助手数据，以便在更换设备或重新安装应用后恢复
                 </Typography>
               </Box>
-            )}
-          </Alert>
-          
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 1 }}>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            </Box>
+            
+            <Divider sx={{ my: 2 }} />
+            
+            <Alert 
+              severity="info" 
+              variant="outlined"
+              sx={{ 
+                mb: 3, 
+                borderRadius: 2,
+                '& .MuiAlert-icon': {
+                  color: '#9333EA',
+                }
+              }}
+            >
+              备份您的对话和助手数据，以便在更换设备或重新安装应用后恢复。
+              {backupPath && (
+                <Box mt={1}>
+                  <Typography variant="caption" component="div" sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                    <span>备份存储位置:</span>
+                    <Tooltip title="点击复制完整路径">
+                      <Chip 
+                        icon={<FolderIcon fontSize="small" />} 
+                        label={getLocationDisplay()} 
+                        size="small" 
+                        onClick={openBackupFolder}
+                        color="primary"
+                        variant="outlined"
+                        sx={{ 
+                          cursor: 'pointer',
+                          '&:hover': {
+                            bgcolor: 'rgba(25, 118, 210, 0.08)'
+                          }
+                        }}
+                      />
+                    </Tooltip>
+                  </Typography>
+                </Box>
+              )}
+            </Alert>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 1 }}>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button
+                  variant="contained"
+                  startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : <BackupIcon />}
+                  fullWidth
+                  onClick={createBackup}
+                  disabled={isLoading}
+                  sx={{ 
+                    py: 1.5,
+                    borderRadius: 2,
+                    background: 'linear-gradient(90deg, #9333EA, #754AB4)',
+                    fontWeight: 600,
+                    '&:hover': {
+                      background: 'linear-gradient(90deg, #8324DB, #6D3CAF)',
+                    },
+                  }}
+                >
+                  {isLoading ? '备份中...' : '备份聊天和助手'}
+                </Button>
+                
+                <Button
+                  variant="contained"
+                  startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : <SaveAltIcon />}
+                  fullWidth
+                  onClick={createCustomLocationBackup}
+                  disabled={isLoading}
+                  sx={{ 
+                    py: 1.5,
+                    borderRadius: 2,
+                    backgroundColor: '#6B7280',
+                    fontWeight: 600,
+                    '&:hover': {
+                      backgroundColor: '#4B5563',
+                    },
+                  }}
+                >
+                  {isLoading ? '备份中...' : '完整系统备份'}
+                </Button>
+              </Box>
+              
               <Button
-                variant="contained"
-                startIcon={<BackupIcon />}
+                variant="outlined"
+                startIcon={<SettingsBackupRestoreIcon />}
                 fullWidth
-                onClick={createBackup}
+                onClick={() => navigate('/settings/data/advanced-backup')}
                 disabled={isLoading}
-                color="primary"
+                sx={{ 
+                  py: 1.5,
+                  borderRadius: 2,
+                  borderColor: (theme) => alpha(theme.palette.info.main, 0.5),
+                  color: 'info.main',
+                  '&:hover': {
+                    borderColor: 'info.main',
+                    bgcolor: (theme) => alpha(theme.palette.info.main, 0.1),
+                  },
+                }}
               >
-                {isLoading ? <CircularProgress size={24} /> : '备份聊天和助手'}
+                高级备份 (可自定义备份内容)
               </Button>
               
               <Button
-                variant="contained"
-                startIcon={<SaveAltIcon />}
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
                 fullWidth
-                onClick={createCustomLocationBackup}
+                onClick={() => document.getElementById('import-backup')?.click()}
                 disabled={isLoading}
-                color="secondary"
+                sx={{ 
+                  py: 1.5,
+                  borderRadius: 2,
+                  borderColor: 'divider',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                  },
+                }}
               >
-                {isLoading ? <CircularProgress size={24} /> : '完整系统备份'}
+                导入备份
               </Button>
-            </Box>
-            
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              fullWidth
-              onClick={() => document.getElementById('import-backup')?.click()}
-              disabled={isLoading}
-            >
-              导入备份
-            </Button>
-            <input
-              id="import-backup"
-              type="file"
-              accept=".json"
-              style={{ display: 'none' }}
-              onChange={async (e) => {
-                try {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  
-                  setIsLoading(true);
-                  
-                  // 读取文件内容
-                  const reader = new FileReader();
-                  reader.onload = async (event) => {
-                    try {
-                      const content = event.target?.result as string;
-                      
-                      // 创建备份目录
-                      await ensureBackupDirectory();
-                      
-                      // 验证JSON格式
-                      try {
-                        const backupData = JSON.parse(content);
-                        // 检查是否为新格式备份
-                        const isNewFormat = backupData.appInfo && backupData.appInfo.backupVersion >= 2;
-                        
-                        // 验证基本数据结构，至少应该有topics、assistants或settings字段
-                        if (!backupData.topics && !backupData.assistants && !backupData.settings) {
-                          showMessage('无效的备份文件格式：缺少必要的数据字段', 'error');
-                          return;
-                        }
-                        
-                        // 提示用户备份文件的格式类型和内容
-                        let formatInfo = isNewFormat ? '完整备份 (v2)' : '基础备份 (v1)';
-                        let contentInfo = [];
-                        
-                        if (backupData.topics) contentInfo.push(`${backupData.topics.length} 个对话话题`);
-                        if (backupData.assistants) contentInfo.push(`${backupData.assistants.length} 个助手`);
-                        if (backupData.settings) {
-                          if (isNewFormat) {
-                            contentInfo.push('完整应用设置');
-                          } else {
-                            contentInfo.push('模型供应商设置');
-                          }
-                        }
-                        
-                        showMessage(`检测到${formatInfo}，包含: ${contentInfo.join('、')}。正在导入...`, 'info');
-                        
-                        // 保存到备份目录
-                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                        const fileName = `AetherLink_Backup_Imported_${timestamp}.json`;
-                        const path = `${backupLocation}/${fileName}`;
-                        
-                        // 写入文件
-                        await Filesystem.writeFile({
-                          path,
-                          data: content,
-                          directory: backupStorageType === 'external' ? Directory.External : Directory.Documents,
-                          recursive: true,
-                          encoding: Encoding.UTF8
-                        });
-                        
-                        showMessage('备份导入成功', 'success');
-                        loadBackups(); // 刷新列表
-                      } catch (parseError) {
-                        console.error('JSON解析失败:', parseError);
-                        showMessage('无效的备份文件格式: ' + (parseError as Error).message, 'error');
-                      }
-                    } catch (error) {
-                      console.error('导入备份失败:', error);
-                      showMessage('导入备份失败: ' + (error as Error).message, 'error');
-                    } finally {
-                      setIsLoading(false);
-                    }
-                  };
-                  
-                  reader.onerror = () => {
-                    showMessage('读取文件失败', 'error');
-                    setIsLoading(false);
-                  };
-                  
-                  reader.readAsText(file);
-                } catch (error) {
-                  console.error('导入备份失败:', error);
-                  showMessage('导入备份失败: ' + (error as Error).message, 'error');
-                  setIsLoading(false);
-                }
-                
-                // 清空文件选择，允许重复选择同一文件
-                e.target.value = '';
-              }}
-            />
-          </Box>
-        </Paper>
-
-        {backups.length > 0 ? (
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              可用备份
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            
-            <List>
-              {backups.map((backup, index) => (
-                <React.Fragment key={backup.path}>
-                  <ListItem
-                    sx={{
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      py: 2
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        width: '100%',
-                        alignItems: 'center',
-                        mb: 1
-                      }}
-                    >
-                      <ListItemIcon sx={{ minWidth: 40 }}>
-                        <RestoreIcon />
-                      </ListItemIcon>
-                      <ListItemText 
-                        primary={backup.name.replace('AetherLink_Backup_', '').replace('.json', '')} 
-                        secondary={formatDate(backup.date)}
-                        primaryTypographyProps={{ 
-                          style: { wordBreak: 'break-word' } 
-                        }}
-                        sx={{ mr: 1 }}
-                      />
-                    </Box>
+              <input
+                id="import-backup"
+                type="file"
+                accept=".json"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  try {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
                     
-                    <Box
+                    setIsLoading(true);
+                    
+                    // 读取文件内容
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                      try {
+                        const content = event.target?.result as string;
+                        
+                        // 创建备份目录
+                        await ensureBackupDirectory();
+                        
+                        // 验证JSON格式
+                        try {
+                          const backupData = JSON.parse(content);
+                          // 检查是否为新格式备份
+                          const isNewFormat = backupData.appInfo && backupData.appInfo.backupVersion >= 2;
+                          
+                          // 验证基本数据结构，至少应该有topics、assistants或settings字段
+                          if (!backupData.topics && !backupData.assistants && !backupData.settings) {
+                            showMessage('无效的备份文件格式：缺少必要的数据字段', 'error');
+                            return;
+                          }
+                          
+                          // 提示用户备份文件的格式类型和内容
+                          let formatInfo = isNewFormat ? '完整备份 (v2)' : '基础备份 (v1)';
+                          let contentInfo = [];
+                          
+                          if (backupData.topics) contentInfo.push(`${backupData.topics.length} 个对话话题`);
+                          if (backupData.assistants) contentInfo.push(`${backupData.assistants.length} 个助手`);
+                          if (backupData.settings) {
+                            if (isNewFormat) {
+                              contentInfo.push('完整应用设置');
+                            } else {
+                              contentInfo.push('模型供应商设置');
+                            }
+                          }
+                          
+                          showMessage(`检测到${formatInfo}，包含: ${contentInfo.join('、')}。正在导入...`, 'info');
+                          
+                          // 保存到备份目录
+                          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                          const fileName = `AetherLink_Backup_Imported_${timestamp}.json`;
+                          const path = `${backupLocation}/${fileName}`;
+                          
+                          // 写入文件
+                          await Filesystem.writeFile({
+                            path,
+                            data: content,
+                            directory: backupStorageType === 'external' ? Directory.External : Directory.Documents,
+                            recursive: true,
+                            encoding: Encoding.UTF8
+                          });
+                          
+                          showMessage('备份导入成功', 'success');
+                          loadBackups(); // 刷新列表
+                        } catch (parseError) {
+                          console.error('JSON解析失败:', parseError);
+                          showMessage('无效的备份文件格式: ' + (parseError as Error).message, 'error');
+                        }
+                      } catch (error) {
+                        console.error('导入备份失败:', error);
+                        showMessage('导入备份失败: ' + (error as Error).message, 'error');
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    };
+                    
+                    reader.onerror = () => {
+                      showMessage('读取文件失败', 'error');
+                      setIsLoading(false);
+                    };
+                    
+                    reader.readAsText(file);
+                  } catch (error) {
+                    console.error('导入备份失败:', error);
+                    showMessage('导入备份失败: ' + (error as Error).message, 'error');
+                    setIsLoading(false);
+                  }
+                  
+                  // 清空文件选择，允许重复选择同一文件
+                  e.target.value = '';
+                }}
+              />
+            </Box>
+          </Paper>
+
+          {backups.length > 0 ? (
+            <Paper
+              elevation={0}
+              sx={{
+                p: 3,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <Avatar
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    bgcolor: '#9333EA',
+                    fontSize: '1.5rem',
+                    mr: 2,
+                    boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+                  }}
+                >
+                  <CloudSyncIcon />
+                </Avatar>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 600,
+                    backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                  }}
+                >
+                  可用备份
+                </Typography>
+              </Box>
+              <Divider sx={{ mb: 3 }} />
+              
+              <List>
+                {backups.map((backup) => (
+                  <React.Fragment key={backup.path}>
+                    <Paper
+                      elevation={0}
                       sx={{
-                        display: 'flex',
-                        width: '100%',
-                        justifyContent: 'flex-end',
-                        gap: 1
+                        mb: 2,
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        overflow: 'hidden',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.05)',
+                          borderColor: (theme) => alpha(theme.palette.primary.main, 0.3),
+                        }
                       }}
                     >
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={() => restoreBackup(backup.path, backup.isExternal)}
-                        disabled={isLoading}
-                        sx={{ minWidth: '80px' }}
+                      <ListItem
+                        sx={{
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          p: 2
+                        }}
                       >
-                        恢复
-                      </Button>
-                      
-                      <Tooltip title="查看备份详情并复制路径">
-                        <IconButton
-                          size="small"
-                          aria-label="info"
-                          onClick={async () => {
-                            const success = await copyToClipboard(backup.path);
-                            showMessage(`备份路径: ${backup.path}${success ? ' (已复制到剪贴板)' : ''}`, 
-                              success ? 'success' : 'info');
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            width: '100%',
+                            alignItems: 'center',
+                            mb: 1.5
                           }}
                         >
-                          <InfoIcon />
-                        </IconButton>
-                      </Tooltip>
-                      
-                      <Tooltip title="导出备份到下载文件夹">
-                        <IconButton 
-                          size="small"
-                          aria-label="export"
-                          onClick={() => exportBackup(backup.path, backup.name, backup.isExternal)}
-                          disabled={isLoading}
+                          <ListItemIcon sx={{ minWidth: 40 }}>
+                            <RestoreIcon sx={{ color: '#9333EA' }} />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary={
+                              <Typography variant="subtitle2" fontWeight={600} sx={{ wordBreak: 'break-word' }}>
+                                {backup.name.replace('AetherLink_Backup_', '').replace('.json', '')}
+                              </Typography>
+                            }
+                            secondary={
+                              <Typography variant="caption" color="text.secondary">
+                                {formatDate(backup.date)}
+                              </Typography>
+                            }
+                            sx={{ mr: 1 }}
+                          />
+                        </Box>
+                        
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            width: '100%',
+                            justifyContent: 'flex-end',
+                            gap: 1
+                          }}
                         >
-                          <FileDownloadIcon />
-                        </IconButton>
-                      </Tooltip>
-                      
-                      <Tooltip title="删除备份">
-                        <IconButton 
-                          size="small"
-                          aria-label="delete"
-                          onClick={() => deleteBackup(backup.path, backup.isExternal)}
-                          disabled={isLoading}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </ListItem>
-                  {index < backups.length - 1 && <Divider component="li" />}
-                </React.Fragment>
-              ))}
-            </List>
-          </Paper>
-        ) : (
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="body1" color="text.secondary">
-              {isLoading ? '加载备份中...' : '暂无备份'}
-            </Typography>
-          </Paper>
-        )}
-      </Container>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => restoreBackup(backup.path, backup.isExternal)}
+                            disabled={isLoading}
+                            sx={{ 
+                              minWidth: '80px',
+                              borderRadius: 1.5,
+                              borderColor: (theme) => alpha(theme.palette.primary.main, 0.5),
+                              color: 'primary.main',
+                              '&:hover': {
+                                borderColor: 'primary.main',
+                                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                              },
+                            }}
+                          >
+                            恢复
+                          </Button>
+                          
+                          <Tooltip title="查看备份详情并复制路径">
+                            <IconButton
+                              size="small"
+                              aria-label="info"
+                              onClick={async () => {
+                                const success = await copyToClipboard(backup.path);
+                                showMessage(`备份路径: ${backup.path}${success ? ' (已复制到剪贴板)' : ''}`, 
+                                  success ? 'success' : 'info');
+                              }}
+                              sx={{
+                                bgcolor: (theme) => alpha(theme.palette.info.main, 0.1),
+                                '&:hover': {
+                                  bgcolor: (theme) => alpha(theme.palette.info.main, 0.2),
+                                }
+                              }}
+                            >
+                              <InfoIcon color="info" fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          
+                          <Tooltip title="导出备份到下载文件夹">
+                            <IconButton 
+                              size="small"
+                              aria-label="export"
+                              onClick={() => exportBackup(backup.path, backup.name, backup.isExternal)}
+                              disabled={isLoading}
+                              sx={{
+                                bgcolor: (theme) => alpha(theme.palette.success.main, 0.1),
+                                '&:hover': {
+                                  bgcolor: (theme) => alpha(theme.palette.success.main, 0.2),
+                                }
+                              }}
+                            >
+                              <FileDownloadIcon color="success" fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          
+                          <Tooltip title="删除备份">
+                            <IconButton 
+                              size="small"
+                              aria-label="delete"
+                              onClick={() => deleteBackup(backup.path, backup.isExternal)}
+                              disabled={isLoading}
+                              sx={{
+                                bgcolor: (theme) => alpha(theme.palette.error.main, 0.1),
+                                '&:hover': {
+                                  bgcolor: (theme) => alpha(theme.palette.error.main, 0.2),
+                                }
+                              }}
+                            >
+                              <DeleteIcon color="error" fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </ListItem>
+                    </Paper>
+                  </React.Fragment>
+                ))}
+              </List>
+            </Paper>
+          ) : (
+            <Paper 
+              elevation={0}
+              sx={{ 
+                p: 3, 
+                textAlign: 'center',
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)', 
+              }}
+            >
+              <Typography variant="body1" color="text.secondary">
+                {isLoading ? '加载备份中...' : '暂无备份'}
+              </Typography>
+            </Paper>
+          )}
+        </Container>
+      </Box>
 
       {/* 备份设置对话框 */}
-      <Dialog open={openDialog} onClose={closeBackupSettings}>
-        <DialogTitle>备份设置</DialogTitle>
+      <Dialog 
+        open={openDialog} 
+        onClose={closeBackupSettings}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          }
+        }}
+      >
+        <DialogTitle sx={{
+          fontWeight: 600,
+          backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
+          backgroundClip: 'text',
+          color: 'transparent',
+          pb: 1
+        }}>备份设置</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
             选择备份文件的存储位置和文件夹名称
@@ -1082,11 +1335,33 @@ const DataSettingsPage: React.FC = () => {
                 ? '将在内部存储根目录创建此文件夹' 
                 : '将在Documents/AetherLink/下创建此文件夹'
             }
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+              }
+            }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={closeBackupSettings}>取消</Button>
-          <Button onClick={saveBackupSettings} color="primary">保存</Button>
+        <DialogActions sx={{ p: 2, pb: 3 }}>
+          <Button 
+            onClick={closeBackupSettings}
+            sx={{ borderRadius: 2 }}
+          >
+            取消
+          </Button>
+          <Button 
+            onClick={saveBackupSettings} 
+            sx={{ 
+              borderRadius: 2,
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
+              color: 'primary.main',
+              '&:hover': {
+                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.2),
+              }, 
+            }}
+          >
+            保存
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1099,7 +1374,12 @@ const DataSettingsPage: React.FC = () => {
         <Alert 
           onClose={handleCloseSnackbar} 
           severity={snackbar.severity} 
-          sx={{ width: '100%' }}
+          sx={{ 
+            width: '100%',
+            borderRadius: 2,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          }}
+          variant="filled"
         >
           {snackbar.message}
         </Alert>

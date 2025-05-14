@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Box } from '@mui/material';
+import { Typography, Box, useTheme } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -12,6 +12,7 @@ interface MarkdownRendererProps {
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+  const theme = useTheme();
   // 设置数学公式渲染器的状态
   const [mathRenderer, setMathRenderer] = useState<MathRendererType>('KaTeX');
 
@@ -94,6 +95,26 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
     td: {
       border: '1px solid #e0e0e0',
       padding: '8px'
+    },
+    // 链接样式 - 根据主题自动适应颜色
+    a: {
+      color: theme.palette.mode === 'dark' 
+        ? theme.palette.primary.light  // 深色模式下更亮的蓝色
+        : theme.palette.primary.main,  // 浅色模式下标准蓝色
+      textDecoration: 'none',
+      borderBottom: `1px solid ${theme.palette.mode === 'dark' 
+        ? 'rgba(144, 202, 249, 0.5)' 
+        : 'rgba(25, 118, 210, 0.5)'}`,
+      paddingBottom: '1px',
+      transition: 'color 0.2s, border-color 0.2s',
+      '&:hover': {
+        color: theme.palette.mode === 'dark'
+          ? theme.palette.primary.light
+          : theme.palette.primary.dark,
+        borderBottomColor: theme.palette.mode === 'dark'
+          ? theme.palette.primary.light
+          : theme.palette.primary.dark,
+      }
     }
   };
 
@@ -229,6 +250,31 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             }
             return <p>{children}</p>;
           },
+          // 链接样式
+          a: ({href, children}) => (
+            <a 
+              href={href} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                color: theme.palette.mode === 'dark' 
+                  ? '#90caf9' // 深色模式下的柔和蓝色
+                  : '#1976d2', // 浅色模式下的标准蓝色
+                textDecoration: 'none',
+                borderBottom: `1px solid ${theme.palette.mode === 'dark' 
+                  ? 'rgba(144, 202, 249, 0.5)' 
+                  : 'rgba(25, 118, 210, 0.5)'}`,
+                paddingBottom: '1px',
+                transition: 'color 0.2s, border-color 0.2s',
+              }}
+              onClick={(e) => {
+                // 防止链接点击事件冒泡到消息组件
+                e.stopPropagation();
+              }}
+            >
+              {children}
+            </a>
+          ),
           // 增强标题样式
           h1: ({children}) => (
             <Typography 

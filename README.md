@@ -155,8 +155,8 @@ AetherLink/
 1. **克隆仓库**
 
 ```bash
-git clone https://github.com/1600822305/CS-AetherLink.git
-cd CS-AetherLink
+git clone https://github.com/1600822305/AetherLink.git
+cd AetherLink
 ```
 
 2. **安装依赖**
@@ -241,6 +241,32 @@ npx cap open android
 2. 从Android Studio菜单选择 `Build` > `Build Bundle(s) / APK(s)` > `Build APK(s)`
 
 3. 构建完成后，APK将保存在 `android/app/build/outputs/apk/debug/` 目录
+
+### 自动构建与持续集成
+
+AetherLink配置了GitHub Actions工作流，可以自动构建和发布Android APK:
+
+#### 调试构建
+
+每当代码推送到主分支或创建Pull Request时，会自动触发调试构建:
+
+- 工作流会构建Web应用并将其打包为Android APK
+- 构建完成后，可以在GitHub Actions的构建作业中下载APK
+- 也可以手动在GitHub界面中触发构建
+
+#### 发布构建
+
+当创建新的版本标签（如`v1.0.0`）时，会自动触发发布构建:
+
+- 工作流会构建Web应用并使用标准调试密钥创建APK
+- 构建完成后，会自动创建GitHub Release并上传APK
+- 所有构建都使用Android标准调试密钥（兼容当前测试版本）
+- 发布的APK标记为预发布(prerelease)版本
+
+#### 注意事项
+
+- 当前配置适用于测试阶段，使用调试密钥保持与现有版本兼容
+- 未来正式发布时，请提前通知用户使用备份功能保存数据，并迁移到新版本
 
 ### 发布到应用商店
 
@@ -417,199 +443,4 @@ useEffect(() => {
 
 这种方法不仅解决了当前的输入问题，还提高了组件的可维护性和性能。通过使用Web标准元素而非跨平台包装组件，我们避免了额外的抽象层带来的潜在问题，同时确保了更好的平台兼容性。
 
-## 文件夹结构说明
 
-### 核心文件夹
-
-- **android/**: 包含Android平台相关的代码和配置，由Capacitor生成和管理
-  - **app/src/main/assets/**: 存放Web资源和配置文件，包括capacitor.config.json
-  - **app/src/main/java/**: 包含Android原生代码，主要是Capacitor插件和应用入口
-  - **app/src/main/res/**: 包含Android资源文件，如图标、启动屏幕和布局
-- **public/**: 静态资源文件和公共资产，不经过Webpack处理
-  - **assets/**: 存放图标、图片等公共资源，可直接通过URL访问
-- **src/**: 包含应用的主要源代码
-  - **components/**: 可复用UI组件，按功能分组
-    - **TopicManagement/**: 话题管理组件，包含分组和拖拽功能
-    - **MessageList/**: 消息列表容器组件，管理消息流和滚动
-    - **ChatInput/**: 聊天输入框组件，处理消息输入和发送
-  - **pages/**: 页面级组件，每个主要页面一个文件夹
-    - **ChatPage/**: 聊天主界面，应用的核心页面
-    - **Settings/**: 设置相关页面，包含多个子页面
-    - **WelcomePage/**: 欢迎/引导页面，首次使用时显示
-  - **shared/**: 共享业务逻辑和数据处理
-    - **api/**: 各AI提供商的API集成，包括OpenAI、Claude、Gemini等
-    - **services/**: 核心服务实现，如API调用、存储、TTS等
-    - **store/**: Redux状态管理，包含消息、设置等状态切片
-    - **types/**: TypeScript类型定义，定义应用中使用的所有类型
-    - **utils/**: 工具函数，如ID生成、格式化、Token计算等
-
-### 主要功能模块
-
-- **聊天系统**:
-  - 核心实现: `src/pages/ChatPage`和`src/components/MessageList`
-  - 功能: 消息发送、接收、流式响应、历史记录管理
-  - 关键组件: `MessageItem`、`ChatInput`、`MessageList`
-  - 状态管理: `messagesSlice.ts`处理消息状态
-
-- **模型管理**:
-  - 核心实现: `src/pages/Settings/ModelProviderSettings`和`src/shared/api`
-  - 功能: 模型配置、API密钥管理、自动获取模型列表
-  - 关键服务: `APIService.ts`处理模型获取和API调用
-  - 状态管理: `settingsSlice.ts`存储模型配置
-
-- **主题管理**:
-  - 核心实现: `src/components/TopicManagement`
-  - 功能: 创建、编辑、删除聊天主题，分组管理
-  - 关键组件: `TopicTab`、`GroupComponents`、`Sidebar`
-  - 状态管理: `groupsSlice.ts`处理分组状态
-
-- **语音合成**:
-  - 核心实现: `src/shared/services/TTSService.ts`
-  - 功能: 文本到语音转换，支持硅基流动TTS API和Web Speech API
-  - 配置页面: `src/pages/Settings/VoiceSettings`
-  - 使用方式: 消息操作按钮中的语音播放功能
-
-- **思考过程**:
-  - 核心实现: `src/shared/services/ThinkingService.ts`
-  - 功能: 处理和展示AI的思考过程，主要支持Grok模型
-  - 展示组件: `src/components/message/ThinkingProcess`
-  - 数据结构: 在Message类型中通过reasoning字段存储
-
-- **存储系统**:
-  - 核心实现: `src/shared/services/storageService.ts`
-  - 功能: 数据持久化，支持IndexedDB和localStorage
-  - 数据备份: `src/pages/Settings/DataSettings`提供备份和恢复功能
-  - 关键API: 提供保存和加载消息、设置、助手等数据的方法
-
-- **助手系统**:
-  - 核心实现: `src/shared/services/AssistantService.ts`
-  - 功能: 管理预设和自定义AI助手
-  - 关键组件: `src/components/TopicManagement/AssistantTab.tsx`
-  - 类型定义: `src/shared/types/Assistant.ts`
-
-- **图片上传**:
-  - 核心实现: `src/shared/services/ImageUploadService.ts`
-  - 功能: 处理图片选择、压缩和上传，支持多模态对话
-  - 使用方式: 聊天输入框中的图片上传按钮
-  - 相关API: 多模态模型API集成
-
-### 构建和配置文件
-
-- **capacitor.config.ts**: Capacitor移动应用配置，定义应用ID、插件配置等
-  - 配置Android平台特定设置，如状态栏颜色、键盘行为等
-  - 定义Web视图行为和安全设置
-  - 配置Capacitor插件，如文件系统、相机、状态栏等
-
-- **vite.config.ts**: Vite构建工具配置，包含优化和分包策略
-  - 定义构建优化选项，如代码分割、压缩设置
-  - 配置分包策略，将React、MUI等库拆分到单独的chunk
-  - 设置资源处理和输出路径
-
-- **tsconfig.*.json**: TypeScript编译配置
-  - tsconfig.json: 引用配置，指向其他配置文件
-  - tsconfig.app.json: 应用代码TypeScript配置
-  - tsconfig.node.json: Node环境TypeScript配置
-
-- **package.json**: 项目依赖和脚本配置
-  - 定义开发、构建、预览等脚本命令
-  - 列出项目依赖，包括React、Capacitor、MUI等
-  - 配置项目元数据，如名称、版本等
-
-## 核心类型定义和数据流
-
-### 核心类型
-
-- **Message**: 消息类型，定义在`src/shared/types/index.ts`
-  ```typescript
-  export interface Message {
-    id: string;                 // 消息唯一ID
-    content: MessageContent;    // 消息内容（文本或多模态）
-    role: 'user' | 'assistant' | 'system'; // 消息角色
-    timestamp: string;          // 时间戳
-    status?: 'pending' | 'complete' | 'error'; // 消息状态
-    modelId?: string;           // 使用的模型ID
-    reasoning?: string;         // 存储模型的思考过程
-    reasoningTime?: number;     // 思考过程耗时
-    version?: number;           // 消息版本号
-    parentMessageId?: string;   // 关联的用户消息ID
-    alternateVersions?: string[]; // 同一回复的其他版本ID数组
-    isCurrentVersion?: boolean; // 是否是当前显示的版本
-    images?: SiliconFlowImageFormat[]; // 图片内容数组
-  }
-  ```
-
-- **Model**: 模型类型，定义在`src/shared/types/index.ts`
-  ```typescript
-  export interface Model {
-    id: string;                 // 模型唯一ID
-    name: string;               // 模型名称
-    provider: string;           // 提供商名称
-    description?: string;       // 模型描述
-    providerType?: string;      // 提供商的实际类型
-    apiKey?: string;            // API密钥
-    baseUrl?: string;           // 基础URL
-    maxTokens?: number;         // 最大token数
-    temperature?: number;       // 温度参数
-    enabled?: boolean;          // 是否启用
-    isDefault?: boolean;        // 是否为默认模型
-    iconUrl?: string;           // 模型图标URL
-    presetModelId?: string;     // 预设模型ID
-    group?: string;             // 模型分组
-    capabilities?: {            // 模型能力
-      multimodal?: boolean;     // 是否支持多模态
-      imageGeneration?: boolean; // 是否支持图像生成
-    };
-    modelTypes?: ModelType[];   // 模型类型
-  }
-  ```
-
-- **ChatTopic**: 聊天主题类型，在Redux状态中使用
-  ```typescript
-  export interface ChatTopic {
-    id: string;                 // 主题唯一ID
-    title: string;              // 主题标题
-    lastMessageTime: string;    // 最后消息时间
-    messages: Message[];        // 消息数组
-    systemPrompt?: string;      // 系统提示词
-    assistantId?: string;       // 关联的助手ID
-  }
-  ```
-
-- **Group**: 分组类型，用于话题和助手分组
-  ```typescript
-  export interface Group {
-    id: string;                 // 分组唯一ID
-    name: string;               // 分组名称
-    type: 'assistant' | 'topic'; // 分组类型
-    items: string[];            // 存储item IDs
-    order: number;              // 显示顺序
-    expanded: boolean;          // 是否展开
-  }
-  ```
-
-### 数据流
-
-1. **消息流程**:
-   - 用户在`ChatInput`组件中输入消息
-   - 通过Redux action `addMessage`将消息添加到当前主题
-   - 消息通过`APIService`发送到AI模型
-   - 接收到的响应通过Redux action `updateMessage`更新到状态
-   - `MessageList`组件监听状态变化并渲染新消息
-
-2. **模型管理流程**:
-   - 用户在设置页面配置模型提供商和API密钥
-   - 通过`APIService.fetchModels`获取可用模型列表
-   - 模型信息通过Redux action `setModels`保存到状态
-   - 用户可以在聊天界面通过`ModelSelector`组件选择当前使用的模型
-
-3. **存储流程**:
-   - 应用状态通过Redux中间件自动保存到`localStorage`
-   - 大型数据（如消息历史）通过`storageService`保存到IndexedDB
-   - 应用启动时，通过`loadTopics`和`loadSettings`从存储中恢复状态
-   - 用户可以在数据设置页面手动备份和恢复数据
-
-4. **主题管理流程**:
-   - 用户通过侧边栏创建、选择和管理聊天主题
-   - 主题可以通过拖放方式组织到分组中
-   - 分组状态通过`groupsSlice`管理
-   - 当前选中的主题通过`currentTopicId`在Redux中跟踪

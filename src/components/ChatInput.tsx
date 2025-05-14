@@ -7,6 +7,7 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import ImageUploadService from '../shared/services/ImageUploadService';
 import type { ImageContent, SiliconFlowImageFormat } from '../shared/types';
 import ImageIcon from '@mui/icons-material/Image';
+import SearchIcon from '@mui/icons-material/Search';
 
 interface ChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[]) => void;
@@ -14,6 +15,7 @@ interface ChatInputProps {
   allowConsecutiveMessages?: boolean; // 允许连续发送消息，即使AI尚未回复
   imageGenerationMode?: boolean; // 是否处于图像生成模式
   onSendImagePrompt?: (prompt: string) => void; // 发送图像生成提示词的回调
+  webSearchActive?: boolean; // 是否处于网络搜索模式
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({ 
@@ -21,7 +23,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
   isLoading = false,
   allowConsecutiveMessages = true, // 默认允许连续发送
   imageGenerationMode = false, // 默认不是图像生成模式
-  onSendImagePrompt
+  onSendImagePrompt,
+  webSearchActive = false // 默认不是网络搜索模式
 }) => {
   const [message, setMessage] = useState('');
   const [images, setImages] = useState<ImageContent[]>([]);
@@ -269,7 +272,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               minHeight: '24px',
               maxHeight: '80px'
             }}
-            placeholder={imageGenerationMode ? "输入图像生成提示词..." : "和ai助手说点什么"}
+            placeholder={imageGenerationMode ? "输入图像生成提示词..." : webSearchActive ? "输入网络搜索内容..." : "和ai助手说点什么"}
             value={message}
             onChange={handleChange}
             onKeyPress={handleKeyPress}
@@ -306,7 +309,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           disabled={!canSendMessage() || isLoading && !allowConsecutiveMessages}
             size="medium"
             style={{
-            color: !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? '#ccc' : imageGenerationMode ? '#9C27B0' : '#09bb07',
+            color: !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? '#ccc' : imageGenerationMode ? '#9C27B0' : webSearchActive ? '#3b82f6' : '#09bb07',
             padding: '8px'
               }}
             >
@@ -315,6 +318,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
           ) : imageGenerationMode ? (
             <Tooltip title="生成图像">
               <ImageIcon />
+            </Tooltip>
+          ) : webSearchActive ? (
+            <Tooltip title="搜索网络">
+              <SearchIcon />
             </Tooltip>
           ) : (
             <SendIcon />

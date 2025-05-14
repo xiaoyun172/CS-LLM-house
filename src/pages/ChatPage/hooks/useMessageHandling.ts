@@ -13,7 +13,7 @@ import {
 } from '../../../shared/store/messagesSlice';
 import { createMessage } from '../../../shared/utils';
 import { sendChatRequest } from '../../../shared/api';
-import type { ChatTopic, Message, Model, SiliconFlowImageFormat } from '../../../shared/types';
+import type { ChatTopic, Message, Model, SiliconFlowImageFormat, WebSearchResult } from '../../../shared/types';
 import { isThinkingSupported } from '../../../shared/services/ThinkingService';
 
 export function useMessageHandling(selectedModel: Model | null, currentTopic: ChatTopic | null) {
@@ -148,6 +148,44 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
       console.log(`API请求消息过滤: 原始消息数=${allMessages.length}, 过滤后消息数=${filteredMessages.length}`);
       
       const messages = [...filteredMessages, userMessage];
+      
+      // 检查是否有网络搜索结果需要纳入上下文
+      const webSearchSettings = store.getState().webSearch;
+      const shouldIncludeWebSearchResults = webSearchSettings?.includeInContext || false;
+      
+      let processedMessages = [...messages];
+      
+      if (shouldIncludeWebSearchResults) {
+        // 寻找最近的网络搜索结果
+        const searchResults: WebSearchResult[] = [];
+        
+        // 从近到远遍历消息，寻找带有搜索结果的消息
+        for (let i = filteredMessages.length - 1; i >= 0; i--) {
+          const msg = filteredMessages[i];
+          if (msg.role === 'assistant' && msg.webSearchResults && msg.webSearchResults.length > 0) {
+            searchResults.push(...msg.webSearchResults);
+            break; // 只使用最近一次的搜索结果
+          }
+        }
+        
+        // 如果找到搜索结果，将其添加到上下文
+        if (searchResults.length > 0) {
+          console.log(`找到${searchResults.length}条网络搜索结果，纳入上下文`);
+          
+          // 创建一个系统消息，包含搜索结果的摘要
+          const searchResultsInfo = {
+            role: 'system' as const,
+            content: `以下是用户最近搜索的相关信息，请在回复中考虑这些内容:\n\n${
+              searchResults.map((result, index) => 
+                `[${index + 1}] 标题: ${result.title}\n来源: ${result.url}\n摘要: ${result.snippet}\n`
+              ).join('\n')
+            }`
+          };
+          
+          // 将搜索结果系统消息添加到消息列表中
+          processedMessages = [searchResultsInfo as any, ...processedMessages];
+        }
+      }
 
       // 获取系统提示词 - 优先使用话题的提示词，其次使用当前助手的系统提示词
       let systemPrompt: string | undefined;
@@ -187,7 +225,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
       }
 
       // 如果找到系统提示词，将其作为系统消息添加到请求中
-      const requestMessages = [...messages];
+      const requestMessages = [...processedMessages];
 
       // 添加系统消息到请求的开始，如果有的话
       if (systemPrompt) {
@@ -447,12 +485,50 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         return true;
       });
       
+      // 检查是否有网络搜索结果需要纳入上下文
+      const webSearchSettings = store.getState().webSearch;
+      const shouldIncludeWebSearchResults = webSearchSettings?.includeInContext || false;
+      
+      let processedMessages = [...filteredMessages];
+      
+      if (shouldIncludeWebSearchResults) {
+        // 寻找最近的网络搜索结果
+        const searchResults: WebSearchResult[] = [];
+        
+        // 从近到远遍历消息，寻找带有搜索结果的消息
+        for (let i = filteredMessages.length - 1; i >= 0; i--) {
+          const msg = filteredMessages[i];
+          if (msg.role === 'assistant' && msg.webSearchResults && msg.webSearchResults.length > 0) {
+            searchResults.push(...msg.webSearchResults);
+            break; // 只使用最近一次的搜索结果
+          }
+        }
+        
+        // 如果找到搜索结果，将其添加到上下文
+        if (searchResults.length > 0) {
+          console.log(`重生成消息：找到${searchResults.length}条网络搜索结果，纳入上下文`);
+          
+          // 创建一个系统消息，包含搜索结果的摘要
+          const searchResultsInfo = {
+            role: 'system' as const,
+            content: `以下是用户最近搜索的相关信息，请在回复中考虑这些内容:\n\n${
+              searchResults.map((result, index) => 
+                `[${index + 1}] 标题: ${result.title}\n来源: ${result.url}\n摘要: ${result.snippet}\n`
+              ).join('\n')
+            }`
+          };
+          
+          // 创建可用于提交的请求消息数组
+          processedMessages = [searchResultsInfo as any, ...processedMessages];
+        }
+      }
+      
       // 记录过滤后的消息情况，以便调试
-      console.log(`重新生成消息的API请求消息过滤: 原始消息数=${allMessages.length}, 过滤后消息数=${filteredMessages.length}`);
+      console.log(`重新生成消息的API请求消息过滤: 原始消息数=${allMessages.length}, 过滤后消息数=${processedMessages.length}`);
+
+      const requestMessages = [...processedMessages];
 
       // 添加系统消息到请求的开始，如果有的话
-      const requestMessages = [...filteredMessages];
-      
       if (systemPrompt) {
         // 为API请求创建一个简化的系统消息对象
         requestMessages.unshift({

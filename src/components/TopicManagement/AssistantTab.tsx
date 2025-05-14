@@ -175,20 +175,15 @@ export default function AssistantTab({
   const handleAddAssistant = () => {
     if (!selectedAssistantId) return;
     
-    // 检查是否已经添加过
-    const exists = userAssistants.some(assistant => assistant.id === selectedAssistantId);
-    if (exists) {
-      handleCloseAssistantDialog();
-      return;
-    }
-    
-    // 获取选择的助手
+    // 获取选择的助手模板
     const selected = predefinedAssistants.find(assistant => assistant.id === selectedAssistantId);
     if (!selected) return;
     
-    // 添加到用户助手列表
+    // 创建一个带有新ID的助手实例
     const newAssistant = {
       ...selected,
+      // 基于原始ID和时间戳生成新的唯一ID
+      id: `${selected.id}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
       topicIds: []
     };
     
@@ -263,11 +258,29 @@ export default function AssistantTab({
   // 处理清空话题
   const handleClearTopics = () => {
     if (selectedMenuAssistant && onUpdateAssistant) {
+      // 先保存当前助手是否是选中的助手
+      const isCurrentSelectedAssistant = currentAssistant && currentAssistant.id === selectedMenuAssistant.id;
+      
+      // 清空话题
       const updatedAssistant: Assistant = {
         ...selectedMenuAssistant,
         topicIds: []
       };
       onUpdateAssistant(updatedAssistant);
+      
+      // 如果是当前选中的助手，自动创建一个新话题
+      // 通过自定义事件通知需要创建新话题
+      if (isCurrentSelectedAssistant) {
+        console.log('清空了当前助手的话题，触发创建新话题事件');
+        
+        // 使用自定义事件触发创建新话题
+        const event = new CustomEvent('assistantNeedsTopic', {
+          detail: {
+            assistantId: selectedMenuAssistant.id
+          }
+        });
+        window.dispatchEvent(event);
+      }
     }
     handleCloseAssistantMenu();
   };

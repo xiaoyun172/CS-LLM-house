@@ -312,66 +312,6 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     return false;
   };
 
-  // 渲染版本指示器的通用函数
-  const renderVersionIndicator = (versionNumber: number, totalVersions: number) => (
-    <>
-      <Chip
-        size="small"
-        label={`版本 ${versionNumber}/${totalVersions}`}
-        variant="filled"
-        color="info"
-        onClick={(e) => setVersionAnchorEl(e.currentTarget)}
-        icon={<HistoryIcon style={{ fontSize: 12 }} />}
-        sx={{
-          position: 'absolute',
-          top: -18,
-          right: 15,
-          height: 20,
-          paddingLeft: '2px',
-          paddingRight: '4px',
-          fontSize: '10px',
-          fontWeight: 'medium',
-          opacity: 0.95,
-          zIndex: 10,
-          backgroundColor: 'rgba(79, 146, 255, 0.9)',
-          color: 'white',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-          borderRadius: '10px',
-          border: 'none',
-          '&:hover': {
-            opacity: 1,
-            cursor: 'pointer',
-            backgroundColor: 'rgba(64, 132, 244, 1)'
-          },
-          '& .MuiChip-icon': {
-            ml: 0.3,
-            mr: -0.3,
-            fontSize: '10px',
-            color: 'white'
-          },
-          '& .MuiChip-label': {
-            padding: '0 4px',
-            lineHeight: 1.2
-          }
-        }}
-      />
-      {/* 添加小箭头指向气泡 */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: -3,
-          right: 30,
-          width: 0,
-          height: 0,
-          borderLeft: '4px solid transparent',
-          borderRight: '4px solid transparent',
-          borderTop: '4px solid rgba(79, 146, 255, 0.9)',
-          zIndex: 9
-        }}
-      />
-    </>
-  );
-
   // 如果是用户消息，不显示TTS按钮
   if (isUser) {
     return (
@@ -426,18 +366,24 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     );
   }
 
+  // 修改这里 - 创建功能按钮区域
   return (
     <>
-      {/* 版本指示器 */}
-      {shouldShowVersionIndicator() && (
-        <>
-          {renderVersionIndicator(getCurrentVersionNumber(), calculateVersionCount())}
-        </>
-      )}
-
-      {/* 语音播放按钮 - 仅对AI回复显示且TTS功能启用时 */}
-      {enableTTS && (
-        <>
+      {/* 创建一个容器来放置功能按钮，水平排列在气泡上方 */}
+      <Box 
+        sx={{
+          position: 'absolute',
+          top: -18,
+          right: 10,
+          display: 'flex',
+          flexDirection: 'row',
+          gap: '5px',
+          zIndex: 10,
+          pointerEvents: 'auto',
+        }}
+      >
+        {/* 语音播放按钮 - 仅对AI回复显示且TTS功能启用时 */}
+        {enableTTS && (
           <Chip
             size="small"
             label={isPlaying ? "播放中" : "播放"}
@@ -446,16 +392,12 @@ const MessageActions: React.FC<MessageActionsProps> = ({
             onClick={handleTextToSpeech}
             icon={isPlaying ? <VolumeUpIcon style={{ fontSize: 12 }} /> : <VolumeOffIcon style={{ fontSize: 12 }} />}
             sx={{
-              position: 'absolute',
-              top: -18,
-              right: shouldShowVersionIndicator() ? 80 : 15,
-              height: 20,
+              height: 18,
               paddingLeft: '2px',
               paddingRight: '4px',
               fontSize: '10px',
               fontWeight: 'medium',
               opacity: 0.95,
-              zIndex: 10,
               backgroundColor: isPlaying ? 'rgba(76, 175, 80, 0.9)' : 'rgba(79, 146, 255, 0.9)',
               color: 'white',
               boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
@@ -478,23 +420,48 @@ const MessageActions: React.FC<MessageActionsProps> = ({
               }
             }}
           />
-          {/* 添加小箭头指向气泡 */}
-          <Box
+        )}
+
+        {/* 版本指示器 */}
+        {shouldShowVersionIndicator() && (
+          <Chip
+            size="small"
+            label={`版本 ${getCurrentVersionNumber()}/${calculateVersionCount()}`}
+            variant="filled"
+            color="info"
+            onClick={(e) => setVersionAnchorEl(e.currentTarget)}
+            icon={<HistoryIcon style={{ fontSize: 12 }} />}
             sx={{
-              position: 'absolute',
-              top: -3,
-              right: shouldShowVersionIndicator() ? 95 : 30,
-              width: 0,
-              height: 0,
-              borderLeft: '4px solid transparent',
-              borderRight: '4px solid transparent',
-              borderTop: '4px solid',
-              borderTopColor: isPlaying ? 'rgba(76, 175, 80, 0.9)' : 'rgba(79, 146, 255, 0.9)',
-              zIndex: 9
+              height: 18,
+              paddingLeft: '2px',
+              paddingRight: '4px',
+              fontSize: '10px',
+              fontWeight: 'medium',
+              opacity: 0.95,
+              backgroundColor: 'rgba(79, 146, 255, 0.9)',
+              color: 'white',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+              borderRadius: '10px',
+              border: 'none',
+              '&:hover': {
+                opacity: 1,
+                cursor: 'pointer',
+                backgroundColor: 'rgba(64, 132, 244, 1)'
+              },
+              '& .MuiChip-icon': {
+                ml: 0.3,
+                mr: -0.3,
+                fontSize: '10px',
+                color: 'white'
+              },
+              '& .MuiChip-label': {
+                padding: '0 4px',
+                lineHeight: 1.2
+              }
             }}
           />
-        </>
-      )}
+        )}
+      </Box>
 
       {/* 操作按钮 */}
       <IconButton

@@ -56,6 +56,9 @@ export default function TopicTab({
   const [showSearch, setShowSearch] = useState(false);
   const dispatch = useDispatch();
   
+  // 新增：添加删除确认状态，存储正在准备删除的话题ID
+  const [topicPendingDelete, setTopicPendingDelete] = useState<string | null>(null);
+  
   // 话题菜单相关状态
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [contextTopic, setContextTopic] = useState<ChatTopic | null>(null);
@@ -227,9 +230,30 @@ export default function TopicTab({
     handleCloseAddToGroupMenu();
   };
   
+  // 新增：处理话题删除按钮点击
+  const handleDeleteClick = (event: React.MouseEvent, topicId: string) => {
+    event.stopPropagation();
+    
+    if (topicPendingDelete === topicId) {
+      // 如果是第二次点击同一个话题，执行删除
+      onDeleteTopic(topicId, event);
+      setTopicPendingDelete(null); // 重置删除状态
+    } else {
+      // 第一次点击，标记为准备删除状态
+      setTopicPendingDelete(topicId);
+      
+      // 添加5秒后自动重置删除状态的计时器
+      setTimeout(() => {
+        setTopicPendingDelete(current => current === topicId ? null : current);
+      }, 5000);
+    }
+  };
+  
   // 渲染单个话题项
   const renderTopicItem = (topic: ChatTopic, index: number, inGroup: boolean = false) => {
     const isSelected = currentTopic?.id === topic.id;
+    const isPendingDelete = topicPendingDelete === topic.id;
+    
     const lastMessage = topic.messages.length > 0 
       ? new Date(topic.lastMessageTime).toLocaleString('zh-CN', { 
           hour: '2-digit', 
@@ -275,12 +299,27 @@ export default function TopicTab({
                 }}
               />
               
+              {/* 删除图标 */}
+              <IconButton 
+                size="small" 
+                onClick={(e) => handleDeleteClick(e, topic.id)}
+                sx={{ mr: 0.5 }}
+              >
+                <DeleteIcon 
+                  fontSize="small" 
+                  sx={{ 
+                    color: isPendingDelete ? 'error.main' : 'action.disabled',
+                    transition: 'color 0.2s'
+                  }} 
+                />
+              </IconButton>
+              
               <IconButton 
                 size="small" 
                 onClick={(e) => handleRemoveFromGroup(e, topic)}
                 sx={{ mr: -1 }}
               >
-                <DeleteIcon fontSize="small" />
+                <CloseIcon fontSize="small" />
               </IconButton>
             </ListItemButton>
           </DraggableItem>
@@ -315,6 +354,21 @@ export default function TopicTab({
                 noWrap: true
               }}
             />
+            
+            {/* 删除图标 */}
+            <IconButton 
+              size="small" 
+              onClick={(e) => handleDeleteClick(e, topic.id)}
+              sx={{ mr: 0.5 }}
+            >
+              <DeleteIcon 
+                fontSize="small" 
+                sx={{ 
+                  color: isPendingDelete ? 'error.main' : 'action.disabled',
+                  transition: 'color 0.2s'
+                }} 
+              />
+            </IconButton>
             
             <IconButton 
               size="small" 

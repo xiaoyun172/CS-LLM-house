@@ -97,9 +97,8 @@ export class AssistantService {
     try {
       const assistants = this.getUserAssistants();
       
-      // 检查是否已存在相同ID的助手
-      const exists = assistants.some(a => a.id === assistant.id);
-      if (exists) return false;
+      // 移除检查ID是否重复的逻辑，允许添加任何ID的助手
+      console.log(`添加助手: ${assistant.name}, ID: ${assistant.id}`);
       
       // 添加到列表
       const updatedAssistants = [...assistants, assistant];
@@ -183,34 +182,53 @@ export class AssistantService {
    */
   static addTopicToAssistant(assistantId: string, topicId: string): boolean {
     try {
-      const assistants = this.getUserAssistants();
+      console.log(`尝试将话题 ${topicId} 关联到助手 ${assistantId}`);
       
-      // 查找助手
-      const assistantIndex = assistants.findIndex(a => a.id === assistantId);
-      if (assistantIndex === -1) return false;
+      // 从localStorage获取所有助手
+      const assistantsJson = localStorage.getItem(ASSISTANTS_STORAGE_KEY);
+      if (!assistantsJson) {
+        console.error('无法关联话题: 本地存储中未找到助手数据');
+        return false;
+      }
       
-      // 更新助手的话题列表
+      // 解析助手列表
+      const assistants = JSON.parse(assistantsJson);
+      
+      // 查找助手索引
+      const assistantIndex = assistants.findIndex((a: Assistant) => a.id === assistantId);
+      if (assistantIndex === -1) {
+        console.error(`无法关联话题: 未找到ID为 ${assistantId} 的助手`);
+        return false;
+      }
+      
+      // 获取助手
       const assistant = assistants[assistantIndex];
-      const topicIds = assistant.topicIds || [];
+      
+      // 确保topicIds是数组
+      if (!assistant.topicIds) {
+        assistant.topicIds = [];
+      }
       
       // 检查话题是否已关联
-      if (topicIds.includes(topicId)) return true;
+      if (assistant.topicIds.includes(topicId)) {
+        console.log(`话题 ${topicId} 已经关联到助手 ${assistantId}`);
+        return true;
+      }
       
       // 添加话题ID
-      const updatedAssistant = {
-        ...assistant,
-        topicIds: [...topicIds, topicId]
-      };
+      assistant.topicIds.push(topicId);
+      console.log(`已将话题 ${topicId} 添加到助手 ${assistantId} 的topicIds列表:`, assistant.topicIds);
       
-      // 更新助手列表
-      assistants[assistantIndex] = updatedAssistant;
+      // 更新助手
+      assistants[assistantIndex] = assistant;
       
-      // 保存到localStorage
-      this.saveAssistants(assistants);
+      // 保存回localStorage
+      localStorage.setItem(ASSISTANTS_STORAGE_KEY, JSON.stringify(assistants));
+      console.log(`已更新助手数据到localStorage，助手 ${assistantId} 现在有 ${assistant.topicIds.length} 个关联话题`);
       
       return true;
     } catch (error) {
-      console.error('添加话题到助手失败:', error);
+      console.error(`将话题 ${topicId} 关联到助手 ${assistantId} 时出错:`, error);
       return false;
     }
   }
@@ -287,5 +305,40 @@ export class AssistantService {
       ...assistant,
       icon
     };
+  }
+  
+  /**
+   * 获取助手关联的话题ID列表
+   */
+  static getAssistantTopics(assistantId: string): string[] {
+    try {
+      console.log(`尝试获取助手 ${assistantId} 的话题列表`);
+      
+      // 从localStorage获取所有助手
+      const assistantsJson = localStorage.getItem(ASSISTANTS_STORAGE_KEY);
+      if (!assistantsJson) {
+        console.error('无法获取助手话题: 本地存储中未找到助手数据');
+        return [];
+      }
+      
+      // 解析助手列表
+      const assistants = JSON.parse(assistantsJson);
+      
+      // 查找助手
+      const assistant = assistants.find((a: Assistant) => a.id === assistantId);
+      if (!assistant) {
+        console.error(`无法获取助手话题: 未找到ID为 ${assistantId} 的助手`);
+        return [];
+      }
+      
+      // 返回话题ID数组（确保是数组）
+      const topicIds = assistant.topicIds || [];
+      console.log(`助手 ${assistantId} 的话题ID列表:`, topicIds);
+      
+      return topicIds;
+    } catch (error) {
+      console.error(`获取助手 ${assistantId} 的话题列表时出错:`, error);
+      return [];
+    }
   }
 } 

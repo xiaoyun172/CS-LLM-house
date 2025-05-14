@@ -14,8 +14,9 @@ import { useModelSelection } from './hooks/useModelSelection';
 import { useTopicManagement } from './hooks/useTopicManagement';
 import { useMessageHandling } from './hooks/useMessageHandling';
 import type { SiliconFlowImageFormat } from '../../shared/types';
-import { addMessage } from '../../shared/store/messagesSlice';
+import { addMessage, updateMessage } from '../../shared/store/messagesSlice';
 import { generateId, createMessage } from '../../shared/utils';
+import WebSearchService from '../../shared/services/WebSearchService';
 
 const ChatPage: React.FC = () => {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ const ChatPage: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [drawerOpen, setDrawerOpen] = useState(!isMobile);
   const [imageGenerationMode, setImageGenerationMode] = useState(false); // 控制是否处于图像生成模式
+  const [webSearchActive, setWebSearchActive] = useState(false); // 控制是否处于网络搜索模式
 
   // 从Redux获取状态
   const currentTopic = useSelector((state: RootState) => state.messages.currentTopic);
@@ -39,6 +41,55 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     setDrawerOpen(!isMobile);
   }, [isMobile]);
+
+  // 监听自定义事件
+  useEffect(() => {
+    console.log('ChatPage: 设置事件监听器');
+    
+    const handleTopicCreated = (event: CustomEvent) => {
+      console.log('ChatPage: 接收到topicCreated事件', event.detail);
+      // 强制刷新当前状态
+      dispatch({ type: 'FORCE_TOPICS_UPDATE' });
+    };
+    
+    const handleTopicCleared = (event: CustomEvent) => {
+      console.log('ChatPage: 接收到topicCleared事件', event.detail);
+      // 强制刷新当前状态
+      dispatch({ type: 'FORCE_MESSAGES_UPDATE' });
+    };
+    
+    // 添加事件监听
+    window.addEventListener('topicCreated', handleTopicCreated as EventListener);
+    window.addEventListener('topicCleared', handleTopicCleared as EventListener);
+    
+    // 清理事件监听
+    return () => {
+      window.removeEventListener('topicCreated', handleTopicCreated as EventListener);
+      window.removeEventListener('topicCleared', handleTopicCleared as EventListener);
+    };
+  }, [dispatch]);
+
+  // 新增: 确保始终有一个当前话题
+  useEffect(() => {
+    // 确保在应用首次加载或其他情况下（包括删除当前话题后），总是有一个当前话题
+    if (!currentTopic) {
+      console.log('ChatPage: 没有当前话题，自动创建一个新话题');
+      
+      // 检查是否刚刚删除了当前话题
+      const isAfterDeletion = localStorage.getItem('_justDeletedTopic') === 'true';
+      if (isAfterDeletion) {
+        // 清除标记
+        localStorage.removeItem('_justDeletedTopic');
+        console.log('ChatPage: 检测到刚刚删除了话题，立即创建新话题');
+      }
+      
+      // 使用handleNewTopic创建新话题并设置为当前话题
+      // 使用较短的延时以提高响应速度
+      setTimeout(() => {
+        handleNewTopic();
+      }, 100); 
+    }
+  }, [currentTopic, handleNewTopic]);
 
   // 获取当前主题的消息
   const currentMessages = currentTopic
@@ -60,6 +111,19 @@ const ChatPage: React.FC = () => {
   // 切换图像生成模式
   const toggleImageGenerationMode = () => {
     setImageGenerationMode(!imageGenerationMode);
+    // 如果启用图像生成模式，关闭网络搜索模式
+    if (!imageGenerationMode && webSearchActive) {
+      setWebSearchActive(false);
+    }
+  };
+  
+  // 切换网络搜索模式
+  const toggleWebSearch = () => {
+    setWebSearchActive(!webSearchActive);
+    // 如果启用网络搜索模式，关闭图像生成模式
+    if (!webSearchActive && imageGenerationMode) {
+      setImageGenerationMode(false);
+    }
   };
   
   // 处理图像生成提示词
@@ -179,6 +243,94 @@ const ChatPage: React.FC = () => {
     
     // 执行图像生成
     generateImageWithPrompt();
+  };
+
+  // 处理网络搜索请求
+  const handleWebSearch = async (query: string) => {
+    if (!currentTopic || !query.trim()) return;
+    
+    // 创建用户消息
+    const userMessage = createMessage({
+      content: query,
+      role: 'user',
+      id: `user-${generateId()}`
+    });
+    
+    // 添加用户消息到Redux
+    dispatch(addMessage({ topicId: currentTopic.id, message: userMessage }));
+    
+    try {
+      // 设置临时的搜索中消息
+      const searchingMessage = createMessage({
+        content: "正在搜索网络，请稍候...",
+        role: 'assistant',
+        status: 'pending',
+        id: `search-${generateId()}`
+      });
+      
+      dispatch(addMessage({ topicId: currentTopic.id, message: searchingMessage }));
+      
+      // 调用网络搜索服务
+      const searchResults = await WebSearchService.search(query);
+      
+      // 准备搜索结果内容
+      let resultsContent = `### 网络搜索结果\n\n`;
+      
+      if (searchResults.length === 0) {
+        resultsContent += "没有找到相关结果。";
+      } else {
+        searchResults.forEach((result, index) => {
+          resultsContent += `**${index + 1}. [${result.title}](${result.url})**\n`;
+          resultsContent += `${result.snippet}\n\n`;
+        });
+      }
+      
+      // 更新搜索消息为完成状态，显示搜索结果
+      dispatch(updateMessage({
+        topicId: currentTopic.id,
+        messageId: searchingMessage.id,
+        updates: {
+          content: resultsContent,
+          status: 'complete',
+          webSearchResults: searchResults
+        }
+      }));
+      
+      // 关闭网络搜索模式
+      setWebSearchActive(false);
+      
+    } catch (error) {
+      console.error("网络搜索失败:", error);
+      // 添加错误消息
+      const errorMessage = createMessage({
+        content: `网络搜索失败: ${error instanceof Error ? error.message : String(error)}`,
+        role: 'assistant',
+        status: 'error',
+        id: `error-${generateId()}`
+      });
+      dispatch(addMessage({ topicId: currentTopic.id, message: errorMessage }));
+      
+      // 关闭网络搜索模式
+      setWebSearchActive(false);
+    }
+  };
+  
+  // 处理消息发送
+  const handleMessageSend = async (content: string, images?: SiliconFlowImageFormat[]) => {
+    // 如果处于图像生成模式，则调用图像生成处理函数
+    if (imageGenerationMode) {
+      handleImagePrompt(content);
+      return;
+    }
+    
+    // 如果处于网络搜索模式，则调用网络搜索处理函数
+    if (webSearchActive) {
+      handleWebSearch(content);
+      return;
+    }
+    
+    // 正常的消息发送处理
+    handleSendMessage(content, images);
   };
 
   return (
@@ -310,26 +462,50 @@ const ChatPage: React.FC = () => {
                   onClearTopic={handleClearTopic}
                   imageGenerationMode={imageGenerationMode}
                   toggleImageGenerationMode={toggleImageGenerationMode}
+                  webSearchActive={webSearchActive}
+                  toggleWebSearch={toggleWebSearch}
                 />
                 
                 {/* 聊天输入框 */}
                 <ChatInput
-                  onSendMessage={handleSendMessage}
+                  onSendMessage={(content, images) => {
+                    // 如果没有当前话题，先创建一个
+                    if (!currentTopic) {
+                      handleNewTopic();
+                      // 简单延迟确保话题创建完成
+                      setTimeout(() => {
+                        handleMessageSend(content, images);
+                      }, 100);
+                    } else {
+                      handleMessageSend(content, images);
+                    }
+                  }}
                   isLoading={isLoading}
                   allowConsecutiveMessages={true}
                   imageGenerationMode={imageGenerationMode}
                   onSendImagePrompt={handleImagePrompt}
+                  webSearchActive={webSearchActive}
                 />
               </Box>
             </>
           ) : (
+            <>
+              <Box
+                sx={{
+                  flexGrow: 1,
+                  overflow: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  paddingBottom: '80px', // 为输入框留出足够空间
+                }}
+              >
             <Box
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                height: '100%',
+                    height: '80%',
                 p: 3,
                 textAlign: 'center',
                 bgcolor: 'transparent',
@@ -347,6 +523,57 @@ const ChatPage: React.FC = () => {
                 新的对话开始了，请输入您的问题
               </Typography>
             </Box>
+              </Box>
+              
+              {/* 即使没有当前话题，也显示输入框 */}
+              <Box
+                sx={{
+                  width: '100%',
+                  position: 'fixed', 
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  zIndex: 2,
+                  backgroundColor: 'transparent',
+                  boxShadow: 'none',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 0 // 移除元素间间距
+                }}
+              >
+                {/* 工具栏 */}
+                <ChatToolbar
+                  onNewTopic={handleNewTopic}
+                  onClearTopic={handleClearTopic}
+                  imageGenerationMode={imageGenerationMode}
+                  toggleImageGenerationMode={toggleImageGenerationMode}
+                  webSearchActive={webSearchActive}
+                  toggleWebSearch={toggleWebSearch}
+                />
+                
+                {/* 聊天输入框 */}
+                <ChatInput
+                  onSendMessage={(content, images) => {
+                    // 如果没有当前话题，先创建一个
+                    if (!currentTopic) {
+                      handleNewTopic();
+                      // 简单延迟确保话题创建完成
+                      setTimeout(() => {
+                        handleMessageSend(content, images);
+                      }, 100);
+                    } else {
+                      handleMessageSend(content, images);
+                    }
+                  }}
+                  isLoading={isLoading}
+                  allowConsecutiveMessages={true}
+                  imageGenerationMode={imageGenerationMode}
+                  onSendImagePrompt={handleImagePrompt}
+                  webSearchActive={webSearchActive}
+                />
+              </Box>
+            </>
           )}
         </Box>
       </Box>

@@ -71,6 +71,42 @@ export interface GeneratedImage {
   modelId: string;
 }
 
+// 网络搜索提供商类型
+export type WebSearchProvider = 'firecrawl' | 'tavily' | 'serpapi' | 'custom';
+
+// 网络搜索设置
+export interface WebSearchSettings {
+  enabled: boolean;
+  provider: WebSearchProvider;
+  apiKey: string;
+  baseUrl?: string;
+  includeInContext: boolean;  // 是否将搜索结果包含在上下文中
+  maxResults: number;         // 最大结果数量
+  showTimestamp: boolean;     // 是否显示结果时间戳
+  filterSafeSearch: boolean;  // 是否过滤不安全内容
+  searchMode: 'auto' | 'manual'; // 自动或手动搜索
+  customProviders?: WebSearchCustomProvider[]; // 自定义搜索提供商
+}
+
+// 自定义搜索提供商
+export interface WebSearchCustomProvider {
+  id: string;
+  name: string;
+  apiKey: string;
+  baseUrl: string;
+  enabled: boolean;
+}
+
+// 网络搜索结果
+export interface WebSearchResult {
+  id: string;
+  title: string;
+  url: string;
+  snippet: string;
+  timestamp: string;
+  provider: string;
+}
+
 // 消息内容类型
 export type MessageContent = string | {
   text?: string;
@@ -92,6 +128,7 @@ export interface Message {
   alternateVersions?: string[]; // 存储同一回复的其他版本ID数组
   isCurrentVersion?: boolean; // 是否是当前显示的版本
   images?: SiliconFlowImageFormat[]; // 图片内容数组，用于多模态消息
+  webSearchResults?: WebSearchResult[]; // 网络搜索结果
 }
 
 // 聊天主题类型
@@ -143,6 +180,7 @@ export interface Settings {
   contextLength?: number; // 上下文长度控制
   contextCount?: number; // 上下文数量控制
   mathRenderer?: MathRendererType; // 数学公式渲染器
+  webSearch?: WebSearchSettings; // 网络搜索设置
 }
 
 // 预设模型提供商
