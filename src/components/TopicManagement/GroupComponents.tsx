@@ -22,7 +22,7 @@ import {
   reorderItemsInGroup
 } from '../../shared/store/slices/groupsSlice';
 import type { Group } from '../../shared/types';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 interface GroupHeaderProps {
   group: Group;
