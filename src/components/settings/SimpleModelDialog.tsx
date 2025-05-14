@@ -16,10 +16,15 @@ import {
   Chip,
   Switch,
   FormControlLabel,
+  Avatar,
+  IconButton,
+  Tooltip
 } from '@mui/material';
+import PhotoIcon from '@mui/icons-material/Photo';
 import type { Model } from '../../shared/types';
 import { ModelType } from '../../shared/types';
 import { matchModelTypes, getModelTypeDisplayName } from '../../shared/data/modelTypeRules';
+import AvatarUploader from './AvatarUploader';
 
 interface SimpleModelDialogProps {
   open: boolean;
@@ -44,6 +49,8 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [modelTypes, setModelTypes] = useState<ModelType[]>([ModelType.Chat]);
   const [autoDetectTypes, setAutoDetectTypes] = useState<boolean>(true);
+  const [modelAvatar, setModelAvatar] = useState<string>("");
+  const [isAvatarDialogOpen, setIsAvatarDialogOpen] = useState(false);
 
   // 当编辑模型变化时，更新表单数据
   useEffect(() => {
@@ -59,6 +66,12 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
         const detectedTypes = matchModelTypes(editModel.id, editModel.provider);
         setModelTypes(detectedTypes);
         setAutoDetectTypes(true);
+      }
+      
+      // 尝试加载模型头像
+      const savedModelAvatar = localStorage.getItem(`model_avatar_${editModel.id}`);
+      if (savedModelAvatar) {
+        setModelAvatar(savedModelAvatar);
       }
     }
   }, [editModel, open]);
@@ -112,6 +125,22 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
       setModelTypes(detectedTypes);
     }
   };
+  
+  // 处理头像上传
+  const handleAvatarDialogOpen = () => {
+    setIsAvatarDialogOpen(true);
+  };
+  
+  const handleAvatarDialogClose = () => {
+    setIsAvatarDialogOpen(false);
+  };
+  
+  const handleSaveAvatar = (avatarDataUrl: string) => {
+    setModelAvatar(avatarDataUrl);
+    if (modelData.id) {
+      localStorage.setItem(`model_avatar_${modelData.id}`, avatarDataUrl);
+    }
+  };
 
   // 验证表单
   const validateForm = (): boolean => {
@@ -139,6 +168,11 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
         },
       };
       
+      // 如果ID已更改，保存头像到新ID
+      if (editModel && editModel.id !== modelData.id && modelAvatar) {
+        localStorage.setItem(`model_avatar_${modelData.id}`, modelAvatar);
+      }
+      
       onSave(finalModelData);
       onClose();
     }
@@ -149,6 +183,53 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
       <DialogTitle>{editModel ? '编辑模型' : '添加模型'}</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 3, mt: 1 }}>
+          {/* 模型头像设置区域 */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            mb: 2,
+            p: 2,
+            bgcolor: 'rgba(25, 118, 210, 0.08)',
+            borderRadius: 1,
+            border: '1px solid rgba(25, 118, 210, 0.2)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Avatar 
+                src={modelAvatar} 
+                sx={{ 
+                  width: 48, 
+                  height: 48, 
+                  mr: 2,
+                  bgcolor: '#1677ff'
+                }}
+              >
+                {!modelAvatar && modelData.name.charAt(0)}
+              </Avatar>
+              <Box>
+                <Typography variant="body2" fontWeight="medium">
+                  模型头像
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  为此模型设置自定义头像
+                </Typography>
+              </Box>
+            </Box>
+            <Tooltip title="设置头像">
+              <IconButton 
+                color="primary" 
+                onClick={handleAvatarDialogOpen}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(25, 118, 210, 0.12)',
+                  '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.2)' }
+                }}
+              >
+                <PhotoIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
           <TextField
             fullWidth
             label="模型名称"
@@ -224,6 +305,15 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
             </FormHelperText>
           </Box>
         </Box>
+        
+        {/* 头像上传对话框 */}
+        <AvatarUploader
+          open={isAvatarDialogOpen}
+          onClose={handleAvatarDialogClose}
+          onSave={handleSaveAvatar}
+          currentAvatar={modelAvatar}
+          title="设置模型头像"
+        />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>取消</Button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Box, 
   List, 
@@ -9,21 +9,20 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Button,
-  TextField,
-  Avatar,
-  Chip,
   Menu,
   MenuItem,
   IconButton,
-  RadioGroup,
-  Radio,
-  FormControlLabel
+  Tooltip,
+  TextField
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import SearchIcon from '@mui/icons-material/Search';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DeleteIcon from '@mui/icons-material/Delete';
+import FaceIcon from '@mui/icons-material/Face';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import WorkIcon from '@mui/icons-material/Work';
@@ -34,21 +33,16 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import DeleteIcon from '@mui/icons-material/Delete';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
-import FaceIcon from '@mui/icons-material/Face';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import SchoolIcon from '@mui/icons-material/School';
-import CodeIcon from '@mui/icons-material/Code';
-import ScienceIcon from '@mui/icons-material/Science';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
-import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
-import RestaurantIcon from '@mui/icons-material/Restaurant';
-import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
+import FolderIcon from '@mui/icons-material/Folder';
+import EditOffIcon from '@mui/icons-material/EditOff';
+import EditAttributesIcon from '@mui/icons-material/EditAttributes';
 import { type Assistant } from '../../shared/types/Assistant';
-import { storageService } from '../../shared/services/storageService';
-import { useDispatch } from 'react-redux';
-import { setTopicMessages } from '../../shared/store/messagesSlice';
+import { useDispatch, useSelector } from 'react-redux';
+import type { RootState } from '../../shared/store';
+import { addItemToGroup, removeItemFromGroup } from '../../shared/store/slices/groupsSlice';
+import { CreateGroupButton, DraggableGroup, DraggableItem } from './GroupComponents';
+import GroupDialog from './GroupDialog';
 
 // 预设助手数据 - 应该移动到服务中
 const predefinedAssistants: Assistant[] = [
@@ -123,26 +117,43 @@ export default function AssistantTab({
 }: AssistantTabProps) {
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const dispatch = useDispatch();
   
-  // 助手长按菜单相关状态
-  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const [contextAssistant, setContextAssistant] = useState<Assistant | null>(null);
+  // 编辑助手对话框状态
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [assistantToEdit, setAssistantToEdit] = useState<Assistant | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPrompt, setEditPrompt] = useState('');
   
-  // 编辑提示词对话框相关状态
-  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
-  const [systemPrompt, setSystemPrompt] = useState('');
+  // 编辑分组模式状态
+  const [isGroupEditMode, setIsGroupEditMode] = useState(false);
   
-  // 图标选择对话框状态
-  const [iconDialogOpen, setIconDialogOpen] = useState(false);
-  const [selectedIcon, setSelectedIcon] = useState<string>('');
+  // 助手操作菜单状态
+  const [assistantMenuAnchorEl, setAssistantMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedMenuAssistant, setSelectedMenuAssistant] = useState<Assistant | null>(null);
   
-  // 清空话题确认对话框状态
-  const [clearTopicsDialogOpen, setClearTopicsDialogOpen] = useState(false);
+  // 添加助手到分组对话框状态
+  const [addToGroupMenuAnchorEl, setAddToGroupMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [assistantToGroup, setAssistantToGroup] = useState<Assistant | null>(null);
   
-  // 是否显示菜单
-  const isMenuOpen = Boolean(menuAnchorEl);
+  // 从Redux获取分组数据
+  const { groups, assistantGroupMap } = useSelector((state: RootState) => state.groups);
+  
+  // 添加分组相关状态
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  
+  // 获取助手分组
+  const assistantGroups = useMemo(() => {
+    return groups
+      .filter(group => group.type === 'assistant')
+      .sort((a, b) => a.order - b.order);
+  }, [groups]);
+  
+  // 获取未分组的助手
+  const ungroupedAssistants = useMemo(() => {
+    return userAssistants.filter(assistant => !assistantGroupMap[assistant.id]);
+  }, [userAssistants, assistantGroupMap]);
   
   // 打开助手选择对话框
   const handleOpenAssistantDialog = () => {
@@ -185,740 +196,547 @@ export default function AssistantTab({
     handleCloseAssistantDialog();
   };
 
-  // 过滤可显示的预设助手
-  const getFilteredAssistants = () => {
-    if (!searchQuery) return predefinedAssistants;
-    
-    return predefinedAssistants.filter(assistant => 
-      assistant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      assistant.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+  // 打开分组对话框
+  const handleOpenGroupDialog = () => {
+    setGroupDialogOpen(true);
   };
   
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(event.target.value);
+  // 关闭分组对话框
+  const handleCloseGroupDialog = () => {
+    setGroupDialogOpen(false);
   };
   
-  // 长按处理 - 打开菜单
-  const handleLongPress = (event: React.MouseEvent, assistant: Assistant) => {
-    event.preventDefault();
+  // 切换分组编辑模式
+  const toggleGroupEditMode = () => {
+    setIsGroupEditMode(!isGroupEditMode);
+  };
+  
+  // 打开助手操作菜单或分组操作菜单
+  const handleOpenMenu = (event: React.MouseEvent, assistant: Assistant) => {
     event.stopPropagation();
-    setContextAssistant(assistant);
-    setMenuAnchorEl(event.currentTarget as HTMLElement);
-  };
-  
-  // 关闭菜单
-  const handleCloseMenu = () => {
-    setMenuAnchorEl(null);
-    setContextAssistant(null);
-  };
-  
-  // 编辑提示词
-  const handleEditPrompt = () => {
-    if (!contextAssistant) return;
+    event.preventDefault();
     
-    setSystemPrompt(contextAssistant.systemPrompt || '');
-    setPromptDialogOpen(true);
-    handleCloseMenu();
+    if (isGroupEditMode) {
+      // 分组编辑模式 - 打开分组操作菜单
+      setAssistantToGroup(assistant);
+      setAddToGroupMenuAnchorEl(event.currentTarget as HTMLElement);
+    } else {
+      // 普通模式 - 打开助手操作菜单
+      setSelectedMenuAssistant(assistant);
+      setAssistantMenuAnchorEl(event.currentTarget as HTMLElement);
+    }
   };
   
-  // 关闭提示词对话框
-  const handleClosePromptDialog = () => {
-    setPromptDialogOpen(false);
+  // 关闭助手操作菜单
+  const handleCloseAssistantMenu = () => {
+    setAssistantMenuAnchorEl(null);
+    setSelectedMenuAssistant(null);
   };
   
-  // 复制助手
-  const handleDuplicateAssistant = () => {
-    if (!contextAssistant) return;
-    
-    const newAssistant = {
-      ...contextAssistant,
-      id: `${contextAssistant.id}-copy-${Date.now()}`,
-      name: `${contextAssistant.name} (复制)`,
+  // 处理编辑助手
+  const handleEditAssistant = () => {
+    if (selectedMenuAssistant) {
+      // 打开编辑对话框并初始化数据
+      setAssistantToEdit(selectedMenuAssistant);
+      setEditName(selectedMenuAssistant.name);
+      setEditDescription(selectedMenuAssistant.description || '');
+      setEditPrompt(selectedMenuAssistant.systemPrompt || '');
+      setEditDialogOpen(true);
+    }
+    handleCloseAssistantMenu();
+  };
+  
+  // 处理复制助手
+  const handleCopyAssistant = () => {
+    if (selectedMenuAssistant) {
+      const copiedAssistant: Assistant = {
+        ...selectedMenuAssistant,
+        id: `${selectedMenuAssistant.id}-copy-${Date.now()}`,
+        name: `${selectedMenuAssistant.name} (复制)`,
       topicIds: []
     };
-    
-    onAddAssistant(newAssistant);
-    handleCloseMenu();
+      onAddAssistant(copiedAssistant);
+    }
+    handleCloseAssistantMenu();
   };
   
-  // 删除助手
+  // 处理清空话题
+  const handleClearTopics = () => {
+    if (selectedMenuAssistant && onUpdateAssistant) {
+      const updatedAssistant: Assistant = {
+        ...selectedMenuAssistant,
+        topicIds: []
+      };
+      onUpdateAssistant(updatedAssistant);
+    }
+    handleCloseAssistantMenu();
+  };
+  
+  // 处理删除助手
   const handleDeleteAssistant = () => {
-    if (!contextAssistant || !onDeleteAssistant) return;
-    
-    // 系统助手不能删除
-    if (contextAssistant.isSystem) {
-      handleCloseMenu();
-      return;
+    if (selectedMenuAssistant && onDeleteAssistant) {
+      onDeleteAssistant(selectedMenuAssistant.id);
     }
-    
-    onDeleteAssistant(contextAssistant.id);
-    handleCloseMenu();
+    handleCloseAssistantMenu();
   };
   
-  // 清空当前助手的所有话题内容
-  const handleClearAssistantTopics = () => {
-    if (!contextAssistant) return;
-    
-    setClearTopicsDialogOpen(true);
-    handleCloseMenu();
+  // 打开分组管理
+  const handleOpenGroupManagement = () => {
+    if (selectedMenuAssistant) {
+      setAssistantToGroup(selectedMenuAssistant);
+      setAddToGroupMenuAnchorEl(assistantMenuAnchorEl);
+    }
+    handleCloseAssistantMenu();
   };
   
-  // 确认清空话题
-  const confirmClearTopics = async () => {
-    if (!contextAssistant) return;
-    
-    try {
-      // 获取助手关联的话题ID列表
-      const topicIds = contextAssistant.topicIds || [];
-      
-      // 从localStorage读取所有话题
-      const topicsJson = localStorage.getItem('chatTopics');
-      if (!topicsJson) {
-        setClearTopicsDialogOpen(false);
-        return;
+  // 关闭添加到分组菜单
+  const handleCloseAddToGroupMenu = () => {
+    setAddToGroupMenuAnchorEl(null);
+    setAssistantToGroup(null);
+  };
+  
+  // 添加助手到分组
+  const handleAddToGroup = (groupId: string) => {
+    if (assistantToGroup) {
+      // 如果助手已经在其他分组中，先移除
+      if (assistantGroupMap[assistantToGroup.id]) {
+        dispatch(removeItemFromGroup({ 
+          itemId: assistantToGroup.id, 
+          type: 'assistant' 
+        }));
       }
       
-      const topics = JSON.parse(topicsJson);
-      let updated = false;
-      
-      // 遍历所有话题，清空属于当前助手的话题内容
-      const updatedTopics = topics.map((topic: any) => {
-        if (topicIds.includes(topic.id)) {
-          updated = true;
-          // 清空消息，但保留话题本身
-          return { ...topic, messages: [] };
-        }
-        return topic;
-      });
-      
-      if (updated) {
-        // 保存回localStorage
-        localStorage.setItem('chatTopics', JSON.stringify(updatedTopics));
-        
-        // 同时更新Redux状态
-        topicIds.forEach(topicId => {
-          dispatch(setTopicMessages({
-            topicId,
-            messages: []
-          }));
-        });
-        
-        alert(`已清空 ${contextAssistant.name} 的所有对话内容`);
-      }
-    } catch (error) {
-      console.error('清空话题失败:', error);
-      alert('清空话题失败: ' + (error instanceof Error ? error.message : String(error)));
+      // 添加到新分组
+      dispatch(addItemToGroup({ 
+        groupId, 
+        itemId: assistantToGroup.id 
+      }));
     }
     
-    setClearTopicsDialogOpen(false);
+    handleCloseAddToGroupMenu();
   };
   
-  // 打开图标选择对话框
-  const handleEditIcon = () => {
-    if (!contextAssistant) return;
-    
-    // 设置当前图标
-    const currentIcon = contextAssistant.icon;
-    if (currentIcon && React.isValidElement(currentIcon)) {
-      const iconType = currentIcon.type;
-      // 基于图标类型设置选中值
-      if (iconType === EmojiEmotionsIcon) setSelectedIcon('EmojiEmotions');
-      else if (iconType === AutoAwesomeIcon) setSelectedIcon('AutoAwesome');
-      else if (iconType === WorkIcon) setSelectedIcon('Work');
-      else if (iconType === AnalyticsIcon) setSelectedIcon('Analytics');
-      else if (iconType === PeopleIcon) setSelectedIcon('People');
-      else if (iconType === ArticleIcon) setSelectedIcon('Article');
-      else if (iconType === StorefrontIcon) setSelectedIcon('Storefront');
-      else if (iconType === InventoryIcon) setSelectedIcon('Inventory');
-      else if (iconType === SchoolIcon) setSelectedIcon('School');
-      else if (iconType === CodeIcon) setSelectedIcon('Code');
-      else if (iconType === ScienceIcon) setSelectedIcon('Science');
-      else if (iconType === SmartToyIcon) setSelectedIcon('SmartToy');
-      else if (iconType === SportsEsportsIcon) setSelectedIcon('SportsEsports');
-      else if (iconType === RestaurantIcon) setSelectedIcon('Restaurant');
-      else if (iconType === HealthAndSafetyIcon) setSelectedIcon('HealthAndSafety');
-      else setSelectedIcon('EmojiEmotions'); // 默认
-    } else {
-      setSelectedIcon('EmojiEmotions'); // 默认
-    }
-    
-    setIconDialogOpen(true);
-    handleCloseMenu();
+  // 添加助手到新分组
+  const handleAddToNewGroup = () => {
+    setGroupDialogOpen(true);
+    handleCloseAddToGroupMenu();
   };
   
-  // 保存选择的图标
-  const saveSelectedIcon = async () => {
-    if (!contextAssistant) return;
+  // 从分组中移除助手
+  const handleRemoveFromGroup = (event: React.MouseEvent, assistant: Assistant) => {
+    event.stopPropagation();
+    event.preventDefault();
     
-    // 根据选择创建图标元素
-    let iconElement;
-    const iconColor = '#FFD700'; // 默认颜色
-    
-    switch (selectedIcon) {
-      case 'EmojiEmotions':
-        iconElement = React.createElement(EmojiEmotionsIcon, { sx: { color: iconColor } });
-        break;
-      case 'AutoAwesome':
-        iconElement = React.createElement(AutoAwesomeIcon, { sx: { color: '#1E90FF' } });
-        break;
-      case 'Work':
-        iconElement = React.createElement(WorkIcon, { sx: { color: '#FF9800' } });
-        break;
-      case 'Analytics':
-        iconElement = React.createElement(AnalyticsIcon, { sx: { color: '#F44336' } });
-        break;
-      case 'People':
-        iconElement = React.createElement(PeopleIcon, { sx: { color: '#2196F3' } });
-        break;
-      case 'Article':
-        iconElement = React.createElement(ArticleIcon, { sx: { color: '#4CAF50' } });
-        break;
-      case 'Storefront':
-        iconElement = React.createElement(StorefrontIcon, { sx: { color: '#9C27B0' } });
-        break;
-      case 'Inventory':
-        iconElement = React.createElement(InventoryIcon, { sx: { color: '#795548' } });
-        break;
-      case 'School':
-        iconElement = React.createElement(SchoolIcon, { sx: { color: '#3F51B5' } });
-        break;
-      case 'Code':
-        iconElement = React.createElement(CodeIcon, { sx: { color: '#607D8B' } });
-        break;
-      case 'Science':
-        iconElement = React.createElement(ScienceIcon, { sx: { color: '#00BCD4' } });
-        break;
-      case 'SmartToy':
-        iconElement = React.createElement(SmartToyIcon, { sx: { color: '#E91E63' } });
-        break;
-      case 'SportsEsports':
-        iconElement = React.createElement(SportsEsportsIcon, { sx: { color: '#673AB7' } });
-        break;
-      case 'Restaurant':
-        iconElement = React.createElement(RestaurantIcon, { sx: { color: '#FF5722' } });
-        break;
-      case 'HealthAndSafety':
-        iconElement = React.createElement(HealthAndSafetyIcon, { sx: { color: '#4CAF50' } });
-        break;
-      default:
-        iconElement = React.createElement(EmojiEmotionsIcon, { sx: { color: iconColor } });
-    }
-    
-    // 更新助手图标
-    const updatedAssistant = {
-      ...contextAssistant,
-      icon: iconElement
-    };
-    
-    try {
-      // 使用存储服务保存
-      await storageService.saveAssistant(updatedAssistant);
+    dispatch(removeItemFromGroup({ 
+      itemId: assistant.id, 
+      type: 'assistant' 
+    }));
+  };
+  
+  // 关闭编辑对话框
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setAssistantToEdit(null);
+    setEditName('');
+    setEditDescription('');
+    setEditPrompt('');
+  };
+  
+  // 保存编辑后的助手
+  const handleSaveAssistant = () => {
+    if (assistantToEdit && onUpdateAssistant) {
+      const updatedAssistant: Assistant = {
+        ...assistantToEdit,
+        name: editName,
+        description: editDescription,
+        systemPrompt: editPrompt
+      };
       
-      // 尝试通过回调更新
-      if (onUpdateAssistant) {
         onUpdateAssistant(updatedAssistant);
-      }
-      
-      alert('助手图标已更新');
-    } catch (error) {
-      console.error('更新助手图标失败:', error);
-      alert('更新失败: ' + (error instanceof Error ? error.message : String(error)));
+      handleCloseEditDialog();
     }
-    
-    setIconDialogOpen(false);
   };
+  
+  // 渲染单个助手项
+  const renderAssistantItem = (assistant: Assistant, index: number, inGroup: boolean = false) => {
+    const isSelected = currentAssistant?.id === assistant.id;
 
   return (
-    <>
-      <List sx={{ p: 0 }}>
-        {userAssistants.map((assistant) => (
+      <Box key={assistant.id} sx={{ position: 'relative' }}>
+        {inGroup ? (
+          <DraggableItem id={assistant.id} index={index}>
           <ListItemButton 
-            key={assistant.id} 
+              onClick={() => onSelectAssistant(assistant)}
+              selected={isSelected}
             sx={{ 
               borderRadius: '8px', 
               mb: 1,
-              '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' },
-              bgcolor: currentAssistant?.id === assistant.id ? 'rgba(103, 58, 183, 0.08)' : 'transparent',
-            }}
-            onClick={() => onSelectAssistant(assistant)}
-            onContextMenu={(e) => handleLongPress(e, assistant)}
-            onTouchStart={(e) => {
-              const touchTimer = setTimeout(() => {
-                handleLongPress(e.nativeEvent as unknown as React.MouseEvent, assistant);
-              }, 800);
-              
-              e.currentTarget.dataset.timer = String(touchTimer);
-            }}
-            onTouchEnd={(e) => {
-              const timer = e.currentTarget.dataset.timer;
-              if (timer) clearTimeout(Number(timer));
-            }}
-            onTouchMove={(e) => {
-              const timer = e.currentTarget.dataset.timer;
-              if (timer) clearTimeout(Number(timer));
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: '40px' }}>
-              {assistant.icon}
+                pl: 2,
+                '&.Mui-selected': {
+                  backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                },
+                '&.Mui-selected:hover': {
+                  backgroundColor: 'rgba(25, 118, 210, 0.12)',
+                }
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                {assistant.icon || <FaceIcon />}
             </ListItemIcon>
             <ListItemText 
               primary={assistant.name} 
+                secondary={`${assistant.topicIds?.length || 0}个话题`}
               primaryTypographyProps={{ 
-                sx: { 
-                  fontWeight: currentAssistant?.id === assistant.id ? 'medium' : 'normal',
-                  color: currentAssistant?.id === assistant.id ? 'primary.main' : 'text.primary'
-                }
-              }}
-            />
+                  variant: 'body2',
+                  fontWeight: isSelected ? 600 : 400
+                }}
+                secondaryTypographyProps={{
+                  variant: 'caption'
+                }}
+              />
+              
+              {isGroupEditMode ? (
             <IconButton
               size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleLongPress(e, assistant);
+                  onClick={(e) => handleRemoveFromGroup(e, assistant)}
+                  sx={{ mr: -1 }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              ) : (
+                <IconButton 
+                  size="small" 
+                  onClick={(e) => handleOpenMenu(e, assistant)}
+                  sx={{ mr: -1 }}
+            >
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
+              )}
+          </ListItemButton>
+          </DraggableItem>
+        ) : (
+        <ListItemButton 
+            onClick={() => onSelectAssistant(assistant)}
+            selected={isSelected}
+          sx={{ 
+            borderRadius: '8px',
+              mb: 1,
+              '&.Mui-selected': {
+                backgroundColor: 'rgba(25, 118, 210, 0.08)',
+              },
+              '&.Mui-selected:hover': {
+                backgroundColor: 'rgba(25, 118, 210, 0.12)',
+              }
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 40 }}>
+              {assistant.icon || <FaceIcon />}
+          </ListItemIcon>
+            <ListItemText 
+              primary={assistant.name} 
+              secondary={`${assistant.topicIds?.length || 0}个话题`}
+              primaryTypographyProps={{ 
+                variant: 'body2',
+                fontWeight: isSelected ? 600 : 400
               }}
+              secondaryTypographyProps={{
+                variant: 'caption'
+              }}
+            />
+            
+            <IconButton
+              size="small"
+              onClick={(e) => handleOpenMenu(e, assistant)}
+              sx={{ mr: -1 }}
             >
               <MoreVertIcon fontSize="small" />
             </IconButton>
           </ListItemButton>
-        ))}
-        <ListItemButton 
-          onClick={handleOpenAssistantDialog}
-          sx={{ 
-            borderRadius: '8px',
-            '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' }
-          }}
-        >
-          <ListItemIcon sx={{ minWidth: '40px' }}>
-            <AddIcon />
-          </ListItemIcon>
-          <ListItemText primary="添加助手" />
-        </ListItemButton>
-      </List>
-      
-      {/* 助手选择对话框 */}
-      <Dialog 
-        open={assistantDialogOpen} 
-        onClose={handleCloseAssistantDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Typography variant="h6">选择助手</Typography>
-          <TextField
-            placeholder="搜索助手"
-            variant="outlined"
-            fullWidth
-            size="small"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            sx={{ mt: 2 }}
-            InputProps={{
-              startAdornment: <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} />,
-            }}
-          />
-        </DialogTitle>
-        <DialogContent dividers>
-          <Box 
-            sx={{ 
-              display: 'grid', 
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, 1fr)'
-              },
-              gap: 1
-            }}
-          >
-            {getFilteredAssistants().map((assistant) => {
-              const isAlreadyAdded = userAssistants.some(a => a.id === assistant.id);
+        )}
+      </Box>
+    );
+  };
+  
+  // 渲染分组和未分组的助手
+  const renderAssistantGroups = () => {
               return (
-                <Box
-                  key={assistant.id}
-                  onClick={() => !isAlreadyAdded && handleSelectAssistant(assistant.id)}
+      <>
+        {/* 创建分组按钮 */}
+        <CreateGroupButton type="assistant" onClick={handleOpenGroupDialog} />
+        
+        {/* 分组列表 */}
+        {assistantGroups.map((group) => {
+          // 获取分组内的助手
+          const groupAssistants = userAssistants.filter(
+            assistant => assistantGroupMap[assistant.id] === group.id
+          );
+          
+          if (groupAssistants.length === 0) return null;
+          
+          return (
+            <DraggableGroup 
+              key={group.id} 
+              group={group} 
+              onAddItem={() => handleOpenAssistantDialog()}
+            >
+              {groupAssistants.map((assistant, index) => 
+                renderAssistantItem(assistant, index, true)
+              )}
+            </DraggableGroup>
+          );
+        })}
+        
+        {/* 未分组的助手 */}
+        {ungroupedAssistants.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography 
+              variant="body2" 
                   sx={{
-                    p: 2,
-                    borderRadius: 2,
-                    border: '1px solid',
-                    borderColor: selectedAssistantId === assistant.id ? 'primary.main' : 'divider',
-                    bgcolor: selectedAssistantId === assistant.id ? 'rgba(103, 58, 183, 0.08)' : 'transparent',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    cursor: isAlreadyAdded ? 'default' : 'pointer',
-                    opacity: isAlreadyAdded ? 0.6 : 1,
-                    position: 'relative',
-                    '&:hover': {
-                      bgcolor: isAlreadyAdded ? 'transparent' : 'rgba(0, 0, 0, 0.04)',
-                    }
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Avatar sx={{ mr: 1, bgcolor: 'primary.light' }}>
-                      {assistant.icon}
-                    </Avatar>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-                      {assistant.name}
+                mb: 1, 
+                fontWeight: 500, 
+                color: 'text.secondary',
+                fontSize: '0.875rem'
+              }}
+            >
+              未分组
                     </Typography>
-                    {isAlreadyAdded && (
-                      <Chip 
-                        label="已添加" 
-                        size="small" 
-                        sx={{ ml: 'auto' }}
-                      />
-                    )}
+            
+            <List sx={{ pl: 1 }}>
+              {ungroupedAssistants.map((assistant, index) => 
+                renderAssistantItem(assistant, index)
+              )}
+            </List>
                   </Box>
-                  <Typography variant="body2" color="text.secondary">
-                    {assistant.description}
-                  </Typography>
-                  {selectedAssistantId === assistant.id && (
-                    <CheckCircleIcon
-                      sx={{
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        color: 'primary.main',
-                      }}
-                    />
-                  )}
-                </Box>
-              );
-            })}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseAssistantDialog}>取消</Button>
-          <Button 
-            onClick={handleAddAssistant}
-            variant="contained" 
-            disabled={!selectedAssistantId || userAssistants.some(a => a.id === selectedAssistantId)}
-          >
-            添加
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* 助手菜单 - 添加新选项 */}
+        )}
+      </>
+    );
+  };
+  
+  // 助手操作菜单
+  const renderAssistantMenu = () => (
       <Menu
-        anchorEl={menuAnchorEl}
-        open={isMenuOpen}
-        onClose={handleCloseMenu}
-        PaperProps={{
-          elevation: 3,
-          sx: { minWidth: 180, borderRadius: 2 }
-        }}
-      >
-        <MenuItem onClick={handleEditPrompt}>
+      anchorEl={assistantMenuAnchorEl}
+      open={Boolean(assistantMenuAnchorEl)}
+      onClose={handleCloseAssistantMenu}
+    >
+      <MenuItem onClick={handleEditAssistant}>
           <ListItemIcon>
             <EditIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText primary="编辑助手" />
         </MenuItem>
         
-        <MenuItem onClick={handleEditIcon}>
+      <MenuItem onClick={handleCopyAssistant}>
           <ListItemIcon>
-            <FaceIcon fontSize="small" />
+          <ContentCopyIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText primary="助手图标" />
+        <ListItemText primary="复制助手" />
         </MenuItem>
         
-        <MenuItem onClick={handleDuplicateAssistant}>
+      <MenuItem onClick={handleOpenGroupManagement}>
           <ListItemIcon>
-            <ContentCopyIcon fontSize="small" />
+          <FolderIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText primary="复制助手" />
+        <ListItemText primary="分组管理" />
         </MenuItem>
         
-        <MenuItem onClick={handleClearAssistantTopics}>
+      <MenuItem onClick={handleClearTopics}>
           <ListItemIcon>
             <DeleteSweepIcon fontSize="small" sx={{ color: 'warning.main' }} />
           </ListItemIcon>
-          <ListItemText primary="清空话题" sx={{ color: 'warning.main' }} />
+        <ListItemText primary="清空话题" />
         </MenuItem>
         
-        <MenuItem 
-          onClick={handleDeleteAssistant}
-          sx={{ color: 'error.main' }}
-        >
+      <MenuItem onClick={handleDeleteAssistant}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" sx={{ color: 'error.main' }} />
           </ListItemIcon>
           <ListItemText primary="删除" />
         </MenuItem>
       </Menu>
+  );
+  
+  // 添加到分组菜单
+  const renderAddToGroupMenu = () => (
+    <Menu
+      anchorEl={addToGroupMenuAnchorEl}
+      open={Boolean(addToGroupMenuAnchorEl)}
+      onClose={handleCloseAddToGroupMenu}
+    >
+      <MenuItem onClick={handleAddToNewGroup}>
+        <AddIcon fontSize="small" sx={{ mr: 1 }} />
+        创建新分组
+      </MenuItem>
       
-      {/* 编辑提示词对话框 */}
+      {assistantGroups.length > 0 && (
+        <>
+          <MenuItem disabled sx={{ opacity: 0.7 }}>
+            选择现有分组
+          </MenuItem>
+          
+          {assistantGroups.map(group => (
+            <MenuItem 
+              key={group.id} 
+              onClick={() => handleAddToGroup(group.id)}
+              sx={{ pl: 3 }}
+            >
+              {group.name}
+            </MenuItem>
+          ))}
+        </>
+      )}
+    </Menu>
+  );
+
+  return (
+    <>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="subtitle1">
+          助手
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Tooltip title={isGroupEditMode ? "退出分组编辑模式" : "进入分组编辑模式"}>
+            <IconButton 
+              onClick={toggleGroupEditMode} 
+              size="small"
+              color={isGroupEditMode ? "primary" : "default"}
+              sx={{ mr: 1 }}
+            >
+              {isGroupEditMode ? <EditAttributesIcon /> : <EditOffIcon />}
+            </IconButton>
+          </Tooltip>
+          <IconButton 
+            onClick={handleOpenAssistantDialog} 
+            size="small"
+          >
+            <AddIcon />
+          </IconButton>
+            </Box>
+          </Box>
+      
+      {isGroupEditMode && (
+        <Box sx={{ mb: 2, px: 1 }}>
+          <Typography variant="caption" color="text.secondary">
+            已进入分组编辑模式，可以对助手进行分组管理
+          </Typography>
+        </Box>
+      )}
+      
+      {renderAssistantGroups()}
+      
+      {/* 助手选择对话框 */}
       <Dialog
-        open={promptDialogOpen}
-        onClose={handleClosePromptDialog}
+        open={assistantDialogOpen} 
+        onClose={handleCloseAssistantDialog}
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          编辑助手提示词
-        </DialogTitle>
+        <DialogTitle>添加助手</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            multiline
-            rows={10}
-            variant="outlined"
-            fullWidth
-            placeholder="输入能够提高助手效果的系统提示词..."
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            sx={{ mt: 1 }}
-          />
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            * 助手系统提示词将应用于该助手下的所有话题，但可被话题特定提示词覆盖
-          </Typography>
+          {/* 预设助手列表 */}
+          <List>
+            {predefinedAssistants.map(assistant => (
+              <ListItemButton 
+                  key={assistant.id}
+                onClick={() => handleSelectAssistant(assistant.id)}
+                selected={selectedAssistantId === assistant.id}
+                sx={{ borderRadius: '8px', mb: 1 }}
+              >
+                <ListItemIcon>
+                      {assistant.icon}
+                </ListItemIcon>
+                <ListItemText 
+                  primary={assistant.name} 
+                  secondary={assistant.description}
+                />
+                  {selectedAssistantId === assistant.id && (
+                  <CheckCircleIcon color="primary" />
+                )}
+              </ListItemButton>
+            ))}
+          </List>
         </DialogContent>
         <DialogActions>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', px: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              Tokens: {systemPrompt.length > 0 ? Math.ceil(systemPrompt.length / 4) : 0}
-            </Typography>
-            <Box>
-              <Button onClick={handleClosePromptDialog}>取消</Button>
-              <Button 
-                variant="contained" 
-                onClick={async () => {
-                  // 首先检查是否有上下文助手，如果没有则使用当前选择的助手
-                  const targetAssistant = contextAssistant || currentAssistant;
-                  
-                  if (!targetAssistant) {
-                    alert('无法保存助手提示词: 未选择任何助手');
-                    return;
-                  }
-                  
-                  // 更新助手提示词
-                  const updatedAssistant = {
-                    ...targetAssistant,
-                    systemPrompt
-                  };
-                  
-                  // 使用存储服务保存
-                  try {
-                    await storageService.saveAssistant(updatedAssistant);
-                    alert('助手提示词已保存');
-                  } catch (error) {
-                    console.error('保存失败:', error);
-                    alert('保存失败: ' + (error instanceof Error ? error.message : String(error)));
-                  }
-                  
-                  // 也尝试通过回调更新
-                  try {
-                    if (onUpdateAssistant) {
-                      onUpdateAssistant(updatedAssistant);
-                    }
-                  } catch (e) {
-                    console.error('通过回调更新失败:', e);
-                  }
-                  
-                  setPromptDialogOpen(false);
-                }}
-              >
-                保存
-              </Button>
-            </Box>
-          </Box>
+          <Button onClick={handleCloseAssistantDialog}>取消</Button>
+          <Button 
+            onClick={handleAddAssistant}
+            variant="contained" 
+            disabled={!selectedAssistantId}
+          >
+            添加
+          </Button>
         </DialogActions>
       </Dialog>
       
-      {/* 图标选择对话框 - 简化版本 */}
+      {/* 编辑助手对话框 */}
       <Dialog
-        open={iconDialogOpen}
-        onClose={() => setIconDialogOpen(false)}
-        maxWidth="sm"
+        open={editDialogOpen}
+        onClose={handleCloseEditDialog}
+        maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          选择助手图标
-        </DialogTitle>
+        <DialogTitle>编辑助手</DialogTitle>
         <DialogContent>
-          <RadioGroup
-            value={selectedIcon}
-            onChange={(e) => setSelectedIcon(e.target.value)}
-          >
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>
-              <FormControlLabel
-                value="EmojiEmotions"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <EmojiEmotionsIcon sx={{ color: '#FFD700', mr: 1 }} />
-                    <Typography variant="body2">表情</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="AutoAwesome"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <AutoAwesomeIcon sx={{ color: '#1E90FF', mr: 1 }} />
-                    <Typography variant="body2">智能</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="Work"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <WorkIcon sx={{ color: '#FF9800', mr: 1 }} />
-                    <Typography variant="body2">工作</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="Analytics"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <AnalyticsIcon sx={{ color: '#F44336', mr: 1 }} />
-                    <Typography variant="body2">分析</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="People"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <PeopleIcon sx={{ color: '#2196F3', mr: 1 }} />
-                    <Typography variant="body2">团队</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="Article"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <ArticleIcon sx={{ color: '#4CAF50', mr: 1 }} />
-                    <Typography variant="body2">文档</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="School"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <SchoolIcon sx={{ color: '#3F51B5', mr: 1 }} />
-                    <Typography variant="body2">学习</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="Code"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <CodeIcon sx={{ color: '#607D8B', mr: 1 }} />
-                    <Typography variant="body2">编程</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="Science"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <ScienceIcon sx={{ color: '#00BCD4', mr: 1 }} />
-                    <Typography variant="body2">科学</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="SmartToy"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <SmartToyIcon sx={{ color: '#E91E63', mr: 1 }} />
-                    <Typography variant="body2">机器人</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="SportsEsports"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <SportsEsportsIcon sx={{ color: '#673AB7', mr: 1 }} />
-                    <Typography variant="body2">游戏</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="Restaurant"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <RestaurantIcon sx={{ color: '#FF5722', mr: 1 }} />
-                    <Typography variant="body2">美食</Typography>
-                  </Box>
-                }
-              />
-              
-              <FormControlLabel
-                value="HealthAndSafety"
-                control={<Radio />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <HealthAndSafetyIcon sx={{ color: '#4CAF50', mr: 1 }} />
-                    <Typography variant="body2">健康</Typography>
-                  </Box>
-                }
-              />
-            </Box>
-          </RadioGroup>
+          <Box sx={{ pt: 1 }}>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="助手名称"
+              fullWidth
+              variant="outlined"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              margin="dense"
+              label="描述"
+              fullWidth
+              variant="outlined"
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <DialogContentText sx={{ mb: 1 }}>
+              系统提示词（定义助手的行为和风格）
+            </DialogContentText>
+            <TextField
+              margin="dense"
+              label="系统提示词"
+              fullWidth
+              multiline
+              rows={6}
+              variant="outlined"
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              placeholder="输入系统提示词..."
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIconDialogOpen(false)}>取消</Button>
+          <Button onClick={handleCloseEditDialog}>取消</Button>
           <Button 
+            onClick={handleSaveAssistant}
             variant="contained" 
-            onClick={saveSelectedIcon}
+            disabled={!editName}
           >
             保存
           </Button>
         </DialogActions>
       </Dialog>
       
-      {/* 清空话题确认对话框 */}
-      <Dialog
-        open={clearTopicsDialogOpen}
-        onClose={() => setClearTopicsDialogOpen(false)}
-      >
-        <DialogTitle>
-          确认清空话题
-        </DialogTitle>
-        <DialogContent>
-          <Typography>
-            确定要清空 "{contextAssistant?.name || '当前助手'}" 的所有对话内容吗？此操作不可恢复。
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setClearTopicsDialogOpen(false)}>取消</Button>
-          <Button 
-            variant="contained" 
-            color="error"
-            onClick={confirmClearTopics}
-          >
-            确认清空
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* 分组对话框 */}
+      <GroupDialog 
+        open={groupDialogOpen}
+        onClose={handleCloseGroupDialog}
+        type="assistant"
+      />
+      
+      {/* 助手操作菜单 */}
+      {renderAssistantMenu()}
+      
+      {/* 添加到分组菜单 */}
+      {renderAddToGroupMenu()}
     </>
   );
 } 

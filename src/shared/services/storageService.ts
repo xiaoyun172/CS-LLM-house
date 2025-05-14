@@ -530,6 +530,47 @@ export const storageService = {
         throw e;
       }
     }
+  },
+  
+  async getTopic(topicId: string): Promise<ChatTopic | undefined> {
+    try {
+      return await getTopicFromDB(topicId);
+    } catch (error) {
+      console.error('IndexedDB获取失败，回退到localStorage:', error);
+      
+      try {
+        const topicsJson = localStorage.getItem('chatTopics');
+        if (!topicsJson) return undefined;
+        
+        const topics = JSON.parse(topicsJson);
+        return topics.find((t: any) => t.id === topicId);
+      } catch (e) {
+        console.error('localStorage回退也失败:', e);
+        throw e;
+      }
+    }
+  },
+  
+  async deleteTopic(topicId: string): Promise<void> {
+    try {
+      // 尝试从IndexedDB删除
+      await deleteTopicFromDB(topicId);
+    } catch (error) {
+      console.error('IndexedDB删除失败，回退到localStorage:', error);
+      
+      try {
+        // 从localStorage删除
+        const topicsJson = localStorage.getItem('chatTopics');
+        if (topicsJson) {
+          const topics = JSON.parse(topicsJson);
+          const filteredTopics = topics.filter((t: any) => t.id !== topicId);
+          localStorage.setItem('chatTopics', JSON.stringify(filteredTopics));
+        }
+      } catch (e) {
+        console.error('localStorage回退也失败:', e);
+        throw e;
+      }
+    }
   }
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -71,12 +71,13 @@ const ModelProviderSettings: React.FC = () => {
     navigate('/settings/default-model', { replace: true });
   };
 
-  const handleSave = () => {
+  // 保存API配置
+  const saveApiConfig = () => {
     if (provider) {
       // 验证baseUrl是否有效（如果已输入）
       if (baseUrl && !isValidUrl(baseUrl)) {
         setBaseUrlError('请输入有效的URL');
-        return;
+        return false;
       }
 
       dispatch(updateProvider({
@@ -87,8 +88,15 @@ const ModelProviderSettings: React.FC = () => {
           isEnabled
         }
       }));
+      return true;
     }
-    navigate('/settings/default-model', { replace: true });
+    return false;
+  };
+
+  const handleSave = () => {
+    if (saveApiConfig()) {
+      navigate('/settings/default-model', { replace: true });
+    }
   };
 
   const handleDelete = () => {
@@ -174,7 +182,7 @@ const ModelProviderSettings: React.FC = () => {
     setOpenEditModelDialog(true);
   };
 
-  const handleAddModelFromApi = (model: Model) => {
+  const handleAddModelFromApi = useCallback((model: Model) => {
     if (provider) {
       // 创建新模型对象
       const newModel: Model = {
@@ -201,6 +209,62 @@ const ModelProviderSettings: React.FC = () => {
           models: updatedModels
         }
       }));
+    }
+  }, [provider, dispatch]);
+
+  // 批量添加多个模型
+  const handleBatchAddModels = useCallback((addedModels: Model[]) => {
+    if (provider && addedModels.length > 0) {
+      // 获取所有不存在的模型
+      const newModels = addedModels.filter(model => 
+        !provider.models.some(m => m.id === model.id)
+      ).map(model => ({
+        ...model,
+        provider: provider.id,
+        providerType: provider.providerType,
+        enabled: true
+      }));
+
+      if (newModels.length === 0) return;
+
+      // 创建更新后的模型数组
+      const updatedModels = [...provider.models, ...newModels];
+
+      // 更新provider
+      dispatch(updateProvider({
+        id: provider.id,
+        updates: {
+          models: updatedModels
+        }
+      }));
+    }
+  }, [provider, dispatch]);
+
+  // 批量删除多个模型
+  const handleBatchRemoveModels = useCallback((modelIds: string[]) => {
+    if (provider && modelIds.length > 0) {
+      // 过滤掉要删除的模型
+      const updatedModels = provider.models.filter(model => !modelIds.includes(model.id));
+
+      // 更新provider
+      dispatch(updateProvider({
+        id: provider.id,
+        updates: {
+          models: updatedModels
+        }
+      }));
+    }
+  }, [provider, dispatch]);
+
+  // 打开模型管理对话框前先保存当前API配置
+  const handleOpenModelManagement = () => {
+    if (saveApiConfig()) {
+      setOpenModelManagementDialog(true);
+    } else {
+      // 如果保存失败（例如URL无效），提示用户
+      if (baseUrlError) {
+        alert('请输入有效的基础URL');
+      }
     }
   };
 
@@ -449,7 +513,7 @@ const ModelProviderSettings: React.FC = () => {
             <Button
               variant="outlined"
               startIcon={<AutofpsSelectIcon />}
-              onClick={() => setOpenModelManagementDialog(true)}
+              onClick={handleOpenModelManagement}
               sx={{
                 mr: 2,
                 borderRadius: 2,
@@ -668,7 +732,9 @@ const ModelProviderSettings: React.FC = () => {
           onClose={() => setOpenModelManagementDialog(false)}
           provider={provider}
           onAddModel={handleAddModelFromApi}
+          onAddModels={handleBatchAddModels}
           onRemoveModel={handleDeleteModel}
+          onRemoveModels={handleBatchRemoveModels}
           existingModels={provider.models || []}
         />
       )}

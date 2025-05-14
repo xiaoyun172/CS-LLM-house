@@ -74,7 +74,10 @@ export default function SidebarTabs() {
   const [settings, setSettings] = useState({
     streamOutput: true,
     showMessageDivider: true,
-    copyableCodeBlocks: true
+    copyableCodeBlocks: true,
+    contextLength: 2000,
+    contextCount: 10,
+    mathRenderer: 'KaTeX' as const
   });
   
   // 初始化加载
@@ -313,7 +316,7 @@ export default function SidebarTabs() {
     setCurrentAssistantTopics(updatedTopics);
   };
 
-  // 设置变更处理
+  // 更新设置状态处理回调函数
   const handleSettingChange = (settingId: string, value: boolean) => {
     setSettings({
       ...settings,
@@ -325,6 +328,60 @@ export default function SidebarTabs() {
       localStorage.setItem('appSettings', JSON.stringify({
         ...settings,
         [settingId]: value
+      }));
+    } catch (e) {
+      console.error('保存设置失败', e);
+    }
+  };
+
+  // 上下文长度处理
+  const handleContextLengthChange = (value: number) => {
+    setSettings({
+      ...settings,
+      contextLength: value
+    });
+    
+    // 保存设置到本地存储
+    try {
+      localStorage.setItem('appSettings', JSON.stringify({
+        ...settings,
+        contextLength: value
+      }));
+    } catch (e) {
+      console.error('保存设置失败', e);
+    }
+  };
+
+  // 上下文数量处理
+  const handleContextCountChange = (value: number) => {
+    setSettings({
+      ...settings,
+      contextCount: value
+    });
+    
+    // 保存设置到本地存储
+    try {
+      localStorage.setItem('appSettings', JSON.stringify({
+        ...settings,
+        contextCount: value
+      }));
+    } catch (e) {
+      console.error('保存设置失败', e);
+    }
+  };
+
+  // 数学公式渲染器处理
+  const handleMathRendererChange = (value: any) => {
+    setSettings({
+      ...settings,
+      mathRenderer: value
+    });
+    
+    // 保存设置到本地存储
+    try {
+      localStorage.setItem('appSettings', JSON.stringify({
+        ...settings,
+        mathRenderer: value
       }));
     } catch (e) {
       console.error('保存设置失败', e);
@@ -422,6 +479,12 @@ export default function SidebarTabs() {
             { id: 'copyableCodeBlocks', name: '代码块可复制', defaultValue: settings.copyableCodeBlocks, description: '允许复制代码块的内容' },
           ]}
           onSettingChange={handleSettingChange}
+          onContextLengthChange={handleContextLengthChange}
+          onContextCountChange={handleContextCountChange}
+          onMathRendererChange={handleMathRendererChange}
+          initialContextLength={settings.contextLength}
+          initialContextCount={settings.contextCount}
+          initialMathRenderer={settings.mathRenderer}
         />
       </TabPanel>
     </Box>

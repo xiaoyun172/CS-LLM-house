@@ -13,6 +13,19 @@ export const ModelType = {
 
 export type ModelType = typeof ModelType[keyof typeof ModelType];
 
+// 数学公式渲染器类型
+export type MathRendererType = 'KaTeX' | 'MathJax' | 'none';
+
+// 分组类型
+export interface Group {
+  id: string;
+  name: string;
+  type: 'assistant' | 'topic';
+  items: string[]; // 存储item IDs
+  order: number;   // 显示顺序
+  expanded: boolean; // 是否展开
+}
+
 // 模型类型匹配规则
 export interface ModelTypeRule {
   pattern: string;          // 匹配模式（支持正则表达式或简单字符串）
@@ -127,6 +140,9 @@ export interface Settings {
   defaultModelId?: string; // 默认模型ID
   modelTypeRules?: ModelTypeRule[]; // 模型类型匹配规则
   generatedImages?: GeneratedImage[]; // 用户生成的图像历史
+  contextLength?: number; // 上下文长度控制
+  contextCount?: number; // 上下文数量控制
+  mathRenderer?: MathRendererType; // 数学公式渲染器
 }
 
 // 预设模型提供商

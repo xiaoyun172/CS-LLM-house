@@ -224,7 +224,7 @@ const DevToolsPage: React.FC = () => {
       // setSelectMode(false);
       // setSelectedLogs(new Set());
     })
-    .catch(err => {
+    .catch((err: Error) => {
       LoggerService.log('ERROR', `[开发者工具] 复制日志失败: ${err.message}`);
     });
   };

@@ -10,6 +10,14 @@ export const generateId = (): string => {
 };
 
 /**
+ * 生成短唯一ID，与generateId类似但更短
+ * @returns {string} 短唯一ID
+ */
+export const nanoid = (): string => {
+  return Math.random().toString(36).substring(2, 10);
+};
+
+/**
  * 检查是否是合法的URL
  * @param {string} url - 要检查的URL字符串
  * @returns {boolean} 是否是合法的URL

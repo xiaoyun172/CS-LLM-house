@@ -1,12 +1,14 @@
 import { configureStore } from '@reduxjs/toolkit';
 import messagesReducer from './messagesSlice';
 import settingsReducer from './settingsSlice';
+import groupsReducer from './slices/groupsSlice';
 
 // 创建Redux store
 const store = configureStore({
   reducer: {
     messages: messagesReducer,
     settings: settingsReducer,
+    groups: groupsReducer,
   },
 });
 

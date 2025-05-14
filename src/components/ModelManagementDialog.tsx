@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -37,7 +37,9 @@ interface ModelManagementDialogProps {
   onClose: () => void;
   provider: any;
   onAddModel: (model: Model) => void;
+  onAddModels?: (models: Model[]) => void;
   onRemoveModel: (modelId: string) => void;
+  onRemoveModels?: (modelIds: string[]) => void;
   existingModels: Model[];
 }
 
@@ -46,21 +48,26 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
   onClose,
   provider,
   onAddModel,
+  onAddModels,
   onRemoveModel,
+  onRemoveModels,
   existingModels
 }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [models, setModels] = useState<Model[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [pendingModels, setPendingModels] = useState<Map<string, boolean>>(new Map());
+  // 使用ref存储初始provider，避免重新加载
+  const initialProviderRef = useRef<any>(null);
   
   // 检查模型是否已经在提供商的模型列表中
-  const isModelInProvider = (modelId: string): boolean => {
-    return existingModels.some(m => m.id === modelId);
-  };
+  const isModelInProvider = useCallback((modelId: string): boolean => {
+    return existingModels.some(m => m.id === modelId) || pendingModels.get(modelId) === true;
+  }, [existingModels, pendingModels]);
   
   // 按group对模型进行分组
-  const getGroupedModels = (): GroupedModels => {
+  const getGroupedModels = useCallback((): GroupedModels => {
     // 过滤搜索结果
     const filteredModels = models.filter(model => 
       model.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -76,16 +83,18 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
       groups[group].push(model);
       return groups;
     }, {});
-  };
+  }, [models, searchTerm]);
   
   // 分组后的模型
   const groupedModels = getGroupedModels();
   
-  // 获取模型列表
+  // 加载模型列表
   const loadModels = async () => {
     try {
       setLoading(true);
-      const fetchedModels = await fetchModels(provider);
+      // 使用ref中存储的provider或当前provider
+      const providerToUse = initialProviderRef.current || provider;
+      const fetchedModels = await fetchModels(providerToUse);
       // 合并现有模型和从API获取的模型
       const allModels = [...fetchedModels];
       setModels(allModels);
@@ -116,31 +125,105 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
     setExpandedGroups(newExpandedGroups);
   };
   
+  // 添加模型，更新pending状态
+  const handleAddSingleModel = (model: Model) => {
+    if (!isModelInProvider(model.id)) {
+      const newPendingModels = new Map(pendingModels);
+      newPendingModels.set(model.id, true);
+      setPendingModels(newPendingModels);
+      onAddModel(model);
+    }
+  };
+
+  // 移除模型，更新pending状态
+  const handleRemoveSingleModel = (modelId: string) => {
+    const newPendingModels = new Map(pendingModels);
+    newPendingModels.delete(modelId);
+    setPendingModels(newPendingModels);
+    onRemoveModel(modelId);
+  };
+  
   // 添加整个组
   const handleAddGroup = (group: string) => {
-    groupedModels[group].forEach(model => {
-      if (!isModelInProvider(model.id)) {
-        onAddModel(model);
+    // 创建新模型集合，一次性添加整个组
+    const modelsToAdd = groupedModels[group].filter(model => !isModelInProvider(model.id));
+    
+    if (modelsToAdd.length > 0) {
+      // 批量更新pendingModels状态
+      const newPendingModels = new Map(pendingModels);
+      
+      // 使用批量添加API（如果可用）
+      if (onAddModels) {
+        // 为每个模型创建副本
+        const modelsCopy = modelsToAdd.map(model => ({...model}));
+        
+        // 更新本地状态
+        modelsCopy.forEach(model => {
+          newPendingModels.set(model.id, true);
+        });
+        setPendingModels(newPendingModels);
+        
+        // 批量添加
+        onAddModels(modelsCopy);
+      } else {
+        // 为每个要添加的模型创建一个副本，添加到provider中
+        modelsToAdd.forEach(model => {
+          newPendingModels.set(model.id, true);
+          onAddModel({...model});
+        });
+        setPendingModels(newPendingModels);
       }
-    });
+    }
   };
   
   // 移除整个组
   const handleRemoveGroup = (group: string) => {
-    groupedModels[group].forEach(model => {
-      if (isModelInProvider(model.id)) {
-        onRemoveModel(model.id);
+    // 找出要移除的模型ID列表
+    const modelIdsToRemove = groupedModels[group]
+      .filter(model => isModelInProvider(model.id))
+      .map(model => model.id);
+    
+    if (modelIdsToRemove.length > 0) {
+      // 批量更新pendingModels状态
+      const newPendingModels = new Map(pendingModels);
+      
+      // 使用批量删除API（如果可用）
+      if (onRemoveModels) {
+        // 更新本地状态
+        modelIdsToRemove.forEach(modelId => {
+          newPendingModels.delete(modelId);
+        });
+        setPendingModels(newPendingModels);
+        
+        // 批量删除
+        onRemoveModels(modelIdsToRemove);
+      } else {
+        // 移除每个模型
+        modelIdsToRemove.forEach(modelId => {
+          newPendingModels.delete(modelId);
+          onRemoveModel(modelId);
+        });
+        setPendingModels(newPendingModels);
       }
-    });
+    }
   };
   
-  // 加载模型
+  // 加载模型，只在对话框打开时加载一次
   useEffect(() => {
     if (open) {
+      // 首次打开时保存provider的引用
+      if (!initialProviderRef.current) {
+        initialProviderRef.current = provider;
+      }
       loadModels();
+      // 重置pendingModels
+      setPendingModels(new Map());
+    } else {
+      // 对话框关闭时重置ref，以便下次打开时使用新的provider
+      initialProviderRef.current = null;
     }
-  }, [open, provider]);
-  
+  }, [open]); // 只依赖open状态，不依赖provider
+
   return (
     <Dialog 
       open={open} 
@@ -291,7 +374,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
                                 <IconButton
                                   edge="end"
                                   color="error"
-                                  onClick={() => onRemoveModel(model.id)}
+                                  onClick={() => handleRemoveSingleModel(model.id)}
                                   sx={{
                                     bgcolor: (theme) => alpha(theme.palette.error.main, 0.1),
                                     '&:hover': {
@@ -305,7 +388,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
                                 <IconButton
                                   edge="end"
                                   color="primary"
-                                  onClick={() => onAddModel(model)}
+                                  onClick={() => handleAddSingleModel(model)}
                                   sx={{
                                     bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
                                     '&:hover': {

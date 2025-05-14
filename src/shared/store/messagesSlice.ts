@@ -76,9 +76,41 @@ export const sendMessage = createAsyncThunk(
       // 获取当前主题的所有消息
       const messages = state.messages.messagesByTopic[topicId] || [];
 
+      // 获取应用设置（上下文限制）
+      let contextLength = 2000; // 默认上下文长度
+      let contextCount = 10; // 默认上下文数量
+      try {
+        const appSettingsJSON = localStorage.getItem('appSettings');
+        if (appSettingsJSON) {
+          const appSettings = JSON.parse(appSettingsJSON);
+          if (appSettings.contextLength) contextLength = appSettings.contextLength;
+          if (appSettings.contextCount) contextCount = appSettings.contextCount;
+        }
+      } catch (error) {
+        console.error('读取上下文设置失败:', error);
+      }
+
+      // 应用上下文限制
+      // 1. 按数量限制，选择最近的N条消息
+      const limitedByCountMessages = [...messages].slice(-contextCount - 1);
+      
+      // 2. 对每条消息应用长度限制
+      const limitedMessages = limitedByCountMessages.map(msg => {
+        if (typeof msg.content === 'string' && msg.content.length > contextLength) {
+          // 截断过长的消息内容
+          return {
+            ...msg,
+            content: msg.content.substring(0, contextLength) + "..."
+          };
+        }
+        return msg;
+      });
+
+      console.log(`[sendMessage] 应用上下文限制 - 原始消息数: ${messages.length}, 限制后: ${limitedMessages.length}, 长度限制: ${contextLength}`);
+
       // 发送API请求
       const response = await sendChatRequest({
-        messages: messages.map(msg => ({
+        messages: limitedMessages.map(msg => ({
           role: msg.role,
           content: msg.content
         })),

@@ -1,17 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Typography, Box } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
-
+import type { MathRendererType } from '../../shared/types';
 
 interface MarkdownRendererProps {
   content: string;
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+  // 设置数学公式渲染器的状态
+  const [mathRenderer, setMathRenderer] = useState<MathRendererType>('KaTeX');
+
+  // 从localStorage加载渲染器设置
+  useEffect(() => {
+    try {
+      const appSettingsJSON = localStorage.getItem('appSettings');
+      if (appSettingsJSON) {
+        const appSettings = JSON.parse(appSettingsJSON);
+        if (appSettings.mathRenderer) {
+          setMathRenderer(appSettings.mathRenderer);
+        }
+      }
+    } catch (error) {
+      console.error('加载数学公式渲染器设置失败', error);
+    }
+  }, []);
+
   // 自定义Markdown样式
   const markdownStyles = {
     h1: {
@@ -79,13 +97,37 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
     }
   };
 
-  // 处理数学公式的渲染，默认使用KaTeX
+  // 处理数学公式的渲染，根据设置选择渲染器
   const renderMath = (tex: string, isBlock: boolean) => {
-    return isBlock ? <BlockMath math={tex} /> : <InlineMath math={tex} />;
+    // 根据选择的渲染器进行渲染
+    switch (mathRenderer) {
+      case 'KaTeX':
+        return isBlock ? <BlockMath math={tex} /> : <InlineMath math={tex} />;
+      case 'MathJax':
+        // 这里可以使用MathJax渲染，但需要另外安装react-mathjax
+        // 简单起见，先用KaTeX渲染
+        return isBlock ? <BlockMath math={tex} /> : <InlineMath math={tex} />;
+      case 'none':
+        // 不渲染数学公式，直接返回原始文本
+        return isBlock ? (
+          <pre style={{ margin: '8px 0', padding: '8px', backgroundColor: '#f6f8fa' }}>
+            {tex}
+          </pre>
+        ) : (
+          <code>{tex}</code>
+        );
+      default:
+        return isBlock ? <BlockMath math={tex} /> : <InlineMath math={tex} />;
+    }
   };
 
   // 使用正则表达式匹配数学公式
   const renderWithMath = (text: string): React.ReactNode[] => {
+    // 如果禁用了数学公式渲染，直接返回原始文本
+    if (mathRenderer === 'none') {
+      return [text];
+    }
+    
     const blockRegex = /\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]/g;
     const inlineRegex = /\$([^\$]*?)\$|\\\(([\s\S]*?)\\\)/g;
     

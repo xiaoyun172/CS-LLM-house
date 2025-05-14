@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Paper, Typography, Box, Avatar, CircularProgress, useTheme } from '@mui/material';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import type { Message, ImageContent } from '../shared/types';
@@ -26,6 +26,10 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
   const providers = useSelector((state: RootState) => state.settings.providers);
   const providerModels = providers.flatMap(provider => provider.models);
   const allModels = [...(models || []), ...providerModels];
+  
+  // 用于存储用户头像和模型头像
+  const [userAvatar, setUserAvatar] = useState<string>("");
+  const [modelAvatar, setModelAvatar] = useState<string>("");
 
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
@@ -64,6 +68,24 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
 
   // 显示图片数量进行调试
   console.log(`[MessageItem] 消息ID: ${message.id}, 旧格式图片: ${contentImages.length}, 新格式图片: ${directImages.length}, 总图片: ${allImages.length}`);
+
+  // 从本地存储加载头像
+  useEffect(() => {
+    // 加载用户头像
+    const savedUserAvatar = localStorage.getItem('user_avatar');
+    if (savedUserAvatar) {
+      setUserAvatar(savedUserAvatar);
+    }
+
+    // 尝试加载模型头像
+    if (!isUser && message.modelId) {
+      const modelId = message.modelId;
+      const savedModelAvatar = localStorage.getItem(`model_avatar_${modelId}`);
+      if (savedModelAvatar) {
+        setModelAvatar(savedModelAvatar);
+      }
+    }
+  }, [isUser, message.modelId]);
 
   // Token计数
   const tokenCount = estimateTokens(textContent);
@@ -243,24 +265,24 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
       >
         <Avatar
           alt={isUser ? "用户" : "AI"}
-          src={isUser ? "" : "/assets/ai-avatar.png"}
+          src={isUser ? userAvatar : (modelAvatar || "/assets/ai-avatar.png")}
           sx={{
             width: 36,
             height: 36,
             bgcolor: isUser ? '#87d068' : '#1677ff',
           }}
         >
-          {isUser ? "我" : assistantName.charAt(0)}
+          {isUser && !userAvatar ? "我" : (!modelAvatar && assistantName.charAt(0))}
         </Avatar>
         <Typography
-          variant="caption"
+          variant="body2"
           sx={{
             mx: 1,
-            color: theme.palette.text.secondary,
-            fontWeight: 500
+            color: 'text.secondary',
+            fontSize: '0.75rem',
           }}
         >
-          {assistantName}
+          {isUser ? '我' : assistantName}
         </Typography>
       </Box>
 

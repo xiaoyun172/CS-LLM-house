@@ -50,35 +50,52 @@ AetherLink/
 ├── src/                    # 源代码目录
 │   ├── assets/             # 应用内图片、字体等资源
 │   ├── components/         # 可复用UI组件
-│   │   ├── BackButtonHandler/ # Android返回键处理组件
-│   │   ├── ChatInput/      # 聊天输入框组件
-│   │   ├── ExitConfirmDialog/ # 退出确认对话框
-│   │   ├── MessageItem/    # 单条消息展示组件
-│   │   ├── MessageList/    # 消息列表容器组件
-│   │   ├── ModelManagement/ # 模型管理相关组件
-│   │   ├── RouterWrapper/  # 路由包装组件
-│   │   ├── TopicList/      # 聊天主题列表组件
-│   │   ├── TopicManagement/ # 话题管理组件
-│   │   ├── ChatToolbar/    # 聊天工具栏组件
+│   │   ├── BackButtonHandler/ # Android返回键处理组件，管理返回键行为
+│   │   ├── ChatInput/      # 聊天输入框组件，处理消息输入和发送
+│   │   ├── ExitConfirmDialog/ # 退出确认对话框，防止意外退出应用
+│   │   ├── MessageItem/    # 单条消息展示组件，渲染用户和AI消息
+│   │   ├── MessageList/    # 消息列表容器组件，管理消息流和滚动
+│   │   ├── ModelManagement/ # 模型管理相关组件，处理模型选择和配置
+│   │   ├── RouterWrapper/  # 路由包装组件，提供路由转换和动画
+│   │   ├── TopicList/      # 聊天主题列表组件，显示历史对话记录
+│   │   ├── TopicManagement/ # 话题管理组件，包含分组和拖拽功能
+│   │   │   ├── AssistantTab.tsx # 助手标签页组件
+│   │   │   ├── GroupComponents.tsx # 分组相关组件
+│   │   │   ├── GroupDialog.tsx # 创建/编辑分组对话框
+│   │   │   ├── Sidebar.tsx # 侧边栏主组件
+│   │   │   ├── SidebarTabs.tsx # 侧边栏标签页组件
+│   │   │   ├── TopicTab.tsx # 话题标签页组件
+│   │   │   └── index.ts # 导出组件
+│   │   ├── ChatToolbar/    # 聊天工具栏组件，提供聊天页面顶部操作
 │   │   ├── message/        # 消息相关子组件
 │   │   │   ├── ThinkingProcess/ # AI思考过程展示组件
 │   │   │   └── MessageActions/  # 消息操作按钮组件
 │   │   ├── settings/       # 设置相关组件
-│   │   │   └── ModelCard/  # 模型卡片组件
+│   │   │   └── ModelCard/  # 模型卡片组件，展示单个模型信息
 │   │   └── toolbar/        # 工具栏相关组件
 │   ├── pages/              # 页面级组件
 │   │   ├── ChatPage/       # 聊天主界面
-│   │   ├── DevToolsPage/   # 开发者调试工具页面
+│   │   │   ├── components/ # 聊天页面子组件
+│   │   │   │   ├── ModelSelector.tsx # 模型选择器组件
+│   │   │   │   └── ... # 其他聊天页面子组件
+│   │   │   ├── hooks/ # 聊天页面自定义钩子
+│   │   │   │   ├── useModelSelection.ts # 模型选择逻辑钩子
+│   │   │   │   └── ... # 其他聊天页面钩子
+│   │   │   └── index.tsx # 聊天页面主组件
+│   │   ├── DevToolsPage/   # 开发者调试工具页面，提供日志和API调试
 │   │   ├── Settings/       # 设置相关页面
-│   │   │   ├── AppearanceSettings/ # 外观设置
-│   │   │   ├── BehaviorSettings/   # 行为设置
-│   │   │   ├── DefaultModelSettings/ # 默认模型设置
-│   │   │   ├── ModelProviderSettings/ # 模型提供商设置
+│   │   │   ├── AppearanceSettings/ # 外观设置，主题和字体配置
+│   │   │   ├── BehaviorSettings/   # 行为设置，如发送方式和通知
+│   │   │   ├── DefaultModelSettings/ # 默认模型设置页面
+│   │   │   ├── ModelProviderSettings/ # 模型提供商设置页面
 │   │   │   ├── AddProviderPage/ # 添加提供商页面
-│   │   │   ├── VoiceSettings/ # 语音设置
-│   │   │   └── AboutPage/  # 关于页面
-│   │   └── WelcomePage/    # 欢迎/引导页面
+│   │   │   ├── DataSettings/ # 数据管理设置，包括备份和恢复
+│   │   │   ├── VoiceSettings/ # 语音设置，TTS配置
+│   │   │   ├── index.tsx # 设置主页面
+│   │   │   └── AboutPage/  # 关于页面，显示应用信息
+│   │   └── WelcomePage/    # 欢迎/引导页面，首次使用时显示
 │   ├── routes/             # 路由配置和导航逻辑
+│   │   └── index.tsx       # 路由定义和配置
 │   ├── shared/             # 共享代码和业务逻辑
 │   │   ├── api/            # API接口封装
 │   │   │   ├── anthropic/  # Anthropic Claude API集成
@@ -87,42 +104,48 @@ AetherLink/
 │   │   │   ├── openai/     # OpenAI API集成
 │   │   │   ├── siliconflow/ # 硅基流动API集成
 │   │   │   ├── volcengine/ # 火山方舟API集成
+│   │   │   ├── deepseek/   # DeepSeek API集成
 │   │   │   └── index.ts    # API统一入口和路由
 │   │   ├── data/           # 静态数据和预设配置
 │   │   │   ├── models/     # 预设模型配置
 │   │   │   └── presetModels.ts # 预设模型数据
 │   │   ├── hooks/          # 自定义React Hooks
 │   │   │   ├── useAppState/ # 应用状态管理Hook
-│   │   │   └── useModels/  # 模型管理Hook
+│   │   │   ├── useModels/  # 模型管理Hook
+│   │   │   └── ... # 其他自定义Hook
 │   │   ├── services/       # 业务服务层
-│   │   │   ├── APIService.ts # API服务（模型获取、消息发送等）
-│   │   │   ├── AssistantService.ts # 助手服务
-│   │   │   ├── LoggerService.ts # 日志记录服务
+│   │   │   ├── APIService.ts # API服务，处理模型获取和消息发送
+│   │   │   ├── AssistantService.ts # 助手服务，管理AI助手配置
+│   │   │   ├── LoggerService.ts # 日志记录服务，统一日志管理
 │   │   │   ├── ThinkingService.ts # AI思考过程处理服务
 │   │   │   ├── TTSService.ts # 文本到语音转换服务
+│   │   │   ├── ImageUploadService.ts # 图片上传服务，处理图片选择和压缩
 │   │   │   └── storageService.ts # 存储服务(IndexedDB/localStorage)
 │   │   ├── store/          # Redux状态管理
 │   │   │   ├── messagesSlice.ts # 消息状态管理
 │   │   │   ├── settingsSlice.ts # 设置状态管理
+│   │   │   ├── slices/     # 其他状态切片
+│   │   │   │   ├── groupsSlice.ts # 分组状态管理
+│   │   │   │   └── ... # 其他状态切片
 │   │   │   └── index.ts    # Store配置和导出
 │   │   ├── types/          # TypeScript类型定义
 │   │   │   ├── Assistant.ts # 助手类型定义
-│   │   │   └── index.ts    # 核心类型定义
+│   │   │   └── index.ts    # 核心类型定义，包含消息、模型等类型
 │   │   └── utils/          # 工具函数和辅助方法
 │   │       ├── api/        # API相关工具函数
 │   │       ├── format/     # 格式化工具函数
 │   │       ├── storage/    # 本地存储工具函数
-│   │       └── index.ts    # 通用工具函数
-│   ├── App.tsx             # 应用根组件
-│   ├── main.tsx            # 应用入口文件
+│   │       └── index.ts    # 通用工具函数，如ID生成、Token计算等
+│   ├── App.tsx             # 应用根组件，包含主题和路由配置
+│   ├── main.tsx            # 应用入口文件，渲染根组件
 │   └── index.css           # 全局样式
-├── capacitor.config.ts     # Capacitor移动应用配置
+├── capacitor.config.ts     # Capacitor移动应用配置，定义应用ID和插件设置
 ├── index.html              # 应用入口HTML文件
 ├── package.json            # 项目依赖和脚本配置
 ├── tsconfig.json           # TypeScript编译配置(引用配置)
 ├── tsconfig.app.json       # 应用代码TypeScript配置
 ├── tsconfig.node.json      # Node环境TypeScript配置
-├── vite.config.ts          # Vite构建工具配置
+├── vite.config.ts          # Vite构建工具配置，包含优化和分包策略
 ├── tailwind.config.js      # Tailwind CSS配置
 └── eslint.config.js        # ESLint代码规范配置
 ```
@@ -399,28 +422,194 @@ useEffect(() => {
 ### 核心文件夹
 
 - **android/**: 包含Android平台相关的代码和配置，由Capacitor生成和管理
+  - **app/src/main/assets/**: 存放Web资源和配置文件，包括capacitor.config.json
+  - **app/src/main/java/**: 包含Android原生代码，主要是Capacitor插件和应用入口
+  - **app/src/main/res/**: 包含Android资源文件，如图标、启动屏幕和布局
+- **public/**: 静态资源文件和公共资产，不经过Webpack处理
+  - **assets/**: 存放图标、图片等公共资源，可直接通过URL访问
 - **src/**: 包含应用的主要源代码
   - **components/**: 可复用UI组件，按功能分组
+    - **TopicManagement/**: 话题管理组件，包含分组和拖拽功能
+    - **MessageList/**: 消息列表容器组件，管理消息流和滚动
+    - **ChatInput/**: 聊天输入框组件，处理消息输入和发送
   - **pages/**: 页面级组件，每个主要页面一个文件夹
+    - **ChatPage/**: 聊天主界面，应用的核心页面
+    - **Settings/**: 设置相关页面，包含多个子页面
+    - **WelcomePage/**: 欢迎/引导页面，首次使用时显示
   - **shared/**: 共享业务逻辑和数据处理
-    - **api/**: 各AI提供商的API集成
-    - **services/**: 核心服务实现
-    - **store/**: Redux状态管理
-    - **types/**: TypeScript类型定义
-    - **utils/**: 工具函数
+    - **api/**: 各AI提供商的API集成，包括OpenAI、Claude、Gemini等
+    - **services/**: 核心服务实现，如API调用、存储、TTS等
+    - **store/**: Redux状态管理，包含消息、设置等状态切片
+    - **types/**: TypeScript类型定义，定义应用中使用的所有类型
+    - **utils/**: 工具函数，如ID生成、格式化、Token计算等
 
 ### 主要功能模块
 
-- **聊天系统**: 在`src/pages/ChatPage`和`src/components/MessageList`中实现
-- **模型管理**: 在`src/pages/Settings/ModelProviderSettings`和`src/shared/api`中实现
-- **主题管理**: 在`src/components/TopicManagement`中实现
-- **语音合成**: 在`src/shared/services/TTSService.ts`中实现
-- **思考过程**: 在`src/shared/services/ThinkingService.ts`中实现
-- **存储系统**: 在`src/shared/services/storageService.ts`中实现
+- **聊天系统**:
+  - 核心实现: `src/pages/ChatPage`和`src/components/MessageList`
+  - 功能: 消息发送、接收、流式响应、历史记录管理
+  - 关键组件: `MessageItem`、`ChatInput`、`MessageList`
+  - 状态管理: `messagesSlice.ts`处理消息状态
+
+- **模型管理**:
+  - 核心实现: `src/pages/Settings/ModelProviderSettings`和`src/shared/api`
+  - 功能: 模型配置、API密钥管理、自动获取模型列表
+  - 关键服务: `APIService.ts`处理模型获取和API调用
+  - 状态管理: `settingsSlice.ts`存储模型配置
+
+- **主题管理**:
+  - 核心实现: `src/components/TopicManagement`
+  - 功能: 创建、编辑、删除聊天主题，分组管理
+  - 关键组件: `TopicTab`、`GroupComponents`、`Sidebar`
+  - 状态管理: `groupsSlice.ts`处理分组状态
+
+- **语音合成**:
+  - 核心实现: `src/shared/services/TTSService.ts`
+  - 功能: 文本到语音转换，支持硅基流动TTS API和Web Speech API
+  - 配置页面: `src/pages/Settings/VoiceSettings`
+  - 使用方式: 消息操作按钮中的语音播放功能
+
+- **思考过程**:
+  - 核心实现: `src/shared/services/ThinkingService.ts`
+  - 功能: 处理和展示AI的思考过程，主要支持Grok模型
+  - 展示组件: `src/components/message/ThinkingProcess`
+  - 数据结构: 在Message类型中通过reasoning字段存储
+
+- **存储系统**:
+  - 核心实现: `src/shared/services/storageService.ts`
+  - 功能: 数据持久化，支持IndexedDB和localStorage
+  - 数据备份: `src/pages/Settings/DataSettings`提供备份和恢复功能
+  - 关键API: 提供保存和加载消息、设置、助手等数据的方法
+
+- **助手系统**:
+  - 核心实现: `src/shared/services/AssistantService.ts`
+  - 功能: 管理预设和自定义AI助手
+  - 关键组件: `src/components/TopicManagement/AssistantTab.tsx`
+  - 类型定义: `src/shared/types/Assistant.ts`
+
+- **图片上传**:
+  - 核心实现: `src/shared/services/ImageUploadService.ts`
+  - 功能: 处理图片选择、压缩和上传，支持多模态对话
+  - 使用方式: 聊天输入框中的图片上传按钮
+  - 相关API: 多模态模型API集成
 
 ### 构建和配置文件
 
-- **capacitor.config.ts**: Capacitor配置，定义应用ID、插件配置等
-- **vite.config.ts**: Vite构建配置，包括优化策略和分包设置
+- **capacitor.config.ts**: Capacitor移动应用配置，定义应用ID、插件配置等
+  - 配置Android平台特定设置，如状态栏颜色、键盘行为等
+  - 定义Web视图行为和安全设置
+  - 配置Capacitor插件，如文件系统、相机、状态栏等
+
+- **vite.config.ts**: Vite构建工具配置，包含优化和分包策略
+  - 定义构建优化选项，如代码分割、压缩设置
+  - 配置分包策略，将React、MUI等库拆分到单独的chunk
+  - 设置资源处理和输出路径
+
 - **tsconfig.*.json**: TypeScript编译配置
-- **package.json**: 项目依赖和脚本定义
+  - tsconfig.json: 引用配置，指向其他配置文件
+  - tsconfig.app.json: 应用代码TypeScript配置
+  - tsconfig.node.json: Node环境TypeScript配置
+
+- **package.json**: 项目依赖和脚本配置
+  - 定义开发、构建、预览等脚本命令
+  - 列出项目依赖，包括React、Capacitor、MUI等
+  - 配置项目元数据，如名称、版本等
+
+## 核心类型定义和数据流
+
+### 核心类型
+
+- **Message**: 消息类型，定义在`src/shared/types/index.ts`
+  ```typescript
+  export interface Message {
+    id: string;                 // 消息唯一ID
+    content: MessageContent;    // 消息内容（文本或多模态）
+    role: 'user' | 'assistant' | 'system'; // 消息角色
+    timestamp: string;          // 时间戳
+    status?: 'pending' | 'complete' | 'error'; // 消息状态
+    modelId?: string;           // 使用的模型ID
+    reasoning?: string;         // 存储模型的思考过程
+    reasoningTime?: number;     // 思考过程耗时
+    version?: number;           // 消息版本号
+    parentMessageId?: string;   // 关联的用户消息ID
+    alternateVersions?: string[]; // 同一回复的其他版本ID数组
+    isCurrentVersion?: boolean; // 是否是当前显示的版本
+    images?: SiliconFlowImageFormat[]; // 图片内容数组
+  }
+  ```
+
+- **Model**: 模型类型，定义在`src/shared/types/index.ts`
+  ```typescript
+  export interface Model {
+    id: string;                 // 模型唯一ID
+    name: string;               // 模型名称
+    provider: string;           // 提供商名称
+    description?: string;       // 模型描述
+    providerType?: string;      // 提供商的实际类型
+    apiKey?: string;            // API密钥
+    baseUrl?: string;           // 基础URL
+    maxTokens?: number;         // 最大token数
+    temperature?: number;       // 温度参数
+    enabled?: boolean;          // 是否启用
+    isDefault?: boolean;        // 是否为默认模型
+    iconUrl?: string;           // 模型图标URL
+    presetModelId?: string;     // 预设模型ID
+    group?: string;             // 模型分组
+    capabilities?: {            // 模型能力
+      multimodal?: boolean;     // 是否支持多模态
+      imageGeneration?: boolean; // 是否支持图像生成
+    };
+    modelTypes?: ModelType[];   // 模型类型
+  }
+  ```
+
+- **ChatTopic**: 聊天主题类型，在Redux状态中使用
+  ```typescript
+  export interface ChatTopic {
+    id: string;                 // 主题唯一ID
+    title: string;              // 主题标题
+    lastMessageTime: string;    // 最后消息时间
+    messages: Message[];        // 消息数组
+    systemPrompt?: string;      // 系统提示词
+    assistantId?: string;       // 关联的助手ID
+  }
+  ```
+
+- **Group**: 分组类型，用于话题和助手分组
+  ```typescript
+  export interface Group {
+    id: string;                 // 分组唯一ID
+    name: string;               // 分组名称
+    type: 'assistant' | 'topic'; // 分组类型
+    items: string[];            // 存储item IDs
+    order: number;              // 显示顺序
+    expanded: boolean;          // 是否展开
+  }
+  ```
+
+### 数据流
+
+1. **消息流程**:
+   - 用户在`ChatInput`组件中输入消息
+   - 通过Redux action `addMessage`将消息添加到当前主题
+   - 消息通过`APIService`发送到AI模型
+   - 接收到的响应通过Redux action `updateMessage`更新到状态
+   - `MessageList`组件监听状态变化并渲染新消息
+
+2. **模型管理流程**:
+   - 用户在设置页面配置模型提供商和API密钥
+   - 通过`APIService.fetchModels`获取可用模型列表
+   - 模型信息通过Redux action `setModels`保存到状态
+   - 用户可以在聊天界面通过`ModelSelector`组件选择当前使用的模型
+
+3. **存储流程**:
+   - 应用状态通过Redux中间件自动保存到`localStorage`
+   - 大型数据（如消息历史）通过`storageService`保存到IndexedDB
+   - 应用启动时，通过`loadTopics`和`loadSettings`从存储中恢复状态
+   - 用户可以在数据设置页面手动备份和恢复数据
+
+4. **主题管理流程**:
+   - 用户通过侧边栏创建、选择和管理聊天主题
+   - 主题可以通过拖放方式组织到分组中
+   - 分组状态通过`groupsSlice`管理
+   - 当前选中的主题通过`currentTopicId`在Redux中跟踪
