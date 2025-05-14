@@ -217,16 +217,26 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         modelId,
         onChunk: (chunk) => {
           if (chunk) {
-            // 更新消息内容 - 直接使用收到的chunk作为完整内容，而不是追加
-            dispatch(updateMessage({
-              topicId: currentTopic.id,
-              messageId: assistantMessage.id,
-              updates: {
-                content: chunk,  // 直接使用chunk作为完整内容
-                status: 'complete',
-                modelId: selectedModel?.id || currentModelId // 保留模型ID
-              }
-            }));
+            // 优化流式输出性能 - 减少更新频率
+            // 只有当内容至少增加了5个字符或是最后一个chunk时才更新UI
+            const currentContent = typeof assistantMessage.content === 'string' 
+              ? assistantMessage.content 
+              : (assistantMessage.content as any)?.text || '';
+            const currentLength = currentContent.length;
+            const newLength = chunk.length;
+            
+            // 增加防抖动机制，避免频繁更新导致卡顿
+            if (newLength - currentLength >= 5 || newLength < currentLength) {
+              dispatch(updateMessage({
+                topicId: currentTopic.id,
+                messageId: assistantMessage.id,
+                updates: {
+                  content: chunk,  // 直接使用chunk作为完整内容
+                  status: 'complete',
+                  modelId: selectedModel?.id || currentModelId // 保留模型ID
+                }
+              }));
+            }
           }
         }
       });
@@ -471,15 +481,25 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         modelId,
         onChunk: (chunk) => {
           if (chunk) {
-            // 更新消息内容 - 直接使用收到的chunk作为完整内容，而不是追加
-            dispatch(updateMessage({
-              topicId: currentTopic.id,
-              messageId: newAssistantMessage.id,
-              updates: {
-                content: chunk,  // 直接使用chunk作为完整内容
-                status: 'complete'
-              }
-            }));
+            // 优化流式输出性能 - 减少更新频率
+            // 只有当内容至少增加了5个字符或是最后一个chunk时才更新UI
+            const currentContent = typeof newAssistantMessage.content === 'string' 
+              ? newAssistantMessage.content 
+              : (newAssistantMessage.content as any)?.text || '';
+            const currentLength = currentContent.length;
+            const newLength = chunk.length;
+            
+            // 增加防抖动机制，避免频繁更新导致卡顿
+            if (newLength - currentLength >= 5 || newLength < currentLength) {
+              dispatch(updateMessage({
+                topicId: currentTopic.id,
+                messageId: newAssistantMessage.id,
+                updates: {
+                  content: chunk,  // 直接使用chunk作为完整内容
+                  status: 'complete'
+                }
+              }));
+            }
           }
         }
       });
@@ -503,7 +523,8 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
             content: response.content,
             status: 'complete',
             reasoning: reasoning,
-            reasoningTime: reasoningTime
+            reasoningTime: reasoningTime,
+            modelId: selectedModel?.id || currentModelId // 确保更新后保留模型ID
           }
         }));
 

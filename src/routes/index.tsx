@@ -12,6 +12,7 @@ const AddProviderPage = lazy(() => import('../pages/Settings/AddProviderPage'));
 const AboutPage = lazy(() => import('../pages/Settings/AboutPage'));
 const VoiceSettings = lazy(() => import('../pages/Settings/VoiceSettings'));
 const DevToolsPage = lazy(() => import('../pages/DevToolsPage'));
+import DataSettingsPage from '../pages/Settings/DataSettings';
 
 // 加载中组件
 const LoadingFallback = () => (
@@ -58,6 +59,7 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/add-provider" element={<AddProviderPage />} />
         <Route path="/settings/about" element={<AboutPage />} />
         <Route path="/settings/voice" element={<VoiceSettings />} />
+        <Route path="/settings/data" element={<DataSettingsPage />} />
         <Route path="/devtools" element={<DevToolsPage />} />
       </Routes>
     </Suspense>

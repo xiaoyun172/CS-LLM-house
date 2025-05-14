@@ -99,27 +99,67 @@ const ChatPage: React.FC = () => {
         // 处理生成的图像
         if (result && result.url) {
           const imageUrl = result.url;
-          // 创建图像格式
-          const imageFormat: SiliconFlowImageFormat = {
-            type: 'image_url',
-            image_url: { url: imageUrl }
-          };
           
-          // 创建AI回复消息ID
-          const requestId = generateId();
-          
-          // 创建AI助手的回复消息
-          const assistantMessage = createMessage({
-            content: "生成的图像:",
-            role: 'assistant',
-            status: 'complete',
-            id: `assistant-${requestId}`,
-            images: [imageFormat],
-            modelId: selectedModel?.id
-          });
-          
-          // 将消息添加到Redux
-          dispatch(addMessage({ topicId: currentTopic.id, message: assistantMessage }));
+          // 新增: 将URL图片转换为Base64数据
+          try {
+            // 获取图片数据并转换为Base64
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            
+            // 将Blob转换为Base64
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+              const base64data = reader.result as string;
+              
+              // 创建图像格式
+              const imageFormat: SiliconFlowImageFormat = {
+                type: 'image_url',
+                image_url: { 
+                  url: base64data  // 使用Base64数据替代URL
+                }
+              };
+              
+              // 创建AI回复消息ID
+              const requestId = generateId();
+              
+              // 创建AI助手的回复消息
+              const assistantMessage = createMessage({
+                content: "生成的图像:",
+                role: 'assistant',
+                status: 'complete',
+                id: `assistant-${requestId}`,
+                images: [imageFormat],
+                modelId: selectedModel?.id
+              });
+              
+              // 将消息添加到Redux
+              dispatch(addMessage({ topicId: currentTopic.id, message: assistantMessage }));
+            };
+          } catch (error) {
+            console.error("图像转换失败:", error);
+            // 如果转换失败，使用原始URL
+            const imageFormat: SiliconFlowImageFormat = {
+              type: 'image_url',
+              image_url: { url: imageUrl }
+            };
+            
+            // 创建AI回复消息ID
+            const requestId = generateId();
+            
+            // 创建AI助手的回复消息
+            const assistantMessage = createMessage({
+              content: "生成的图像:",
+              role: 'assistant',
+              status: 'complete',
+              id: `assistant-${requestId}`,
+              images: [imageFormat],
+              modelId: selectedModel?.id
+            });
+            
+            // 将消息添加到Redux
+            dispatch(addMessage({ topicId: currentTopic.id, message: assistantMessage }));
+          }
         }
       } catch (error) {
         console.error("图像生成失败:", error);
@@ -166,9 +206,10 @@ const ChatPage: React.FC = () => {
           elevation={0}
           className="status-bar-safe-area"
           sx={{
-            bgcolor: 'white',
-            color: 'black',
-            borderBottom: '1px solid #eeeeee',
+            bgcolor: 'background.paper',
+            color: 'text.primary',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
           }}
         >
           <Toolbar sx={{ justifyContent: 'space-between' }}>

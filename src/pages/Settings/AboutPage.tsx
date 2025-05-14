@@ -41,14 +41,14 @@ const AboutPage: React.FC = () => {
       <Container maxWidth="sm" sx={{ mt: 2, mb: 2 }}>
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" gutterBottom>
-            关于LLM小屋
+            关于AetherLink
           </Typography>
           <Divider sx={{ mb: 2 }} />
 
           <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
             <img 
               src="/assets/logo.png" 
-              alt="LLM小屋 Logo" 
+              alt="AetherLink Logo" 
               style={{ 
                 width: 120, 
                 height: 120, 
@@ -58,7 +58,7 @@ const AboutPage: React.FC = () => {
           </Box>
 
           <Typography variant="body1" paragraph>
-            LLM小屋是一个强大的AI助手应用，支持多种大语言模型，帮助您更高效地完成工作。
+            AetherLink是一个强大的AI助手应用，支持多种大语言模型，帮助您更高效地完成工作。
           </Typography>
 
           <Typography variant="body1" paragraph>
@@ -70,7 +70,7 @@ const AboutPage: React.FC = () => {
           </Typography>
 
           <Box sx={{ mt: 4, display: 'flex', gap: 2, justifyContent: 'center' }}>
-            <Button variant="outlined" href="https://github.com/1600822305/CS-LLM-house" target="_blank">
+            <Button variant="outlined" href="https://github.com/1600822305/CS-AetherLink" target="_blank">
               GitHub
             </Button>
             <Button

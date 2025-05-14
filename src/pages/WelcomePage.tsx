@@ -170,7 +170,7 @@ const WelcomePage: React.FC = () => {
                 设置完成
               </Typography>
               <Typography variant="body1" color="text.secondary" paragraph>
-                您的LLM小屋已准备就绪，即将进入应用...
+                您的AetherLink已准备就绪，即将进入应用...
               </Typography>
               <CircularProgress size={24} sx={{ mt: 2 }} />
               
@@ -204,7 +204,7 @@ const WelcomePage: React.FC = () => {
               
               <Box sx={{ textAlign: 'center', mb: 4, mt: 3 }}>
                 <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
-                  欢迎使用 LLM小屋
+                  欢迎使用 AetherLink
                 </Typography>
                 <Typography variant="body1" color="text.secondary">
                   让我们一起完成几个简单的设置步骤，开始您的AI之旅
@@ -357,7 +357,7 @@ const WelcomePage: React.FC = () => {
                     <Box sx={{ mb: 3 }}>
                       <Typography variant="body2" paragraph>
                         您已经成功配置了 <strong>{currentModel?.name}</strong> ({currentModel?.provider})。
-                        点击"完成"按钮开始使用LLM小屋。
+                        点击"完成"按钮开始使用AetherLink。
                       </Typography>
                     </Box>
                     
@@ -399,7 +399,7 @@ const WelcomePage: React.FC = () => {
             opacity: 0.7
           }}
         >
-          LLM小屋 © {new Date().getFullYear()} 版本 1.0.0
+          AetherLink © {new Date().getFullYear()} 版本 1.0.0
         </Typography>
       </Container>
     </Box>

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Box } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import type { Message } from '../shared/types';
 import MessageItem from './MessageItem';
 
@@ -12,6 +12,7 @@ interface MessageListProps {
 
 const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete, onSwitchVersion }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const theme = useTheme();
 
   // 滚动到最新消息
   const scrollToBottom = () => {
@@ -62,9 +63,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
         overflowY: 'auto',
         px: 0, // 移除水平内边距
         py: 2,
-        bgcolor: '#f5f5f5', // 微信风格的背景色
+        bgcolor: theme.palette.mode === 'dark' 
+          ? theme.palette.background.default 
+          : '#f5f5f5', // 适配深色/浅色主题
         scrollbarWidth: 'thin',
-        scrollbarColor: '#e1e1e1 transparent',
+        scrollbarColor: `${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : '#e1e1e1'} transparent`,
         '&::-webkit-scrollbar': {
           width: '4px',
         },
@@ -72,11 +75,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
           background: 'transparent',
         },
         '&::-webkit-scrollbar-thumb': {
-          backgroundColor: '#e1e1e1',
+          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : '#e1e1e1',
           borderRadius: '10px',
         },
         '&::-webkit-scrollbar-thumb:hover': {
-          backgroundColor: '#cccccc',
+          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.3)' : '#cccccc',
         },
       }}
     >
@@ -87,7 +90,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center',
-            color: '#999999',
+            color: theme.palette.text.secondary,
             fontStyle: 'normal',
             fontSize: '14px',
           }}
@@ -105,7 +108,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
                   sx={{ 
                     textAlign: 'center', 
                     my: 2, 
-                    color: '#999999',
+                    color: theme.palette.text.secondary,
                     fontSize: '13px',
                     position: 'relative',
                     '&::before, &::after': {
@@ -114,7 +117,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
                       top: '50%',
                       width: '20%',
                       height: '1px',
-                      backgroundColor: '#e1e1e1',
+                      backgroundColor: theme.palette.mode === 'dark' 
+                        ? 'rgba(255,255,255,0.1)' 
+                        : '#e1e1e1',
                     },
                     '&::before': {
                       left: '20%',
@@ -139,7 +144,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
                 sx={{ 
                   textAlign: 'center',
                   fontSize: '12px',
-                  color: '#999999',
+                  color: theme.palette.text.secondary,
                   my: 1.5,
                 }}
               >

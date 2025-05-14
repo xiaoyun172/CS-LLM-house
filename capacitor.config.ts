@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.llmhouse.app',
-  appName: 'LLM小屋',
+  appName: 'AetherLink',
   webDir: 'dist',
   android: {
     initialFocus: true,

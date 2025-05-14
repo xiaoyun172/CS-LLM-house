@@ -68,7 +68,7 @@ const ModelProviderSettings: React.FC = () => {
   }, [provider]);
 
   const handleBack = () => {
-    navigate('/settings/default-model');
+    navigate('/settings/default-model', { replace: true });
   };
 
   const handleSave = () => {
@@ -88,7 +88,7 @@ const ModelProviderSettings: React.FC = () => {
         }
       }));
     }
-    navigate('/settings/default-model');
+    navigate('/settings/default-model', { replace: true });
   };
 
   const handleDelete = () => {
@@ -96,7 +96,7 @@ const ModelProviderSettings: React.FC = () => {
       dispatch(deleteProvider(provider.id));
     }
     setOpenDeleteDialog(false);
-    navigate('/settings/default-model');
+    navigate('/settings/default-model', { replace: true });
   };
 
   const handleAddModel = () => {

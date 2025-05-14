@@ -1,10 +1,10 @@
-# LLM小屋 移动应用开发文档
+# AetherLink 移动应用开发文档
 
 ## 项目概述
 
-官方交流群Q群 点击链接加入群聊【LLM小屋 官方群】：http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=V-b46WoBNLIM4oc34JMULwoyJ3hyrKac&authKey=q%2FSwCcxda4e55ygtwp3h9adQXhqBLZ9wJdvM0QxTjXQkbxAa2tHoraOGy2fiibyY&noverify=0&group_code=930126592
+官方交流群Q群 点击链接加入群聊【AetherLink 官方群】：http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=V-b46WoBNLIM4oc34JMULwoyJ3hyrKac&authKey=q%2FSwCcxda4e55ygtwp3h9adQXhqBLZ9wJdvM0QxTjXQkbxAa2tHoraOGy2fiibyY&noverify=0&group_code=930126592
 
-LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic Claude、Grok、硅基流动、火山方舟等）的交互，提供流畅的对话体验，并支持Android平台部署。应用采用React、TypeScript和Capacitor框架开发，具有高度可定制的模型配置、多主题聊天管理、AI思考过程可视化、语音合成等特色功能。
+AetherLink移动应用是一个基于现代Web技术构建的跨平台AI助手应用。该应用支持与多种AI模型（如OpenAI、Google Gemini、Anthropic Claude、Grok、硅基流动、火山方舟等）的交互，提供流畅的对话体验，并支持Android平台部署。应用采用React、TypeScript和Capacitor框架开发，具有高度可定制的模型配置、多主题聊天管理、AI思考过程可视化、语音合成等特色功能。
 
 ## 技术栈
 
@@ -32,7 +32,7 @@ LLM小屋移动应用是一个基于现代Web技术构建的跨平台AI助手应
 ## 项目结构
 
 ```
-LLM小屋/
+AetherLink/
 ├── android/                # Android平台相关代码和配置
 │   ├── app/                # Android应用主要代码
 │   │   ├── src/            # 源代码目录
@@ -132,8 +132,8 @@ LLM小屋/
 1. **克隆仓库**
 
 ```bash
-git clone https://github.com/1600822305/CS-LLM-house.git
-cd CS-LLM-house
+git clone https://github.com/1600822305/CS-AetherLink.git
+cd CS-AetherLink
 ```
 
 2. **安装依赖**
@@ -224,7 +224,7 @@ npx cap open android
 1. 创建签名密钥:
 
 ```bash
-keytool -genkey -v -keystore cs-llm-house.keystore -alias cs-llm-house -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore cs-aetherlink.keystore -alias cs-aetherlink -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 2. 配置签名信息(在`android/app/build.gradle`中)
@@ -249,7 +249,7 @@ keytool -genkey -v -keystore cs-llm-house.keystore -alias cs-llm-house -keyalg R
 
 ### 自动获取模型列表
 
-LLM小屋支持从各大AI提供商API自动获取可用模型列表：
+AetherLink支持从各大AI提供商API自动获取可用模型列表：
 
 - 支持OpenAI、Claude (Anthropic)、Gemini (Google)、Grok (xAI)、硅基流动和火山方舟等主流AI提供商
 - 自动处理不同API格式和端点路径
@@ -266,7 +266,7 @@ LLM小屋支持从各大AI提供商API自动获取可用模型列表：
 
 ### 移动端优化
 
-LLM小屋针对移动设备进行了多项优化：
+AetherLink针对移动设备进行了多项优化：
 
 - **返回键智能处理**：根据当前页面上下文智能处理Android返回键行为
   - 在聊天和欢迎页面显示退出确认对话框
@@ -278,7 +278,7 @@ LLM小屋针对移动设备进行了多项优化：
 
 ### AI思考过程
 
-LLM小屋支持显示AI的思考过程，目前主要支持Grok模型的思考过程展示：
+AetherLink支持显示AI的思考过程，目前主要支持Grok模型的思考过程展示：
 
 - `ThinkingService`: 专门处理不同AI模型的思考过程，支持从API响应中提取思考内容
 - 支持不同模型的思考过程格式化和显示
@@ -300,7 +300,7 @@ LLM小屋支持显示AI的思考过程，目前主要支持Grok模型的思考�
 
 ### 语音合成功能
 
-LLM小屋支持将AI回复转换为语音：
+AetherLink支持将AI回复转换为语音：
 
 - **多种语音合成选项**：
   - 硅基流动TTS API：高质量的中文语音合成

@@ -55,10 +55,59 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
         return validTopics;
       } catch (error) {
         console.error('解析本地存储的主题失败:', error);
-        return [];
+        return createDefaultTopic();
       }
     }
-    return [];
+    // 没有保存的话题时自动创建一个默认话题
+    return createDefaultTopic();
+  };
+
+  // 创建默认话题的辅助函数
+  const createDefaultTopic = (): ChatTopic[] => {
+    console.log('没有找到已保存的话题，创建默认话题');
+    
+    // 创建一个新的默认话题
+    const defaultTopic = {
+      id: generateId(),
+      title: '默认对话',
+      lastMessageTime: new Date().toISOString(),
+      messages: []
+    };
+
+    // 添加到Redux
+    dispatch(createTopic(defaultTopic));
+    
+    // 设置为当前话题
+    dispatch(setCurrentTopic(defaultTopic));
+    
+    // 获取当前助手ID
+    const currentAssistantId = localStorage.getItem('currentAssistant');
+    
+    // 如果存在助手ID，尝试关联话题
+    if (currentAssistantId) {
+      try {
+        // 获取助手列表
+        const assistants = AssistantService.getUserAssistants();
+        const currentAssistant = assistants.find(a => a.id === currentAssistantId);
+
+        if (currentAssistant) {
+          console.log(`正在将默认话题关联到助手"${currentAssistant.name}"`);
+
+          // 将话题与当前助手关联
+          const updatedAssistant = {
+            ...currentAssistant,
+            topicIds: [...(currentAssistant.topicIds || []), defaultTopic.id]
+          };
+
+          // 保存更新的助手
+          AssistantService.updateAssistant(updatedAssistant);
+        }
+      } catch (error) {
+        console.error('关联默认话题到助手时出错:', error);
+      }
+    }
+    
+    return [defaultTopic];
   };
 
   // 处理新建话题

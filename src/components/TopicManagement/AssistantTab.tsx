@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   List, 
@@ -16,7 +16,10 @@ import {
   Chip,
   Menu,
   MenuItem,
-  IconButton
+  IconButton,
+  RadioGroup,
+  Radio,
+  FormControlLabel
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
@@ -32,9 +35,20 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import FaceIcon from '@mui/icons-material/Face';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import SchoolIcon from '@mui/icons-material/School';
+import CodeIcon from '@mui/icons-material/Code';
+import ScienceIcon from '@mui/icons-material/Science';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
+import RestaurantIcon from '@mui/icons-material/Restaurant';
+import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 import { type Assistant } from '../../shared/types/Assistant';
 import { storageService } from '../../shared/services/storageService';
+import { useDispatch } from 'react-redux';
+import { setTopicMessages } from '../../shared/store/messagesSlice';
 
 // 预设助手数据 - 应该移动到服务中
 const predefinedAssistants: Assistant[] = [
@@ -110,6 +124,7 @@ export default function AssistantTab({
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const dispatch = useDispatch();
   
   // 助手长按菜单相关状态
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -118,6 +133,13 @@ export default function AssistantTab({
   // 编辑提示词对话框相关状态
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('');
+  
+  // 图标选择对话框状态
+  const [iconDialogOpen, setIconDialogOpen] = useState(false);
+  const [selectedIcon, setSelectedIcon] = useState<string>('');
+  
+  // 清空话题确认对话框状态
+  const [clearTopicsDialogOpen, setClearTopicsDialogOpen] = useState(false);
   
   // 是否显示菜单
   const isMenuOpen = Boolean(menuAnchorEl);
@@ -232,6 +254,179 @@ export default function AssistantTab({
     
     onDeleteAssistant(contextAssistant.id);
     handleCloseMenu();
+  };
+  
+  // 清空当前助手的所有话题内容
+  const handleClearAssistantTopics = () => {
+    if (!contextAssistant) return;
+    
+    setClearTopicsDialogOpen(true);
+    handleCloseMenu();
+  };
+  
+  // 确认清空话题
+  const confirmClearTopics = async () => {
+    if (!contextAssistant) return;
+    
+    try {
+      // 获取助手关联的话题ID列表
+      const topicIds = contextAssistant.topicIds || [];
+      
+      // 从localStorage读取所有话题
+      const topicsJson = localStorage.getItem('chatTopics');
+      if (!topicsJson) {
+        setClearTopicsDialogOpen(false);
+        return;
+      }
+      
+      const topics = JSON.parse(topicsJson);
+      let updated = false;
+      
+      // 遍历所有话题，清空属于当前助手的话题内容
+      const updatedTopics = topics.map((topic: any) => {
+        if (topicIds.includes(topic.id)) {
+          updated = true;
+          // 清空消息，但保留话题本身
+          return { ...topic, messages: [] };
+        }
+        return topic;
+      });
+      
+      if (updated) {
+        // 保存回localStorage
+        localStorage.setItem('chatTopics', JSON.stringify(updatedTopics));
+        
+        // 同时更新Redux状态
+        topicIds.forEach(topicId => {
+          dispatch(setTopicMessages({
+            topicId,
+            messages: []
+          }));
+        });
+        
+        alert(`已清空 ${contextAssistant.name} 的所有对话内容`);
+      }
+    } catch (error) {
+      console.error('清空话题失败:', error);
+      alert('清空话题失败: ' + (error instanceof Error ? error.message : String(error)));
+    }
+    
+    setClearTopicsDialogOpen(false);
+  };
+  
+  // 打开图标选择对话框
+  const handleEditIcon = () => {
+    if (!contextAssistant) return;
+    
+    // 设置当前图标
+    const currentIcon = contextAssistant.icon;
+    if (currentIcon && React.isValidElement(currentIcon)) {
+      const iconType = currentIcon.type;
+      // 基于图标类型设置选中值
+      if (iconType === EmojiEmotionsIcon) setSelectedIcon('EmojiEmotions');
+      else if (iconType === AutoAwesomeIcon) setSelectedIcon('AutoAwesome');
+      else if (iconType === WorkIcon) setSelectedIcon('Work');
+      else if (iconType === AnalyticsIcon) setSelectedIcon('Analytics');
+      else if (iconType === PeopleIcon) setSelectedIcon('People');
+      else if (iconType === ArticleIcon) setSelectedIcon('Article');
+      else if (iconType === StorefrontIcon) setSelectedIcon('Storefront');
+      else if (iconType === InventoryIcon) setSelectedIcon('Inventory');
+      else if (iconType === SchoolIcon) setSelectedIcon('School');
+      else if (iconType === CodeIcon) setSelectedIcon('Code');
+      else if (iconType === ScienceIcon) setSelectedIcon('Science');
+      else if (iconType === SmartToyIcon) setSelectedIcon('SmartToy');
+      else if (iconType === SportsEsportsIcon) setSelectedIcon('SportsEsports');
+      else if (iconType === RestaurantIcon) setSelectedIcon('Restaurant');
+      else if (iconType === HealthAndSafetyIcon) setSelectedIcon('HealthAndSafety');
+      else setSelectedIcon('EmojiEmotions'); // 默认
+    } else {
+      setSelectedIcon('EmojiEmotions'); // 默认
+    }
+    
+    setIconDialogOpen(true);
+    handleCloseMenu();
+  };
+  
+  // 保存选择的图标
+  const saveSelectedIcon = async () => {
+    if (!contextAssistant) return;
+    
+    // 根据选择创建图标元素
+    let iconElement;
+    const iconColor = '#FFD700'; // 默认颜色
+    
+    switch (selectedIcon) {
+      case 'EmojiEmotions':
+        iconElement = React.createElement(EmojiEmotionsIcon, { sx: { color: iconColor } });
+        break;
+      case 'AutoAwesome':
+        iconElement = React.createElement(AutoAwesomeIcon, { sx: { color: '#1E90FF' } });
+        break;
+      case 'Work':
+        iconElement = React.createElement(WorkIcon, { sx: { color: '#FF9800' } });
+        break;
+      case 'Analytics':
+        iconElement = React.createElement(AnalyticsIcon, { sx: { color: '#F44336' } });
+        break;
+      case 'People':
+        iconElement = React.createElement(PeopleIcon, { sx: { color: '#2196F3' } });
+        break;
+      case 'Article':
+        iconElement = React.createElement(ArticleIcon, { sx: { color: '#4CAF50' } });
+        break;
+      case 'Storefront':
+        iconElement = React.createElement(StorefrontIcon, { sx: { color: '#9C27B0' } });
+        break;
+      case 'Inventory':
+        iconElement = React.createElement(InventoryIcon, { sx: { color: '#795548' } });
+        break;
+      case 'School':
+        iconElement = React.createElement(SchoolIcon, { sx: { color: '#3F51B5' } });
+        break;
+      case 'Code':
+        iconElement = React.createElement(CodeIcon, { sx: { color: '#607D8B' } });
+        break;
+      case 'Science':
+        iconElement = React.createElement(ScienceIcon, { sx: { color: '#00BCD4' } });
+        break;
+      case 'SmartToy':
+        iconElement = React.createElement(SmartToyIcon, { sx: { color: '#E91E63' } });
+        break;
+      case 'SportsEsports':
+        iconElement = React.createElement(SportsEsportsIcon, { sx: { color: '#673AB7' } });
+        break;
+      case 'Restaurant':
+        iconElement = React.createElement(RestaurantIcon, { sx: { color: '#FF5722' } });
+        break;
+      case 'HealthAndSafety':
+        iconElement = React.createElement(HealthAndSafetyIcon, { sx: { color: '#4CAF50' } });
+        break;
+      default:
+        iconElement = React.createElement(EmojiEmotionsIcon, { sx: { color: iconColor } });
+    }
+    
+    // 更新助手图标
+    const updatedAssistant = {
+      ...contextAssistant,
+      icon: iconElement
+    };
+    
+    try {
+      // 使用存储服务保存
+      await storageService.saveAssistant(updatedAssistant);
+      
+      // 尝试通过回调更新
+      if (onUpdateAssistant) {
+        onUpdateAssistant(updatedAssistant);
+      }
+      
+      alert('助手图标已更新');
+    } catch (error) {
+      console.error('更新助手图标失败:', error);
+      alert('更新失败: ' + (error instanceof Error ? error.message : String(error)));
+    }
+    
+    setIconDialogOpen(false);
   };
 
   return (
@@ -401,7 +596,7 @@ export default function AssistantTab({
         </DialogActions>
       </Dialog>
       
-      {/* 助手菜单 */}
+      {/* 助手菜单 - 添加新选项 */}
       <Menu
         anchorEl={menuAnchorEl}
         open={isMenuOpen}
@@ -417,12 +612,28 @@ export default function AssistantTab({
           </ListItemIcon>
           <ListItemText primary="编辑助手" />
         </MenuItem>
+        
+        <MenuItem onClick={handleEditIcon}>
+          <ListItemIcon>
+            <FaceIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="助手图标" />
+        </MenuItem>
+        
         <MenuItem onClick={handleDuplicateAssistant}>
           <ListItemIcon>
             <ContentCopyIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText primary="复制助手" />
         </MenuItem>
+        
+        <MenuItem onClick={handleClearAssistantTopics}>
+          <ListItemIcon>
+            <DeleteSweepIcon fontSize="small" sx={{ color: 'warning.main' }} />
+          </ListItemIcon>
+          <ListItemText primary="清空话题" sx={{ color: 'warning.main' }} />
+        </MenuItem>
+        
         <MenuItem 
           onClick={handleDeleteAssistant}
           sx={{ color: 'error.main' }}
@@ -509,6 +720,203 @@ export default function AssistantTab({
               </Button>
             </Box>
           </Box>
+        </DialogActions>
+      </Dialog>
+      
+      {/* 图标选择对话框 - 简化版本 */}
+      <Dialog
+        open={iconDialogOpen}
+        onClose={() => setIconDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          选择助手图标
+        </DialogTitle>
+        <DialogContent>
+          <RadioGroup
+            value={selectedIcon}
+            onChange={(e) => setSelectedIcon(e.target.value)}
+          >
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>
+              <FormControlLabel
+                value="EmojiEmotions"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <EmojiEmotionsIcon sx={{ color: '#FFD700', mr: 1 }} />
+                    <Typography variant="body2">表情</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="AutoAwesome"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <AutoAwesomeIcon sx={{ color: '#1E90FF', mr: 1 }} />
+                    <Typography variant="body2">智能</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="Work"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <WorkIcon sx={{ color: '#FF9800', mr: 1 }} />
+                    <Typography variant="body2">工作</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="Analytics"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <AnalyticsIcon sx={{ color: '#F44336', mr: 1 }} />
+                    <Typography variant="body2">分析</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="People"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <PeopleIcon sx={{ color: '#2196F3', mr: 1 }} />
+                    <Typography variant="body2">团队</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="Article"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <ArticleIcon sx={{ color: '#4CAF50', mr: 1 }} />
+                    <Typography variant="body2">文档</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="School"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <SchoolIcon sx={{ color: '#3F51B5', mr: 1 }} />
+                    <Typography variant="body2">学习</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="Code"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <CodeIcon sx={{ color: '#607D8B', mr: 1 }} />
+                    <Typography variant="body2">编程</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="Science"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <ScienceIcon sx={{ color: '#00BCD4', mr: 1 }} />
+                    <Typography variant="body2">科学</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="SmartToy"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <SmartToyIcon sx={{ color: '#E91E63', mr: 1 }} />
+                    <Typography variant="body2">机器人</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="SportsEsports"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <SportsEsportsIcon sx={{ color: '#673AB7', mr: 1 }} />
+                    <Typography variant="body2">游戏</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="Restaurant"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <RestaurantIcon sx={{ color: '#FF5722', mr: 1 }} />
+                    <Typography variant="body2">美食</Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel
+                value="HealthAndSafety"
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <HealthAndSafetyIcon sx={{ color: '#4CAF50', mr: 1 }} />
+                    <Typography variant="body2">健康</Typography>
+                  </Box>
+                }
+              />
+            </Box>
+          </RadioGroup>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIconDialogOpen(false)}>取消</Button>
+          <Button 
+            variant="contained" 
+            onClick={saveSelectedIcon}
+          >
+            保存
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* 清空话题确认对话框 */}
+      <Dialog
+        open={clearTopicsDialogOpen}
+        onClose={() => setClearTopicsDialogOpen(false)}
+      >
+        <DialogTitle>
+          确认清空话题
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            确定要清空 "{contextAssistant?.name || '当前助手'}" 的所有对话内容吗？此操作不可恢复。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setClearTopicsDialogOpen(false)}>取消</Button>
+          <Button 
+            variant="contained" 
+            color="error"
+            onClick={confirmClearTopics}
+          >
+            确认清空
+          </Button>
         </DialogActions>
       </Dialog>
     </>

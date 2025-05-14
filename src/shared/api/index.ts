@@ -177,14 +177,29 @@ export const sendChatRequest = async (options: ChatRequest): Promise<{ success: 
       
       // 创建一个响应包装器，将旧API的流式回调转换为新格式
       let contentAccumulator = '';
+      let lastUpdateTime = Date.now();
+      const updateThreshold = 50; // 毫秒
+      const minChunkSize = 5; // 最小字符变化阈值
+      
       const onUpdate = options.onChunk 
         ? (content: string) => {
             // 计算新增的部分
             const newContent = content.substring(contentAccumulator.length);
-            contentAccumulator = content;
-            // 只发送新增部分
-            if (newContent) {
-              options.onChunk!(newContent);
+            const currentTime = Date.now();
+            const timeSinceLastUpdate = currentTime - lastUpdateTime;
+            
+            // 只有在以下情况才进行更新：
+            // 1. 新增内容长度超过阈值
+            // 2. 距离上次更新时间超过阈值
+            // 3. 或者内容长度变短（可能是替换/修改）
+            if (newContent.length >= minChunkSize || 
+                timeSinceLastUpdate >= updateThreshold || 
+                content.length < contentAccumulator.length) {
+              
+              contentAccumulator = content;
+              lastUpdateTime = currentTime;
+              // 发送完整内容而不是增量，避免增量更新带来的问题
+              options.onChunk!(content);
             }
           }
         : undefined;

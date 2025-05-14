@@ -147,7 +147,7 @@ const SettingsPage: React.FC = () => {
                 mb: 1.5, 
                 fontSize: '0.85rem',
                 fontWeight: 600,
-                color: '#475569',
+                color: (theme) => theme.palette.mode === 'light' ? '#475569' : '#94A3B8',
                 letterSpacing: '0.05em',
                 textTransform: 'uppercase'
               }}

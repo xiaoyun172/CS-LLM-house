@@ -13,6 +13,7 @@ import {
   Container,
   Divider,
   Paper,
+  useTheme
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
@@ -23,20 +24,33 @@ const AppearanceSettings: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const settings = useAppSelector((state) => state.settings);
+  const theme = useTheme();
 
   const handleBack = () => {
     navigate('/settings');
   };
 
   return (
-    <Box sx={{ flexGrow: 1 }}>
-      <AppBar position="static">
+    <Box sx={{ 
+      flexGrow: 1,
+      bgcolor: theme.palette.background.default
+    }}>
+      <AppBar 
+        position="static"
+        elevation={0}
+        sx={{
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          borderBottom: 1,
+          borderColor: 'divider'
+        }}
+      >
         <Toolbar>
           <IconButton
             edge="start"
-            color="inherit"
             onClick={handleBack}
             aria-label="back"
+            sx={{ color: theme.palette.primary.main }}
           >
             <ArrowBackIcon />
           </IconButton>
@@ -47,8 +61,21 @@ const AppearanceSettings: React.FC = () => {
       </AppBar>
 
       <Container maxWidth="sm" sx={{ mt: 2, mb: 2 }}>
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: 3, 
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper'
+          }}
+        >
+          <Typography 
+            variant="h6" 
+            gutterBottom
+            sx={{ fontWeight: 600, color: 'text.primary' }}
+          >
             外观
           </Typography>
           <Divider sx={{ mb: 2 }} />
@@ -68,7 +95,7 @@ const AppearanceSettings: React.FC = () => {
           </FormControl>
 
           <Box sx={{ mt: 3 }}>
-            <Typography gutterBottom>字体大小</Typography>
+            <Typography gutterBottom color="text.primary">字体大小</Typography>
             <Slider
               value={settings.fontSize}
               onChange={(_, value) => dispatch(setFontSize(value as number))}

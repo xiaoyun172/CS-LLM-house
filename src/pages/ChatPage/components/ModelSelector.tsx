@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Menu, MenuItem, Box, Typography } from '@mui/material';
+import { Button, Menu, MenuItem, Box, Typography, useTheme } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import type { Model } from '../../../shared/types';
 
@@ -22,6 +22,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   anchorEl,
   menuOpen
 }) => {
+  const theme = useTheme();
+  
   return (
     <>
       <Button
@@ -29,17 +31,17 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         endIcon={<KeyboardArrowDownIcon />}
         sx={{
           textTransform: 'none',
-          color: 'black',
+          color: theme.palette.mode === 'dark' ? theme.palette.text.primary : 'black',
           mr: 1,
           fontWeight: 'normal',
           fontSize: '0.9rem',
-          border: '1px solid #eeeeee',
+          border: `1px solid ${theme.palette.mode === 'dark' ? theme.palette.divider : '#eeeeee'}`,
           borderRadius: '16px',
           px: 2,
           py: 0.5,
           '&:hover': {
-            bgcolor: '#f5f5f5',
-            border: '1px solid #e0e0e0',
+            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#f5f5f5',
+            border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#e0e0e0'}`,
           }
         }}
       >
@@ -68,10 +70,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               minWidth: '180px',
               py: 1,
               '&.Mui-selected': {
-                bgcolor: 'rgba(25, 118, 210, 0.08)',
+                bgcolor: theme.palette.mode === 'dark' ? 'rgba(144, 202, 249, 0.16)' : 'rgba(25, 118, 210, 0.08)',
               },
               '&.Mui-selected:hover': {
-                bgcolor: 'rgba(25, 118, 210, 0.12)',
+                bgcolor: theme.palette.mode === 'dark' ? 'rgba(144, 202, 249, 0.24)' : 'rgba(25, 118, 210, 0.12)',
               }
             }}
           >
@@ -79,7 +81,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               <Typography variant="body2" component="div">
                 {model.name}
               </Typography>
-              <Typography variant="caption" color="textSecondary">
+              <Typography variant="caption" color="text.secondary">
                 {model.description}
               </Typography>
             </Box>
