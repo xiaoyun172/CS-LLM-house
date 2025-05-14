@@ -343,24 +343,68 @@ const messagesSlice = createSlice({
       );
       
       if (targetMsgIndex === -1) {
+        console.error(`找不到指定ID的消息: ${messageId}`);
         return;
       }
       
       const targetMessage = state.messagesByTopic[topicId][targetMsgIndex];
+      console.log(`切换到消息: ID=${messageId}, 版本=${targetMessage.version || '1'}`);
       
-      // 如果该消息没有alternateVersions，则无需切换
-      if (!targetMessage.alternateVersions || targetMessage.alternateVersions.length === 0) {
-        return;
+      // 步骤1: 标记目标消息为当前版本
+      state.messagesByTopic[topicId][targetMsgIndex] = {
+        ...targetMessage,
+        isCurrentVersion: true
+      };
+      
+      // 步骤2: 查找所有相关版本（即属于同一组版本的所有消息）
+      let relatedIds = new Set<string>([messageId]);
+      
+      // 添加当前消息的alternateVersions
+      if (targetMessage.alternateVersions && targetMessage.alternateVersions.length > 0) {
+        targetMessage.alternateVersions.forEach(id => relatedIds.add(id));
       }
       
-      // 将所有相关版本标记为非当前版本
-      const allVersionIds = [...targetMessage.alternateVersions, messageId];
+      // 查找引用当前消息的其他消息
+      const referencingMsgs = state.messagesByTopic[topicId].filter(msg => 
+        msg.id !== messageId && msg.alternateVersions && msg.alternateVersions.includes(messageId)
+      );
       
+      // 将这些消息和它们的alternateVersions加入关联ID集合
+      referencingMsgs.forEach(msg => {
+        relatedIds.add(msg.id);
+        if (msg.alternateVersions) {
+          msg.alternateVersions.forEach(id => relatedIds.add(id));
+        }
+      });
+      
+      // 查找所有被当前消息引用的消息
+      if (targetMessage.alternateVersions) {
+        const referencedMsgs = state.messagesByTopic[topicId].filter(msg => 
+          targetMessage.alternateVersions!.includes(msg.id)
+        );
+        
+        // 将这些消息和它们的alternateVersions加入关联ID集合
+        referencedMsgs.forEach(msg => {
+          relatedIds.add(msg.id);
+          if (msg.alternateVersions) {
+            msg.alternateVersions.forEach(id => relatedIds.add(id));
+          }
+        });
+      }
+      
+      // 确保当前ID也包含在内
+      relatedIds.add(messageId);
+      
+      // 将ID集合转换为数组
+      const allVersionIds = Array.from(relatedIds);
+      console.log('所有关联版本ID:', allVersionIds);
+      
+      // 步骤3: 标记所有其他相关消息为非当前版本
       state.messagesByTopic[topicId] = state.messagesByTopic[topicId].map(msg => {
-        if (allVersionIds.includes(msg.id)) {
+        if (msg.id !== messageId && allVersionIds.includes(msg.id)) {
           return {
             ...msg,
-            isCurrentVersion: msg.id === messageId
+            isCurrentVersion: false
           };
         }
         return msg;

@@ -1,5 +1,9 @@
 import type { Model } from '../types';
 import { logApiRequest, logApiResponse } from './LoggerService';
+import { generateImage as siliconflowGenerateImage } from '../api/siliconflow';
+import type { ImageGenerationParams, GeneratedImage } from '../types';
+import { ModelType } from '../types';
+import { log } from './LoggerService';
 
 // 获取模型的基本URL
 function getBaseUrl(provider: any): string {
@@ -455,6 +459,169 @@ function getDefaultGroupName(modelId: string): string {
   return '其他模型';
 }
 
+// 从DeepSeek API获取模型列表
+async function fetchDeepSeekModels(provider: any): Promise<any[]> {
+  try {
+    const baseUrl = getBaseUrl(provider);
+    const apiKey = getApiKey(provider);
+
+    if (!apiKey) {
+      console.warn('[fetchDeepSeekModels] 未提供DeepSeek API密钥，使用预设模型列表');
+      return getDefaultDeepSeekModels();
+    }
+
+    // 尝试从API获取模型列表
+    try {
+      console.log(`[fetchDeepSeekModels] 尝试从API获取DeepSeek模型列表`);
+
+      // 构建API端点 - DeepSeek使用OpenAI兼容的API格式
+      let endpoint = '';
+      if (baseUrl.includes('/v1')) {
+        // 如果baseUrl已经包含/v1，直接添加/models
+        endpoint = `${baseUrl}/models`;
+      } else {
+        // 否则添加完整路径
+        endpoint = `${baseUrl}/models`;
+      }
+
+      console.log(`[fetchDeepSeekModels] 请求端点: ${endpoint}`);
+
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      };
+
+      // 添加自定义中转站可能需要的额外头部
+      if (provider.extraHeaders) {
+        Object.assign(headers, provider.extraHeaders);
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: headers
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`[fetchDeepSeekModels] API请求失败: ${response.status}, ${errorText}`);
+        throw new Error('API请求失败');
+      }
+
+      const data = await response.json();
+
+      // 处理不同的响应格式
+      if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+        console.log(`[fetchDeepSeekModels] 成功从API获取到 ${data.data.length} 个模型`);
+
+        // 转换为标准格式
+        return data.data.map((model: any) => ({
+          id: model.id,
+          name: model.id === 'deepseek-chat' ? 'DeepSeek-V3' : 
+                model.id === 'deepseek-reasoner' ? 'DeepSeek-R1' : model.id,
+          description: model.description || getDeepSeekModelDescription(model.id),
+          object: 'model',
+          created: Date.now(),
+          owned_by: 'DeepSeek'
+        }));
+      } else if (Array.isArray(data) && data.length > 0) {
+        console.log(`[fetchDeepSeekModels] 成功从API获取到 ${data.length} 个模型`);
+
+        return data.map((model: any) => ({
+          id: model.id,
+          name: model.id === 'deepseek-chat' ? 'DeepSeek-V3' : 
+                model.id === 'deepseek-reasoner' ? 'DeepSeek-R1' : model.id,
+          description: model.description || getDeepSeekModelDescription(model.id),
+          object: 'model',
+          created: Date.now(),
+          owned_by: 'DeepSeek'
+        }));
+      }
+
+      throw new Error('未找到模型数据');
+    } catch (apiError) {
+      console.warn(`[fetchDeepSeekModels] 从API获取失败，使用预设模型列表: ${apiError}`);
+      return getDefaultDeepSeekModels();
+    }
+  } catch (error) {
+    console.error('[fetchDeepSeekModels] 获取DeepSeek模型失败:', error);
+    return getDefaultDeepSeekModels();
+  }
+}
+
+// 获取默认DeepSeek模型列表
+function getDefaultDeepSeekModels(): any[] {
+  return [
+    { 
+      id: 'deepseek-chat', 
+      name: 'DeepSeek-V3', 
+      description: 'DeepSeek最新的大型语言模型，具有优秀的中文和代码能力。',
+      owned_by: 'DeepSeek'
+    },
+    { 
+      id: 'deepseek-reasoner', 
+      name: 'DeepSeek-R1', 
+      description: 'DeepSeek的推理模型，擅长解决复杂推理问题。',
+      owned_by: 'DeepSeek'
+    }
+  ];
+}
+
+// 获取DeepSeek模型描述
+function getDeepSeekModelDescription(modelId: string): string {
+  switch(modelId) {
+    case 'deepseek-chat':
+      return 'DeepSeek最新的大型语言模型，具有优秀的中文和代码能力。';
+    case 'deepseek-reasoner':
+      return 'DeepSeek的推理模型，擅长解决复杂推理问题。';
+    default:
+      return 'DeepSeek AI模型';
+  }
+}
+
+// 添加图像生成方法
+export async function generateImage(
+  model: Model, 
+  params: ImageGenerationParams
+): Promise<GeneratedImage> {
+  try {
+    log('INFO', `开始生成图像，使用模型: ${model.name}`);
+    
+    // 检查模型是否支持图像生成
+    const isImageGenerationModel = 
+      model.imageGeneration || 
+      model.capabilities?.imageGeneration || 
+      (model.modelTypes && model.modelTypes.includes(ModelType.ImageGen)) ||
+      model.id.toLowerCase().includes('flux') || 
+      model.id.toLowerCase().includes('black-forest') ||
+      model.id.toLowerCase().includes('stable-diffusion') ||
+      model.id.toLowerCase().includes('sd') ||
+      model.id.toLowerCase().includes('dalle') ||
+      model.id.toLowerCase().includes('midjourney');
+    
+    if (!isImageGenerationModel) {
+      throw new Error(`模型 ${model.name} 不支持图像生成`);
+    }
+    
+    // 调用硅基流动API生成图像
+    const imageUrls = await siliconflowGenerateImage(model, params);
+    
+    // 创建图像生成结果
+    const generatedImage: GeneratedImage = {
+      url: imageUrls[0], // 取第一个生成的图像
+      prompt: params.prompt,
+      timestamp: new Date().toISOString(),
+      modelId: model.id
+    };
+    
+    log('INFO', `图像生成成功: ${generatedImage.url.substring(0, 50)}...`);
+    
+    return generatedImage;
+  } catch (error: any) {
+    log('ERROR', `图像生成失败: ${error.message || '未知错误'}`);
+    throw error;
+  }
+}
+
 /**
  * 从API提供商获取模型列表
  * @param provider 模型提供商配置
@@ -504,6 +671,9 @@ export async function fetchModels(provider: any): Promise<Model[]> {
         break;
       case 'grok':
         models = await fetchGrokModels(provider);
+        break;
+      case 'deepseek':
+        models = await fetchDeepSeekModels(provider);
         break;
       default:
         // 对于未知类型，尝试使用OpenAI兼容API

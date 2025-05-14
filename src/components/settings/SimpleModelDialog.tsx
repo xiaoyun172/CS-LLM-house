@@ -13,39 +13,31 @@ import {
   FormHelperText,
   Box,
   Typography,
-  Slider,
   Chip,
   Switch,
   FormControlLabel,
 } from '@mui/material';
-import type { Model, PresetModel } from '../../shared/types';
+import type { Model } from '../../shared/types';
 import { ModelType } from '../../shared/types';
-import { presetModels } from '../../shared/data/presetModels';
-import { generateId } from '../../shared/utils';
 import { matchModelTypes, getModelTypeDisplayName } from '../../shared/data/modelTypeRules';
 
-interface ModelDialogProps {
+interface SimpleModelDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (model: Model) => void;
   editModel?: Model;
 }
 
-const ModelDialog: React.FC<ModelDialogProps> = ({
+const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
   open,
   onClose,
   onSave,
   editModel,
 }) => {
-  const [selectedPreset, setSelectedPreset] = useState<PresetModel | null>(null);
   const [modelData, setModelData] = useState<Model>({
     id: '',
     name: '',
     provider: 'openai',
-    apiKey: '',
-    baseUrl: '',
-    maxTokens: 4096,
-    temperature: 0.7,
     enabled: true,
     isDefault: false,
   });
@@ -68,60 +60,8 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
         setModelTypes(detectedTypes);
         setAutoDetectTypes(true);
       }
-
-      // 查找匹配的预设模型
-      const preset = presetModels.find(p => p.id === editModel.id);
-      setSelectedPreset(preset || null);
-    } else {
-      // 重置表单
-      setModelData({
-        id: generateId(),
-        name: '',
-        provider: 'openai',
-        apiKey: '',
-        baseUrl: '',
-        maxTokens: 4096,
-        temperature: 0.7,
-        enabled: true,
-        isDefault: false,
-      });
-      setSelectedPreset(null);
-      setModelTypes([ModelType.Chat]);
-      setAutoDetectTypes(true);
     }
   }, [editModel, open]);
-
-  // 处理预设模型选择
-  const handlePresetChange = (event: React.ChangeEvent<{ value: unknown }> | any) => {
-    const presetId = event.target.value as string;
-    const preset = presetModels.find(p => p.id === presetId) || null;
-
-    setSelectedPreset(preset);
-
-    if (preset) {
-      // 设置预设模型的属性，但保留当前的ID
-      setModelData({
-        ...modelData,
-        // 使用预设模型的名称
-        name: preset.name,
-        // 如果是新建模型，使用预设的provider，否则保留当前provider
-        provider: !editModel ? preset.provider : modelData.provider,
-        baseUrl: preset.defaultBaseUrl || ''
-      });
-
-      // 设置模型类型
-      if (preset.modelTypes) {
-        setModelTypes(preset.modelTypes);
-      } else {
-        const detectedTypes = matchModelTypes(preset.id, preset.provider);
-        setModelTypes(detectedTypes);
-      }
-      
-      setAutoDetectTypes(true);
-
-      console.log(`选择预设模型: ${preset.name}, ID: ${preset.id}, 提供商: ${!editModel ? preset.provider : modelData.provider}`);
-    }
-  };
 
   // 处理表单字段变化
   const handleChange = (field: keyof Model, value: any) => {
@@ -181,10 +121,6 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
       newErrors.name = '请输入模型名称';
     }
 
-    if (selectedPreset?.requiresApiKey && !modelData.apiKey?.trim()) {
-      newErrors.apiKey = '请输入API密钥';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -199,10 +135,8 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
         // 如果是多模态类型，确保设置capabilities.multimodal为true
         capabilities: {
           ...modelData.capabilities,
-          multimodal: modelTypes.includes(ModelType.Vision) || Boolean(modelData.multimodal)
+          multimodal: modelTypes.includes(ModelType.Vision)
         },
-        // 向下兼容
-        multimodal: modelTypes.includes(ModelType.Vision) || Boolean(modelData.multimodal)
       };
       
       onSave(finalModelData);
@@ -211,28 +145,10 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{editModel ? '编辑模型' : '添加模型'}</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 3, mt: 1 }}>
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel id="preset-model-label">预设模型</InputLabel>
-            <Select
-              labelId="preset-model-label"
-              value={selectedPreset?.id || ''}
-              onChange={handlePresetChange}
-              label="预设模型"
-            >
-              <MenuItem value="">自定义模型</MenuItem>
-              {presetModels.map((preset) => (
-                <MenuItem key={preset.id} value={preset.id}>
-                  {preset.name} ({preset.provider})
-                </MenuItem>
-              ))}
-            </Select>
-            <FormHelperText>选择预设模型或创建自定义模型</FormHelperText>
-          </FormControl>
-
           <TextField
             fullWidth
             label="模型名称"
@@ -255,6 +171,7 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
               <MenuItem value="openai">OpenAI</MenuItem>
               <MenuItem value="anthropic">Anthropic</MenuItem>
               <MenuItem value="google">Google</MenuItem>
+              <MenuItem value="deepseek">DeepSeek</MenuItem>
               <MenuItem value="siliconflow">SiliconFlow</MenuItem>
               <MenuItem value="volcengine">火山引擎</MenuItem>
               <MenuItem value="custom">自定义</MenuItem>
@@ -271,28 +188,6 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
             onChange={(e) => handleChange('id', e.target.value)}
             margin="normal"
             helperText="模型的唯一标识符，例如：gpt-4、claude-3-opus"
-          />
-
-          <TextField
-            fullWidth
-            label="API密钥"
-            value={modelData.apiKey || ''}
-            onChange={(e) => handleChange('apiKey', e.target.value)}
-            margin="normal"
-            type="password"
-            error={!!errors.apiKey}
-            helperText={errors.apiKey || '请输入API密钥，将安全存储在本地'}
-            required={selectedPreset?.requiresApiKey}
-          />
-
-          <TextField
-            fullWidth
-            label="API基础URL"
-            value={modelData.baseUrl || ''}
-            onChange={(e) => handleChange('baseUrl', e.target.value)}
-            margin="normal"
-            placeholder={selectedPreset?.defaultBaseUrl || 'https://api.example.com/v1'}
-            helperText="可选，如果使用自定义API端点"
           />
 
           {/* 模型类型选择 */}
@@ -328,46 +223,6 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
                 : '点击类型标签来添加或移除'}
             </FormHelperText>
           </Box>
-
-          <Box sx={{ mt: 3 }}>
-            <Typography gutterBottom>最大Token数</Typography>
-            <Slider
-              value={modelData.maxTokens || 4096}
-              onChange={(_, value) => handleChange('maxTokens', value)}
-              min={1024}
-              max={32768}
-              step={1024}
-              marks={[
-                { value: 1024, label: '1K' },
-                { value: 4096, label: '4K' },
-                { value: 8192, label: '8K' },
-                { value: 16384, label: '16K' },
-                { value: 32768, label: '32K' },
-              ]}
-              valueLabelDisplay="auto"
-            />
-          </Box>
-
-          <Box sx={{ mt: 3 }}>
-            <Typography gutterBottom>温度 (Temperature)</Typography>
-            <Slider
-              value={modelData.temperature || 0.7}
-              onChange={(_, value) => handleChange('temperature', value)}
-              min={0}
-              max={2}
-              step={0.1}
-              marks={[
-                { value: 0, label: '0' },
-                { value: 0.7, label: '0.7' },
-                { value: 1, label: '1' },
-                { value: 2, label: '2' },
-              ]}
-              valueLabelDisplay="auto"
-            />
-            <FormHelperText>
-              较低的值使输出更确定，较高的值使输出更随机和创造性
-            </FormHelperText>
-          </Box>
         </Box>
       </DialogContent>
       <DialogActions>
@@ -380,4 +235,4 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
   );
 };
 
-export default ModelDialog;
+export default SimpleModelDialog; 

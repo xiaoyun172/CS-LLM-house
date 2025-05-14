@@ -1,24 +1,119 @@
-import type { Message, Model } from '../types';
+import type { Message, Model, ImageContent } from '../types';
 import OpenAI from 'openai';
 import { logApiRequest, logApiResponse } from '../services/LoggerService';
 
-// 转换消息格式
-const convertToOpenAIMessages = (messages: Message[]): Array<OpenAI.Chat.ChatCompletionUserMessageParam | OpenAI.Chat.ChatCompletionAssistantMessageParam | OpenAI.Chat.ChatCompletionSystemMessageParam> => {
+// OpenAI消息内容项类型
+interface MessageContentItem {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: {
+    url: string;
+  };
+}
+
+// 转换消息格式，支持图片
+const convertToOpenAIMessages = (messages: Message[]): Array<OpenAI.Chat.ChatCompletionMessageParam> => {
   return messages.map(msg => {
+    // 检查消息是否包含图片 - 支持两种图片格式
+    const isComplexContent = typeof msg.content === 'object';
+    const hasDirectImages = Array.isArray(msg.images) && msg.images.length > 0;
+    
+    // 添加调试日志
+    console.log(`[OpenAI API] 处理消息类型: ${msg.role}, 复杂内容: ${isComplexContent}, 直接图片: ${hasDirectImages}`);
+    
     if (msg.role === 'user') {
-      return {
-        role: 'user',
-        content: msg.content,
-      } as OpenAI.Chat.ChatCompletionUserMessageParam;
+      // 用户消息处理
+      // 如果包含任意形式的图片，使用内容数组格式
+      if (isComplexContent || hasDirectImages) {
+        // 准备内容数组
+        const contentArray: MessageContentItem[] = [];
+        
+        // 添加文本内容（如果有）
+        const textContent = isComplexContent 
+          ? (msg.content as {text?: string}).text || ''
+          : typeof msg.content === 'string' ? msg.content : '';
+          
+        if (textContent) {
+          contentArray.push({
+            type: 'text',
+            text: textContent
+          });
+        }
+        
+        // 添加内容里的图片（旧格式）
+        if (isComplexContent) {
+          const content = msg.content as {text?: string; images?: ImageContent[]};
+          if (content.images && content.images.length > 0) {
+            console.log(`[OpenAI API] 处理旧格式图片，数量: ${content.images.length}`);
+            content.images.forEach((image, index) => {
+              if (image.base64Data) {
+                contentArray.push({
+                  type: 'image_url',
+                  image_url: {
+                    url: image.base64Data // 已经包含完整的data:image/格式
+                  }
+                });
+                console.log(`[OpenAI API] 添加base64图片 ${index+1}, 开头: ${image.base64Data.substring(0, 30)}...`);
+              } else if (image.url) {
+                contentArray.push({
+                  type: 'image_url',
+                  image_url: {
+                    url: image.url
+                  }
+                });
+                console.log(`[OpenAI API] 添加URL图片 ${index+1}: ${image.url}`);
+              }
+            });
+          }
+        }
+        
+        // 添加直接附加的图片（新格式）
+        if (hasDirectImages) {
+          console.log(`[OpenAI API] 处理新格式图片，数量: ${msg.images!.length}`);
+          msg.images!.forEach((imgFormat, index) => {
+            if (imgFormat.image_url && imgFormat.image_url.url) {
+              contentArray.push({
+                type: 'image_url',
+                image_url: {
+                  url: imgFormat.image_url.url
+                }
+              });
+              console.log(`[OpenAI API] 添加新格式图片 ${index+1}: ${imgFormat.image_url.url.substring(0, 30)}...`);
+            }
+          });
+        }
+        
+        console.log(`[OpenAI API] 转换后内容数组长度: ${contentArray.length}, 包含图片数量: ${contentArray.filter(item => item.type === 'image_url').length}`);
+        
+        // 处理空内容的极端情况
+        if (contentArray.length === 0) {
+          console.warn('[OpenAI API] 警告: 生成了空内容数组，添加默认文本');
+          contentArray.push({
+            type: 'text',
+            text: '图片'
+          });
+        }
+        
+        return {
+          role: 'user',
+          content: contentArray
+        } as OpenAI.Chat.ChatCompletionUserMessageParam;
+      } else {
+        // 纯文本消息
+        return {
+          role: 'user',
+          content: typeof msg.content === 'string' ? msg.content : (msg.content as {text?: string}).text || '',
+        } as OpenAI.Chat.ChatCompletionUserMessageParam;
+      }
     } else if (msg.role === 'assistant') {
       return {
         role: 'assistant',
-        content: msg.content,
+        content: typeof msg.content === 'string' ? msg.content : (msg.content as {text?: string}).text || '',
       } as OpenAI.Chat.ChatCompletionAssistantMessageParam;
     } else {
       return {
         role: 'system',
-        content: msg.content,
+        content: typeof msg.content === 'string' ? msg.content : (msg.content as {text?: string}).text || '',
       } as OpenAI.Chat.ChatCompletionSystemMessageParam;
     }
   });
@@ -35,6 +130,13 @@ export const sendChatRequest = async (
     const apiKey = model.apiKey;
     const baseUrl = model.baseUrl || 'https://api.openai.com/v1';
     const modelId = model.id; // 使用模型ID而不是名称
+    
+    // 检查是否支持多模态
+    const supportsMultimodal = model.capabilities?.multimodal || 
+      modelId.includes('gpt-4') || modelId.includes('gpt-4o') || 
+      modelId.includes('vision') || 
+      modelId.includes('gemini') || // 添加Gemini支持
+      modelId.includes('claude-3'); // 添加Claude支持
 
     // 检查API密钥是否设置
     if (!apiKey) {
@@ -46,7 +148,8 @@ export const sendChatRequest = async (
       baseUrl, 
       modelId, 
       hasApiKey: !!apiKey, 
-      providerType: (model as any).providerType 
+      providerType: (model as any).providerType,
+      supportsMultimodal
     });
 
     // 创建OpenAI客户端实例
@@ -57,15 +160,29 @@ export const sendChatRequest = async (
     });
 
     // 过滤掉空消息
-    const filteredMessages = messages.filter(msg => msg.content.trim() !== '');
+    const filteredMessages = messages.filter(msg => {
+      if (typeof msg.content === 'string') {
+        return msg.content.trim() !== '';
+      } else {
+        // 对于复杂消息，检查是否有文本或图片
+        const content = msg.content as {text?: string; images?: ImageContent[]};
+        return content.text?.trim() !== '' || (content.images && content.images.length > 0);
+      }
+    });
 
-    // 打印消息历史，用于调试
-    console.log('[API请求] 原始消息列表:', filteredMessages.map(m => ({
-      role: m.role,
-      content: m.content.substring(0, 20) + (m.content.length > 20 ? '...' : ''),
-      timestamp: m.timestamp
-    })));
-
+    // 检查图片类型
+    const hasDirectImages = filteredMessages.some(msg => 
+      Array.isArray(msg.images) && msg.images.length > 0
+    );
+    
+    const hasContentImages = filteredMessages.some(msg => {
+      if (typeof msg.content !== 'object') return false;
+      const content = msg.content as {images?: ImageContent[]};
+      return Array.isArray(content.images) && content.images.length > 0;
+    });
+    
+    console.log(`[OpenAI API] 消息中图片检测: 直接图片: ${hasDirectImages}, 内容图片: ${hasContentImages}`);
+    
     // 转换消息格式
     const openaiMessages = convertToOpenAIMessages(filteredMessages);
 
@@ -77,12 +194,57 @@ export const sendChatRequest = async (
       });
     }
 
+    // 检查是否包含图片但模型不支持
+    const hasImages = openaiMessages.some(msg => 
+      Array.isArray(msg.content) && 
+      msg.content.some((item: any) => item.type === 'image_url')
+    );
+    
+    if (hasImages) {
+      // 详细记录所有图片信息，帮助调试
+      console.log('[OpenAI API] 发现图片内容，详细信息:');
+      openaiMessages.forEach((msg, i) => {
+        if (Array.isArray(msg.content)) {
+          const imageItems = msg.content.filter((item: any) => item.type === 'image_url');
+          if (imageItems.length > 0) {
+            console.log(`[OpenAI API] 消息 #${i+1} 包含 ${imageItems.length} 张图片:`);
+            imageItems.forEach((item: any, idx: number) => {
+              if (item.image_url && item.image_url.url) {
+                console.log(`[OpenAI API]   图片 #${idx+1} URL: ${item.image_url.url.substring(0, 50)}...`);
+              } else {
+                console.log(`[OpenAI API]   图片 #${idx+1} 格式异常，缺少URL`);
+              }
+            });
+          }
+        }
+      });
+      
+      if (!supportsMultimodal) {
+        console.warn('[API请求] 警告: 消息包含图片，但模型不支持多模态');
+        throw new Error('当前模型不支持图片分析，请选择支持多模态的模型，如GPT-4V或Gemini');
+      }
+    }
+
+    // 打印消息历史，用于调试
+    console.log('[API请求] 原始消息列表:', filteredMessages.map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string' 
+        ? m.content.substring(0, 20) + (m.content.length > 20 ? '...' : '')
+        : '复杂内容（包含图片）',
+      timestamp: m.timestamp,
+      hasImages: Array.isArray(m.images) && m.images.length > 0
+    })));
+
     // 打印详细的消息列表用于调试
     console.log('[API请求] 最终发送的消息列表:', openaiMessages.map(m => ({
       role: m.role,
+      contentType: typeof m.content === 'string' ? 'string' : 'array',
       content: typeof m.content === 'string' 
         ? (m.content.substring(0, 30) + (m.content.length > 30 ? '...' : ''))
-        : '[复杂内容]'
+        : '[复杂内容]',
+      imagesCount: Array.isArray(m.content) 
+        ? m.content.filter((c: any) => c.type === 'image_url').length 
+        : 0
     })));
 
     // 确保至少有一条用户消息

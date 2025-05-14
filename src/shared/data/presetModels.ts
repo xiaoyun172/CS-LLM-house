@@ -1,4 +1,5 @@
 import type { PresetModel } from '../types';
+import { ModelType } from '../types';
 
 // 预设模型列表
 export const presetModels: PresetModel[] = [
@@ -40,6 +41,16 @@ export const presetModels: PresetModel[] = [
     capabilities: ['聊天对话', '内容生成', '中文优化', '代码辅助', '思考过程'],
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+  },
+  {
+    id: 'Qwen/Qwen2-VL-72B-Instruct',
+    name: 'Qwen2 VL 72B',
+    provider: 'siliconflow',
+    description: '通义千问多模态模型，支持图像理解和视觉分析。',
+    capabilities: ['多模态理解', '图像分析', '内容创作', '中文优化', '视觉问答'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+    multimodal: true,
   },
   {
     id: 'Qwen/Qwen3-32B',
@@ -192,6 +203,92 @@ export const presetModels: PresetModel[] = [
     capabilities: ['代码生成', '复杂推理', '技术文档', 'API设计'],
     requiresApiKey: true,
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3/',
+  },
+  
+  // DeepSeek 模型
+  {
+    id: 'deepseek-chat',
+    name: 'DeepSeek-V3',
+    provider: 'deepseek',
+    description: 'DeepSeek最新的大型语言模型，具有优秀的中文和代码能力。',
+    capabilities: ['聊天对话', '内容生成', '中文优化', '代码辅助', '思考过程'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.deepseek.com',
+  },
+  {
+    id: 'deepseek-reasoner',
+    name: 'DeepSeek-R1',
+    provider: 'deepseek',
+    description: 'DeepSeek的推理模型，擅长解决复杂推理问题。',
+    capabilities: ['复杂推理', '思考过程', '代码生成', '多步骤问题解决'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.deepseek.com',
+  },
+
+  // 硅基流动模型
+  {
+    id: 'siliconflow-llama3-8b-chat',
+    name: 'Llama3-8B Chat',
+    provider: 'siliconflow',
+    description: '高效的Llama3-8B聊天模型',
+    capabilities: ['聊天对话', '指令跟随'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    modelTypes: [ModelType.Chat]
+  },
+  {
+    id: 'siliconflow-llama3-70b-chat',
+    name: 'Llama3-70B Chat',
+    provider: 'siliconflow',
+    description: '强大的Llama3-70B聊天模型',
+    capabilities: ['聊天对话', '文本生成', '指令跟随'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    modelTypes: [ModelType.Chat]
+  },
+  {
+    id: 'siliconflow-xcomposer2',
+    name: 'XComposer2',
+    provider: 'siliconflow',
+    description: '专业的编写和创作模型',
+    capabilities: ['文本生成', '编写创作', '内容生成'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    modelTypes: [ModelType.Chat]
+  },
+  {
+    id: 'siliconflow-deepseek-v2',
+    name: 'DeepSeek V2',
+    provider: 'siliconflow',
+    description: '强大的中英双语大模型',
+    capabilities: ['中英双语', '聊天对话', '知识问答'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    modelTypes: [ModelType.Chat]
+  },
+  
+  // 新增: 硅基流动图像生成模型
+  {
+    id: 'Kwai-Kolors/Kolors',
+    name: 'Kolors',
+    provider: 'siliconflow',
+    description: '快手开源的高质量图像生成模型',
+    capabilities: ['图像生成', '文本到图像', '创意绘画'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+  {
+    id: 'stability-ai/sdxl',
+    name: 'SDXL',
+    provider: 'siliconflow',
+    description: 'Stable Diffusion XL图像生成模型',
+    capabilities: ['图像生成', '文本到图像', '高清图像'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
   },
 ];
 

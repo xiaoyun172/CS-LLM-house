@@ -1,10 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { splitVendorChunkPlugin } from 'vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), splitVendorChunkPlugin()],
+  plugins: [react()],
 
   // 优化构建配置
   build: {
@@ -33,7 +32,7 @@ export default defineConfig({
       },
     },
     // 限制chunk大小警告阈值
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 2000,
   },
   // 优化依赖预构建
   optimizeDeps: {

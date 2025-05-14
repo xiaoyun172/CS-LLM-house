@@ -1,9 +1,73 @@
 // 定义应用中使用的类型
 
+// 模型类型常量
+export const ModelType = {
+  Chat: 'chat',            // 聊天对话模型
+  Vision: 'vision',        // 视觉模型
+  Audio: 'audio',          // 音频模型
+  Embedding: 'embedding',  // 嵌入模型
+  Tool: 'tool',            // 工具使用模型
+  Reasoning: 'reasoning',  // 推理模型
+  ImageGen: 'image_gen'    // 图像生成模型
+} as const;
+
+export type ModelType = typeof ModelType[keyof typeof ModelType];
+
+// 模型类型匹配规则
+export interface ModelTypeRule {
+  pattern: string;          // 匹配模式（支持正则表达式或简单字符串）
+  types: ModelType[];       // 适用的模型类型
+  provider?: string;        // 可选的提供商限制
+}
+
+// 图片内容类型
+export interface ImageContent {
+  url: string;
+  base64Data?: string; // 可选的base64数据，用于本地预览
+  mimeType: string;
+  width?: number;
+  height?: number;
+  size?: number; // 文件大小（字节）
+}
+
+// 硅基流动API的图片格式
+export interface SiliconFlowImageFormat {
+  type: 'image_url';
+  image_url: {
+    url: string;
+  };
+}
+
+// 图像生成参数
+export interface ImageGenerationParams {
+  prompt: string;
+  negativePrompt?: string;
+  imageSize?: string;
+  batchSize?: number;
+  seed?: number;
+  steps?: number;
+  guidanceScale?: number;
+  referenceImage?: string;
+}
+
+// 生成的图像结果
+export interface GeneratedImage {
+  url: string;
+  prompt: string;
+  timestamp: string;
+  modelId: string;
+}
+
+// 消息内容类型
+export type MessageContent = string | {
+  text?: string;
+  images?: ImageContent[];
+};
+
 // 消息类型
 export interface Message {
   id: string;
-  content: string;
+  content: MessageContent;
   role: 'user' | 'assistant' | 'system';
   timestamp: string;
   status?: 'pending' | 'complete' | 'error';
@@ -14,6 +78,7 @@ export interface Message {
   parentMessageId?: string; // 关联的用户消息ID
   alternateVersions?: string[]; // 存储同一回复的其他版本ID数组
   isCurrentVersion?: boolean; // 是否是当前显示的版本
+  images?: SiliconFlowImageFormat[]; // 图片内容数组，用于多模态消息
 }
 
 // 聊天主题类型
@@ -42,6 +107,13 @@ export interface Model {
   iconUrl?: string; // 模型图标URL
   presetModelId?: string; // 预设模型ID（仅用于参考，不用于API调用）
   group?: string; // 模型分组
+  capabilities?: {
+    multimodal?: boolean; // 是否支持多模态（图像）
+    imageGeneration?: boolean; // 是否支持图像生成
+  }; // 模型能力
+  multimodal?: boolean; // 直接的多模态支持标志，用于兼容预设模型配置
+  imageGeneration?: boolean; // 直接的图像生成支持标志
+  modelTypes?: ModelType[]; // 模型类型
 }
 
 // 设置类型
@@ -53,10 +125,12 @@ export interface Settings {
   enableNotifications: boolean; // 是否启用通知
   models: Model[]; // 配置的模型列表
   defaultModelId?: string; // 默认模型ID
+  modelTypeRules?: ModelTypeRule[]; // 模型类型匹配规则
+  generatedImages?: GeneratedImage[]; // 用户生成的图像历史
 }
 
 // 预设模型提供商
-export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'grok' | 'siliconflow' | 'volcengine' | 'custom';
+export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'grok' | 'deepseek' | 'siliconflow' | 'volcengine' | 'custom';
 
 // 预设模型信息
 export interface PresetModel {
@@ -67,4 +141,7 @@ export interface PresetModel {
   capabilities: string[];
   requiresApiKey: boolean;
   defaultBaseUrl?: string;
+  multimodal?: boolean; // 是否支持多模态（图像）
+  imageGeneration?: boolean; // 是否支持图像生成
+  modelTypes?: ModelType[]; // 预设的模型类型
 }

@@ -16,16 +16,26 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, o
   const [editedContent, setEditedContent] = useState(message.content);
   const isUser = message.role === 'user';
 
-  // 保存编辑后的内容
-  const handleSaveEdit = () => {
-    if (topicId && editedContent.trim()) {
+  // 保存编辑的消息内容
+  const handleSave = async () => {
+    // 获取编辑后的文本内容
+    const editedText = typeof editedContent === 'string'
+      ? editedContent
+      : (editedContent as {text?: string}).text || '';
+    
+    if (topicId && editedText.trim()) {
+      // 更新消息
       dispatch(updateMessage({
-        topicId: topicId,
+        topicId,
         messageId: message.id,
-        updates: { content: editedContent }
+        updates: {
+          content: editedText,
+          status: 'complete' // 确保状态为完成
+        }
       }));
+      
+      onClose();
     }
-    onClose();
   };
 
   return (
@@ -54,11 +64,11 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, o
           取消
         </Button>
         <Button 
-          onClick={handleSaveEdit} 
           variant="contained" 
           color="primary"
-          disabled={!editedContent.trim()}
-          size="small"
+          onClick={handleSave}
+          disabled={typeof editedContent === 'string' ? !editedContent.trim() : !((editedContent as {text?: string}).text || '').trim()}
+          sx={{ mr: 1 }}
         >
           保存
         </Button>

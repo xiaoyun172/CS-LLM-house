@@ -27,6 +27,7 @@ const providerTypes = [
   { value: 'gemini', label: 'Gemini' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'grok', label: 'xAI (Grok)' },
+  { value: 'deepseek', label: 'DeepSeek' },
   { value: 'siliconflow', label: '硅基流动 (SiliconFlow)' },
   { value: 'volcengine', label: '火山引擎' },
   { value: 'custom', label: '其他' },

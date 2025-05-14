@@ -35,6 +35,7 @@ import type { Model } from '../../shared/types';
 import { isValidUrl } from '../../shared/utils';
 import { alpha } from '@mui/material/styles';
 import ModelManagementDialog from '../../components/ModelManagementDialog';
+import SimpleModelDialog from '../../components/settings/SimpleModelDialog';
 
 const ModelProviderSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -51,7 +52,7 @@ const ModelProviderSettings: React.FC = () => {
   const [openAddModelDialog, setOpenAddModelDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [openEditModelDialog, setOpenEditModelDialog] = useState(false);
-  const [modelToEdit, setModelToEdit] = useState<Model | null>(null);
+  const [modelToEdit, setModelToEdit] = useState<Model | undefined>(undefined);
   const [newModelName, setNewModelName] = useState('');
   const [newModelValue, setNewModelValue] = useState('');
   const [baseUrlError, setBaseUrlError] = useState('');
@@ -128,18 +129,12 @@ const ModelProviderSettings: React.FC = () => {
     }
   };
 
-  const handleEditModel = () => {
-    if (provider && modelToEdit && newModelName && newModelValue) {
-      // 创建更新后的模型对象
-      const updatedModel: Model = {
-        ...modelToEdit,
-        name: newModelName,
-        id: newModelValue, // 使用新输入的value作为模型ID
-        providerType: modelToEdit.providerType || provider.providerType // 确保保留providerType
-      };
-
+  const handleEditModel = (updatedModel: Model) => {
+    if (provider && updatedModel) {
       // 从provider的models数组中删除旧模型
-      const updatedModels = provider.models.filter(m => m.id !== modelToEdit.id);
+      const updatedModels = provider.models.filter(m =>
+        modelToEdit ? m.id !== modelToEdit.id : true
+      );
 
       // 添加更新后的模型到provider的models数组
       updatedModels.push(updatedModel);
@@ -153,9 +148,7 @@ const ModelProviderSettings: React.FC = () => {
       }));
 
       // 清理状态
-      setModelToEdit(null);
-      setNewModelName('');
-      setNewModelValue('');
+      setModelToEdit(undefined);
       setOpenEditModelDialog(false);
     }
   };
@@ -635,55 +628,12 @@ const ModelProviderSettings: React.FC = () => {
       </Dialog>
 
       {/* 编辑模型对话框 */}
-      <Dialog open={openEditModelDialog} onClose={() => setOpenEditModelDialog(false)}>
-        <DialogTitle sx={{
-          fontWeight: 600,
-          backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
-          backgroundClip: 'text',
-          color: 'transparent',
-        }}>
-          编辑模型
-        </DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="模型名称"
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={newModelName}
-            onChange={(e) => setNewModelName(e.target.value)}
-            sx={{ mb: 2, mt: 2 }}
-          />
-          <TextField
-            margin="dense"
-            label="模型ID"
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={newModelValue}
-            onChange={(e) => setNewModelValue(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setOpenEditModelDialog(false)}>取消</Button>
-          <Button
-            onClick={handleEditModel}
-            disabled={!newModelName || !newModelValue}
-            sx={{
-              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
-              color: 'primary.main',
-              '&:hover': {
-                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.2),
-              },
-              borderRadius: 2,
-            }}
-          >
-            保存
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <SimpleModelDialog
+        open={openEditModelDialog}
+        onClose={() => setOpenEditModelDialog(false)}
+        onSave={handleEditModel}
+        editModel={modelToEdit}
+      />
 
       {/* 删除确认对话框 */}
       <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)}>

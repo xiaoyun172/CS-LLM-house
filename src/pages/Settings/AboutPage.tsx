@@ -66,7 +66,7 @@ const AboutPage: React.FC = () => {
           </Typography>
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            版本: 0.0.2
+            版本: 0.1.0
           </Typography>
 
           <Box sx={{ mt: 4, display: 'flex', gap: 2, justifyContent: 'center' }}>

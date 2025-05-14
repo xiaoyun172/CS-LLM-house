@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import ImageIcon from '@mui/icons-material/Image';
 import { AssistantService } from '../shared/services/AssistantService';
 import { createTopic } from '../shared/utils';
 import { useDispatch } from 'react-redux';
@@ -10,6 +11,8 @@ import { createTopic as createTopicAction, setCurrentTopic } from '../shared/sto
 interface ChatToolbarProps {
   onNewTopic?: () => void;
   onClearTopic?: () => void;
+  imageGenerationMode?: boolean; // 是否处于图像生成模式
+  toggleImageGenerationMode?: () => void; // 切换图像生成模式
 }
 
 /**
@@ -19,7 +22,9 @@ interface ChatToolbarProps {
  */
 const ChatToolbar: React.FC<ChatToolbarProps> = ({
   onNewTopic,
-  onClearTopic
+  onClearTopic,
+  imageGenerationMode = false,
+  toggleImageGenerationMode
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -149,6 +154,14 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
       onClick: onClearTopic,
       color: '#2196F3', // 蓝色
       bgColor: '#FFFFFF'
+    },
+    {
+      id: 'generate-image',
+      icon: <ImageIcon sx={{ fontSize: '18px', color: imageGenerationMode ? '#FFFFFF' : '#9C27B0' }} />,
+      label: imageGenerationMode ? '取消生成' : '生成图片',
+      onClick: toggleImageGenerationMode,
+      color: imageGenerationMode ? '#FFFFFF' : '#9C27B0', // 紫色
+      bgColor: imageGenerationMode ? '#9C27B0' : '#FFFFFF' // 激活时背景色变成紫色
     }
     // 未来可以在这里添加更多按钮
   ];
@@ -156,12 +169,16 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   return (
     <Box
       sx={{
-        padding: '8px 0',
-        backgroundColor: '#f5f7fa',
-        borderBottom: '1px solid #eaecef',
+        padding: '0 0 2px 0', // 减小底部padding
+        backgroundColor: 'transparent',
+        borderBottom: 'none',
         width: '100%',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'visible',
+        zIndex: 1,
+        marginBottom: '0',
+        boxShadow: 'none',
+        backdropFilter: 'none'
       }}
     >
       <Box
@@ -169,12 +186,14 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
         sx={{
           display: 'flex',
           overflowX: 'auto',
-          padding: '0 16px',
-          scrollbarWidth: 'none', // Firefox
+          padding: '0 8px',
+          scrollbarWidth: 'none',
           '&::-webkit-scrollbar': {
-            display: 'none' // Chrome, Safari, Edge
+            display: 'none'
           },
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          minHeight: '38px', // 稍微减小高度
+          alignItems: 'center',
         }}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
@@ -191,20 +210,22 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
             sx={{
               display: 'flex',
               alignItems: 'center',
-              backgroundColor: button.bgColor,
+              background: 'rgba(255, 255, 255, 0.85)', // 半透明背景
+              backdropFilter: 'blur(5px)', // 毛玻璃效果
+              WebkitBackdropFilter: 'blur(5px)', // Safari支持
               color: button.color,
-              border: '1px solid #e0e0e0',
+              border: '1px solid rgba(230, 230, 230, 0.8)',
               borderRadius: '50px',
-              padding: '8px 16px',
-              margin: '0 6px',
+              padding: '6px 12px', // 减小padding
+              margin: '0 4px',
               cursor: 'pointer',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
               transition: 'all 0.2s ease',
               minWidth: 'max-content',
               userSelect: 'none',
               '&:hover': {
                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                backgroundColor: '#f9f9f9'
+                background: 'rgba(255, 255, 255, 0.95)'
               },
               '&:active': {
                 transform: 'scale(0.98)'

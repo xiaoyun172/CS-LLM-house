@@ -16,19 +16,20 @@ interface MessageActionsProps {
   topicId?: string;
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
+  onSwitchVersion?: (messageId: string) => void;
 }
 
 const MessageActions: React.FC<MessageActionsProps> = ({ 
   message, 
   topicId, 
   onRegenerate, 
-  onDelete 
+  onDelete, 
+  onSwitchVersion
 }) => {
   const dispatch = useDispatch();
   const isUser = message.role === 'user';
   const alternateVersions = !isUser && message.alternateVersions ? message.alternateVersions : [];
   const hasAlternateVersions = alternateVersions.length > 0;
-  const versionCount = alternateVersions.length + 1;
   
   // 获取当前主题的所有消息，用于找到各个版本的消息
   const messages = useSelector((state: RootState) => 
@@ -103,10 +104,24 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     setAnchorEl(null);
   };
 
-  // 复制消息内容
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
+  // 复制消息内容到剪贴板
+  const handleCopyContent = () => {
+    if (!message) return;
+    
+    try {
+      // 根据内容类型获取文本
+      const textContent = typeof message.content === 'string'
+        ? message.content
+        : (message.content as {text?: string}).text || '';
+        
+      navigator.clipboard.writeText(textContent);
+      // 使用快照通知
     handleMenuClose();
+      // 可以使用alert替代snackbar
+      alert('内容已复制到剪贴板');
+    } catch (error) {
+      console.error('复制内容失败:', error);
+    }
   };
 
   // 打开编辑对话框
@@ -142,32 +157,220 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     setVersionAnchorEl(null);
   };
   
+  // 获取所有版本的消息详情
+  const getVersionMessages = () => {
+    if (!topicId) return [];
+    
+    // 获取相关的所有版本ID
+    let versionIds: string[] = [];
+    
+    // 如果当前消息有alternateVersions，添加所有相关ID
+    if (message.alternateVersions && message.alternateVersions.length > 0) {
+      versionIds = [...message.alternateVersions, message.id];
+    }
+    
+    // 查找引用了当前消息作为替代版本的消息
+    const relatedMessages = messages.filter(
+      msg => msg.id !== message.id && msg.alternateVersions && msg.alternateVersions.includes(message.id)
+    );
+    
+    // 添加这些消息的ID及其alternateVersions
+    relatedMessages.forEach(msg => {
+      versionIds.push(msg.id);
+      if (msg.alternateVersions) {
+        versionIds = [...versionIds, ...msg.alternateVersions];
+      }
+    });
+    
+    // 如果没有找到版本ID但当前消息是版本1，则查找所有引用此消息的版本
+    if (versionIds.length === 0) {
+      // 查找所有包含此消息ID在其alternateVersions中的消息
+      const referencingMessages = messages.filter(
+        msg => msg.alternateVersions && msg.alternateVersions.includes(message.id)
+      );
+      
+      if (referencingMessages.length > 0) {
+        // 添加这些消息和它们的alternateVersions
+        referencingMessages.forEach(msg => {
+          versionIds.push(msg.id);
+          if (msg.alternateVersions) {
+            versionIds = [...versionIds, ...msg.alternateVersions];
+          }
+        });
+        // 确保当前消息ID也包含在内
+        versionIds.push(message.id);
+      } else {
+        // 如果仍然没有找到相关版本，则只使用当前消息
+        versionIds = [message.id];
+      }
+    }
+    
+    // 去重
+    versionIds = [...new Set(versionIds)];
+    
+    console.log('版本ID列表:', versionIds);
+    
+    // 查找所有关联版本的消息，并按版本号排序
+    const versionMessages = versionIds
+      .map(id => messages.find(msg => msg.id === id))
+      .filter((msg): msg is Message => !!msg)
+      .sort((a, b) => {
+        // 确保按照版本号升序排列
+        const versionA = a.version || 1;
+        const versionB = b.version || 1;
+        return versionA - versionB;
+      });
+    
+    console.log('找到的版本消息:', versionMessages.map(m => `ID:${m.id}, 版本:${m.version || '1'}, 当前:${m.isCurrentVersion}`));
+    
+    return versionMessages;
+  };
+
   // 切换到特定版本
   const handleSwitchVersion = (messageId: string) => {
-    if (topicId) {
-      dispatch(switchToVersion({ topicId, messageId }));
-      handleVersionMenuClose();
+    if (!topicId) return;
+    
+    console.log(`切换到消息版本: ${messageId}`);
+    
+    // 优先使用父组件传递的版本切换函数
+    if (onSwitchVersion) {
+      onSwitchVersion(messageId);
+    } else {
+      // 直接调用Redux action来切换版本
+      dispatch(switchToVersion({ 
+        topicId, 
+        messageId 
+      }));
+    }
+    
+    // 关闭弹窗
+    handleVersionMenuClose();
+  };
+
+  // 文本朗读处理
+  const handleTextToSpeech = async () => {
+    if (!message || !topicId) return;
+    
+    try {
+      // 根据内容类型获取文本
+      const textContent = typeof message.content === 'string'
+        ? message.content
+        : (message.content as {text?: string}).text || '';
+        
+      // 使用TTSService实例
+      const ttsServiceInstance = TTSService.getInstance();
+      const newState = await ttsServiceInstance.togglePlayback(message.id, textContent);
+    setIsPlaying(newState);
+    handleMenuClose();
+    } catch (error) {
+      console.error('文本朗读失败:', error);
     }
   };
 
-  // 切换语音播放状态
-  const handlePlayTTS = async () => {
-    const ttsService = TTSService.getInstance();
-    const newState = await ttsService.togglePlayback(message.id, message.content);
-    setIsPlaying(newState);
-    handleMenuClose();
+  // 计算实际的版本总数
+  const calculateVersionCount = () => {
+    const versions = getVersionMessages();
+    return versions.length;
   };
-  
-  // 获取所有版本的消息详情
-  const getVersionMessages = () => {
-    if (!hasAlternateVersions || !topicId) return [];
+
+  // 计算当前版本号
+  const getCurrentVersionNumber = () => {
+    // 如果当前消息有明确的版本号，直接使用
+    if (message.version) {
+      return message.version;
+    }
     
-    // 获取当前版本和其他版本的消息
-    const versionIds = [...alternateVersions, message.id];
-    return versionIds
-      .map(id => messages.find(msg => msg.id === id))
-      .filter((msg): msg is Message => !!msg);
+    // 否则，从所有版本中查找当前消息的位置
+    const versions = getVersionMessages();
+    const index = versions.findIndex(msg => msg.id === message.id);
+    
+    // 如果找到，版本号是索引+1；否则返回1
+    return index >= 0 ? index + 1 : 1;
   };
+
+  // 检查当前消息是否应该显示版本标签
+  const shouldShowVersionIndicator = () => {
+    // 有alternateVersions且被标记为当前版本
+    if (hasAlternateVersions && message.isCurrentVersion) {
+      return true;
+    }
+    
+    // 没有alternateVersions但是被其他消息引用为替代版本(版本1)
+    if (!hasAlternateVersions && message.isCurrentVersion === true) {
+      // 查找是否有其他消息引用了当前消息
+      const referencedByOthers = messages.some(
+        msg => msg.id !== message.id && 
+              msg.alternateVersions && 
+              msg.alternateVersions.includes(message.id)
+      );
+      
+      if (referencedByOthers) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
+  // 渲染版本指示器的通用函数
+  const renderVersionIndicator = (versionNumber: number, totalVersions: number) => (
+    <>
+      <Chip
+        size="small"
+        label={`版本 ${versionNumber}/${totalVersions}`}
+        variant="filled"
+        color="info"
+        onClick={(e) => setVersionAnchorEl(e.currentTarget)}
+        icon={<HistoryIcon style={{ fontSize: 12 }} />}
+        sx={{
+          position: 'absolute',
+          top: -18,
+          right: 15,
+          height: 20,
+          paddingLeft: '2px',
+          paddingRight: '4px',
+          fontSize: '10px',
+          fontWeight: 'medium',
+          opacity: 0.95,
+          zIndex: 10,
+          backgroundColor: 'rgba(79, 146, 255, 0.9)',
+          color: 'white',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+          borderRadius: '10px',
+          border: 'none',
+          '&:hover': {
+            opacity: 1,
+            cursor: 'pointer',
+            backgroundColor: 'rgba(64, 132, 244, 1)'
+          },
+          '& .MuiChip-icon': {
+            ml: 0.3,
+            mr: -0.3,
+            fontSize: '10px',
+            color: 'white'
+          },
+          '& .MuiChip-label': {
+            padding: '0 4px',
+            lineHeight: 1.2
+          }
+        }}
+      />
+      {/* 添加小箭头指向气泡 */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: -3,
+          right: 30,
+          width: 0,
+          height: 0,
+          borderLeft: '4px solid transparent',
+          borderRight: '4px solid transparent',
+          borderTop: '4px solid rgba(79, 146, 255, 0.9)',
+          zIndex: 9
+        }}
+      />
+    </>
+  );
 
   // 如果是用户消息，不显示TTS按钮
   if (isUser) {
@@ -205,7 +408,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
             }
           }}
         >
-          <MenuItem onClick={handleCopy} sx={{ fontSize: '14px' }}>复制</MenuItem>
+          <MenuItem onClick={handleCopyContent} sx={{ fontSize: '14px' }}>复制</MenuItem>
           <MenuItem onClick={handleEditClick} sx={{ fontSize: '14px' }}>编辑</MenuItem>
           <MenuItem onClick={handleDeleteClick} sx={{ color: '#f44336', fontSize: '14px' }}>删除</MenuItem>
         </Menu>
@@ -226,62 +429,9 @@ const MessageActions: React.FC<MessageActionsProps> = ({
   return (
     <>
       {/* 版本指示器 */}
-      {hasAlternateVersions && message.isCurrentVersion && (
+      {shouldShowVersionIndicator() && (
         <>
-          <Chip
-            size="small"
-            label={`版本 ${message.version || '?'}/${versionCount}`}
-            variant="filled"
-            color="info"
-            onClick={(e) => setVersionAnchorEl(e.currentTarget)}
-            icon={<HistoryIcon style={{ fontSize: 12 }} />}
-            sx={{
-              position: 'absolute',
-              top: -18,
-              right: 15,
-              height: 20,
-              paddingLeft: '2px',
-              paddingRight: '4px',
-              fontSize: '10px',
-              fontWeight: 'medium',
-              opacity: 0.95,
-              zIndex: 10,
-              backgroundColor: 'rgba(79, 146, 255, 0.9)',
-              color: 'white',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-              borderRadius: '10px',
-              border: 'none',
-              '&:hover': {
-                opacity: 1,
-                cursor: 'pointer',
-                backgroundColor: 'rgba(64, 132, 244, 1)'
-              },
-              '& .MuiChip-icon': {
-                ml: 0.3,
-                mr: -0.3,
-                fontSize: '10px',
-                color: 'white'
-              },
-              '& .MuiChip-label': {
-                padding: '0 4px',
-                lineHeight: 1.2
-              }
-            }}
-          />
-          {/* 添加小箭头指向气泡 */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: -3,
-              right: 30,
-              width: 0,
-              height: 0,
-              borderLeft: '4px solid transparent',
-              borderRight: '4px solid transparent',
-              borderTop: '4px solid rgba(79, 146, 255, 0.9)',
-              zIndex: 9
-            }}
-          />
+          {renderVersionIndicator(getCurrentVersionNumber(), calculateVersionCount())}
         </>
       )}
 
@@ -293,12 +443,12 @@ const MessageActions: React.FC<MessageActionsProps> = ({
             label={isPlaying ? "播放中" : "播放"}
             variant="filled"
             color={isPlaying ? "success" : "primary"}
-            onClick={handlePlayTTS}
+            onClick={handleTextToSpeech}
             icon={isPlaying ? <VolumeUpIcon style={{ fontSize: 12 }} /> : <VolumeOffIcon style={{ fontSize: 12 }} />}
             sx={{
               position: 'absolute',
               top: -18,
-              right: hasAlternateVersions && message.isCurrentVersion ? 80 : 15,
+              right: shouldShowVersionIndicator() ? 80 : 15,
               height: 20,
               paddingLeft: '2px',
               paddingRight: '4px',
@@ -333,7 +483,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
             sx={{
               position: 'absolute',
               top: -3,
-              right: hasAlternateVersions && message.isCurrentVersion ? 95 : 30,
+              right: shouldShowVersionIndicator() ? 95 : 30,
               width: 0,
               height: 0,
               borderLeft: '4px solid transparent',
@@ -379,14 +529,14 @@ const MessageActions: React.FC<MessageActionsProps> = ({
         }}
       >
         {enableTTS && (
-          <MenuItem onClick={handlePlayTTS} sx={{ fontSize: '14px' }}>
+          <MenuItem onClick={handleTextToSpeech} sx={{ fontSize: '14px' }}>
             {isPlaying ? '停止播放' : '语音播放'}
           </MenuItem>
         )}
-        <MenuItem onClick={handleCopy} sx={{ fontSize: '14px' }}>复制</MenuItem>
+        <MenuItem onClick={handleCopyContent} sx={{ fontSize: '14px' }}>复制</MenuItem>
         <MenuItem onClick={handleEditClick} sx={{ fontSize: '14px' }}>编辑</MenuItem>
         <MenuItem onClick={handleRegenerateClick} sx={{ fontSize: '14px' }}>重新生成</MenuItem>
-        {hasAlternateVersions && (
+        {getVersionMessages().length > 1 && (
           <MenuItem onClick={handleVersionMenuOpen} sx={{ fontSize: '14px' }}>历史版本</MenuItem>
         )}
         <MenuItem onClick={handleDeleteClick} sx={{ color: '#f44336', fontSize: '14px' }}>删除</MenuItem>
@@ -423,23 +573,29 @@ const MessageActions: React.FC<MessageActionsProps> = ({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
-          {getVersionMessages().map((versionMsg, index) => (
-            <Button
-              key={versionMsg.id}
-              variant={versionMsg.isCurrentVersion ? "contained" : "outlined"}
-              size="small"
-              onClick={() => handleSwitchVersion(versionMsg.id)}
-              sx={{ 
-                justifyContent: 'flex-start',
-                textTransform: 'none',
-                fontSize: '13px',
-                py: 0.75
-              }}
-            >
-              版本 {versionMsg.version || index + 1}
-              {versionMsg.isCurrentVersion && " (当前)"}
-            </Button>
-          ))}
+          {getVersionMessages().map((versionMsg, index) => {
+            // 计算版本号 (索引+1)，确保版本1是第一个
+            const versionNumber = index + 1;
+            
+            return (
+              <Button
+                key={versionMsg.id}
+                variant={versionMsg.isCurrentVersion ? "contained" : "outlined"}
+                size="small"
+                onClick={() => handleSwitchVersion(versionMsg.id)}
+                sx={{ 
+                  justifyContent: 'flex-start',
+                  textTransform: 'none',
+                  fontSize: '13px',
+                  py: 0.75,
+                  fontWeight: versionMsg.isCurrentVersion ? 600 : 400
+                }}
+              >
+                版本 {versionNumber}
+                {versionMsg.isCurrentVersion && " (当前)"}
+              </Button>
+            );
+          })}
         </Box>
       </Popover>
       

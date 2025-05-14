@@ -7,9 +7,10 @@ interface MessageListProps {
   messages: Message[];
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
+  onSwitchVersion?: (messageId: string) => void;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete, onSwitchVersion }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 滚动到最新消息
@@ -24,12 +25,31 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
 
   // 过滤消息，只显示当前版本或没有版本标记的消息
   const filteredMessages = messages.filter(message => {
-    // 如果消息没有版本信息，显示它
-    if (message.alternateVersions === undefined) {
+    // 对于用户消息，始终显示
+    if (message.role === 'user') {
       return true;
     }
     
-    // 如果消息有isCurrentVersion标记，仅显示当前版本
+    // 查找是否有其他消息引用了当前消息作为替代版本
+    const referencedByOtherMessages = messages.some(
+      otherMsg => 
+        otherMsg.id !== message.id && 
+        otherMsg.alternateVersions && 
+        otherMsg.alternateVersions.includes(message.id)
+    );
+    
+    // 如果这个消息被其他消息引用为替代版本，则只有它被标记为当前版本时才显示
+    if (referencedByOtherMessages) {
+      return message.isCurrentVersion === true;
+    }
+    
+    // 如果消息有alternateVersions但没有isCurrentVersion标记，则默认显示
+    // 或者如果消息被明确标记为当前版本，则显示
+    if (message.alternateVersions) {
+      return message.isCurrentVersion !== false;
+    }
+    
+    // 对于其他消息，只要没有明确标记为非当前版本，就显示它们
     return message.isCurrentVersion !== false;
   });
 
@@ -134,6 +154,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
               message={message} 
               onRegenerate={onRegenerate}
               onDelete={onDelete}
+              onSwitchVersion={onSwitchVersion}
             />
           </React.Fragment>
         ))

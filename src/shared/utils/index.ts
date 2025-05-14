@@ -1,4 +1,5 @@
 import { approximateTokenSize } from 'tokenx';
+import type { Message, MessageContent, SiliconFlowImageFormat } from '../types';
 
 /**
  * 生成唯一ID
@@ -27,9 +28,13 @@ export function formatDate(date: Date): string {
   return date.toISOString();
 }
 
-// 创建新消息
+/**
+ * 创建一个新的消息对象
+ * @param options 消息选项
+ * @returns 新的消息对象
+ */
 export function createMessage(options: {
-  content: string;
+  content: MessageContent;
   role: 'user' | 'assistant' | 'system';
   status?: 'pending' | 'complete' | 'error';
   modelId?: string;
@@ -40,20 +45,37 @@ export function createMessage(options: {
   isCurrentVersion?: boolean;
   reasoning?: string;
   reasoningTime?: number;
-}): any {
+  images?: SiliconFlowImageFormat[];
+}): Message {
+  const {
+    content,
+    role,
+    status = 'complete',
+    modelId,
+    id = generateId(),
+    parentMessageId,
+    version = 1,
+    alternateVersions = [],
+    isCurrentVersion = true,
+    reasoning,
+    reasoningTime,
+    images
+  } = options;
+  
   return {
-    id: options.id || generateId(),
-    content: options.content,
-    role: options.role,
-    timestamp: formatDate(new Date()),
-    status: options.status || (options.role === 'assistant' ? 'pending' : undefined),
-    modelId: options.modelId,
-    parentMessageId: options.parentMessageId,
-    version: options.version,
-    alternateVersions: options.alternateVersions,
-    isCurrentVersion: options.isCurrentVersion !== undefined ? options.isCurrentVersion : true,
-    reasoning: options.reasoning,
-    reasoningTime: options.reasoningTime
+    id,
+    content,
+    role,
+    timestamp: new Date().toISOString(),
+    status,
+    modelId,
+    parentMessageId,
+    version,
+    alternateVersions,
+    isCurrentVersion,
+    reasoning,
+    reasoningTime,
+    images
   };
 }
 

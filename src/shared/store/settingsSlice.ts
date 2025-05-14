@@ -1,6 +1,7 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { Model } from '../types';
 import type { PayloadAction } from '@reduxjs/toolkit';
+import type { GeneratedImage } from '../types';
 
 export interface ModelProvider {
   id: string;
@@ -24,6 +25,7 @@ interface SettingsState {
   providers: ModelProvider[];
   defaultModelId?: string;
   currentModelId?: string;
+  generatedImages?: GeneratedImage[];
 }
 
 // 初始预设供应商
@@ -36,7 +38,7 @@ const initialProviders: ModelProvider[] = [
     isEnabled: true,
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
-  models: [
+    models: [
       { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', enabled: true, isDefault: true },
       { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', enabled: true, isDefault: false },
       { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', enabled: true, isDefault: false },
@@ -66,6 +68,19 @@ const initialProviders: ModelProvider[] = [
     models: [
       { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic', enabled: true, isDefault: false },
       { id: 'claude-3-opus', name: 'Claude 3 Opus', provider: 'anthropic', enabled: true, isDefault: false },
+    ]
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    avatar: 'D',
+    color: '#754AB4',
+    isEnabled: true,
+    apiKey: '',
+    baseUrl: 'https://api.deepseek.com',
+    models: [
+      { id: 'deepseek-chat', name: 'DeepSeek-V3', provider: 'deepseek', enabled: true, isDefault: false },
+      { id: 'deepseek-reasoner', name: 'DeepSeek-R1', provider: 'deepseek', enabled: true, isDefault: false },
     ]
   },
   {
@@ -323,6 +338,46 @@ const settingsSlice = createSlice({
         saveToStorage(state);
       }
     },
+    // 添加保存生成图像的actions
+    addGeneratedImage: (state, action: PayloadAction<GeneratedImage>) => {
+      // 初始化generatedImages数组（如果不存在）
+      if (!state.generatedImages) {
+        state.generatedImages = [];
+      }
+      
+      // 添加新生成的图像
+      state.generatedImages.unshift(action.payload);
+      
+      // 限制保存的历史图像数量（保存最近的50张）
+      if (state.generatedImages.length > 50) {
+        state.generatedImages = state.generatedImages.slice(0, 50);
+      }
+      
+      // 保存到localStorage
+      saveToStorage(state);
+    },
+    // 添加删除图像的action
+    deleteGeneratedImage: (state, action: PayloadAction<string>) => {
+      // 如果generatedImages不存在，直接返回
+      if (!state.generatedImages) {
+        return;
+      }
+      
+      // 根据图像URL删除
+      state.generatedImages = state.generatedImages.filter(
+        image => image.url !== action.payload
+      );
+      
+      // 保存到localStorage
+      saveToStorage(state);
+    },
+    // 添加清除所有图像的action
+    clearGeneratedImages: (state) => {
+      state.generatedImages = [];
+      
+      // 保存到localStorage
+      saveToStorage(state);
+    },
   },
 });
 
@@ -335,11 +390,12 @@ const saveToStorage = (state: SettingsState) => {
   }
 };
 
-export const { 
-  setTheme, 
-  setFontSize, 
-  setLanguage, 
-  setSendWithEnter, 
+// 导出actions
+export const {
+  setTheme,
+  setFontSize,
+  setLanguage,
+  setSendWithEnter,
   setEnableNotifications,
   addModel,
   updateModel,
@@ -353,6 +409,9 @@ export const {
   addModelToProvider,
   setProviderDefaultModel,
   deleteModelFromProvider,
+  addGeneratedImage,
+  deleteGeneratedImage,
+  clearGeneratedImages,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;

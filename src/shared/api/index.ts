@@ -1,10 +1,11 @@
-import type { Message, Model } from '../types';
+import type { Message, Model, MessageContent } from '../types';
 import * as openaiApi from './openai';
 import * as anthropicApi from './anthropic';
 import * as googleApi from './google';
 import * as grokApi from './grok';
 import * as siliconflowApi from './siliconflow';
 import * as volcengineApi from './volcengine';
+import * as deepseekApi from './deepseek';
 import { logApiRequest, logApiResponse } from '../services/LoggerService';
 
 // 获取实际的提供商类型
@@ -31,10 +32,20 @@ const getApiByProvider = (model: Model) => {
       return siliconflowApi;
     case 'volcengine':
       return volcengineApi;
+    case 'deepseek':
+      return deepseekApi;
     default:
       throw new Error(`不支持的提供商: ${providerType}`);
   }
 };
+
+// 定义请求接口
+export interface ChatRequest {
+  messages: { role: string; content: MessageContent; images?: any[] }[]; // 更新消息格式支持images字段
+  modelId: string;
+  systemPrompt?: string;
+  onChunk?: (chunk: string) => void;
+}
 
 // 发送聊天请求
 export const sendChatRequestLegacy = async (
@@ -104,7 +115,10 @@ export const testApiConnection = async (model: Model): Promise<boolean> => {
 
     // 使用新接口调用
     const response = await sendChatRequest({
-      messages: [{ role: testMessage.role, content: testMessage.content }],
+      messages: [{ 
+        role: testMessage.role, 
+        content: testMessage.content as string // 这里我们知道内容是字符串
+      }],
       modelId: model.id
     });
     
@@ -116,12 +130,7 @@ export const testApiConnection = async (model: Model): Promise<boolean> => {
 };
 
 // 发送聊天请求（新版本接口，使用请求对象）
-export const sendChatRequest = async (options: {
-  messages: { role: string; content: string }[];
-  modelId: string;
-  systemPrompt?: string;
-  onChunk?: (chunk: string) => void;
-}): Promise<{ success: boolean; content?: string; reasoning?: string; reasoningTime?: number; error?: string }> => {
+export const sendChatRequest = async (options: ChatRequest): Promise<{ success: boolean; content?: string; reasoning?: string; reasoningTime?: number; error?: string }> => {
   try {
     // 根据modelId查找对应模型
     const model = await findModelById(options.modelId);
@@ -137,6 +146,7 @@ export const sendChatRequest = async (options: {
       role: msg.role as 'user' | 'assistant' | 'system',
       content: msg.content,
       timestamp: new Date().toISOString(),
+      images: msg.images // 传递图片数组
     }));
 
     // 如果提供了系统提示词，添加到消息数组最前面
@@ -151,7 +161,11 @@ export const sendChatRequest = async (options: {
       // 确保系统消息位于消息列表最前面
       messages.unshift(systemMessage);
       
-      console.log(`使用自定义系统提示词: ${options.systemPrompt.substring(0, 50)}${options.systemPrompt.length > 50 ? '...' : ''}`);
+      console.log(`使用自定义系统提示词: ${
+        typeof options.systemPrompt === 'string' 
+          ? options.systemPrompt.substring(0, 50) + (options.systemPrompt.length > 50 ? '...' : '')
+          : '[复杂内容]'
+      }`);
     }
 
     // 获取对应的API实现
