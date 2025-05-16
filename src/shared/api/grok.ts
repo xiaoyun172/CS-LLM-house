@@ -95,7 +95,8 @@ const streamCompletion = async (
         reasoning += reasoningDelta;
         isThinking = true;
         // 更新UI显示思考过程
-        if (onUpdate) {
+        if (onUpdate && reasoningStartTime > 0) {
+          const currentReasoningTime = new Date().getTime() - reasoningStartTime;
           onUpdate(content, reasoning);
         }
         continue; // 如果当前是思考过程chunk，跳过内容更新
@@ -107,6 +108,11 @@ const streamCompletion = async (
         reasoningTime = new Date().getTime() - reasoningStartTime;
         console.log('[思考过程] 完成:', reasoning.substring(0, 100) + (reasoning.length > 100 ? '...' : ''));
         console.log(`[思考过程] 耗时: ${reasoningTime}ms`);
+        
+        // 更新UI显示思考过程
+        if (onUpdate) {
+          onUpdate(content, reasoning);
+        }
       }
 
       // 处理内容

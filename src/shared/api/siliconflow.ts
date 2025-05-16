@@ -101,6 +101,7 @@ export interface SiliconFlowCompletionResponse {
     message: {
       role: string;
       content: string;
+      reasoning_content?: string;
       tool_calls?: Array<any>;
     };
     finish_reason: string;
@@ -109,6 +110,9 @@ export interface SiliconFlowCompletionResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
   };
 }
 
@@ -311,7 +315,7 @@ export function convertToSiliconFlowMessages(messages: Message[]): SiliconFlowMe
 export const sendChatRequest = async (
   messages: Message[],
   model: Model,
-  onUpdate?: (content: string) => void
+  onUpdate?: (content: string, reasoning?: string) => void
 ): Promise<{ content: string; reasoning?: string; reasoningTime?: number }> => {
   try {
     // 检查是否有消息
@@ -455,8 +459,16 @@ export const sendChatRequest = async (
         contentPreview: responseData.choices[0]?.message?.content?.substring(0, 50) + '...'
       });
 
+      // 检查是否包含reasoning_content
+      const reasoning = responseData.choices[0]?.message?.reasoning_content || '';
+      if (reasoning) {
+        log('INFO', '硅基流API返回了推理过程，长度:', reasoning.length, 
+            '内容预览:', reasoning.substring(0, 50) + (reasoning.length > 50 ? '...' : ''));
+      }
+
       return {
-        content: responseData.choices[0]?.message?.content || ''
+        content: responseData.choices[0]?.message?.content || '',
+        reasoning: reasoning
       };
     }
   } catch (error) {
@@ -476,10 +488,11 @@ async function streamCompletion(
   baseUrl: string,
   apiKey: string,
   requestData: SiliconFlowCompletionRequest,
-  onUpdate?: (content: string) => void
+  onUpdate?: (content: string, reasoning?: string) => void
 ): Promise<{ content: string; reasoning?: string; reasoningTime?: number }> {
   let reader = null;
   let content = '';
+  let reasoning = ''; // 添加reasoning变量存储推理过程
 
   try {
     // 发送请求
@@ -551,13 +564,20 @@ async function streamCompletion(
               // 解析JSON数据
               const data = JSON.parse(dataJson);
               const delta = data.choices[0]?.delta?.content || '';
+              
+              // 提取reasoning_content信息
+              const reasoningDelta = data.choices[0]?.delta?.reasoning_content || '';
+              if (reasoningDelta) {
+                reasoning += reasoningDelta;
+                log('DEBUG', '收到推理内容片段:', reasoningDelta);
+              }
 
               // 更新内容
               content += delta;
 
-              // 回调更新
+              // 回调更新，同时传递reasoning内容
               if (onUpdate) {
-                onUpdate(content);
+                onUpdate(content, reasoning);
               }
             } catch (error) {
               log('WARN', '解析流式响应数据失败:', error, line);
@@ -580,27 +600,31 @@ async function streamCompletion(
     }
 
     log('INFO', '硅基流API流式响应处理完成, 总内容长度:', content.length);
+    log('INFO', '硅基流API推理过程内容长度:', reasoning.length);
 
     // 记录API响应成功
     logApiResponse('SiliconFlow-Stream', 200, {
       contentLength: content.length,
-      contentPreview: content.substring(0, 50) + (content.length > 50 ? '...' : '')
+      contentPreview: content.substring(0, 50) + (content.length > 50 ? '...' : ''),
+      reasoningContentLength: reasoning.length,
+      reasoningContentPreview: reasoning.length > 0 ? reasoning.substring(0, 50) + (reasoning.length > 50 ? '...' : '') : ''
     });
 
-    return { content };
+    return { content, reasoning };
   } catch (error) {
     log('ERROR', '处理硅基流API流式响应失败:', error);
 
     // 记录API错误
     logApiResponse('SiliconFlow-Stream', 500, {
       error: error instanceof Error ? error.message : '未知错误',
-      contentSoFar: content?.substring(0, 100) + (content?.length > 100 ? '...' : '')
+      contentSoFar: content?.substring(0, 100) + (content?.length > 100 ? '...' : ''),
+      reasoningSoFar: reasoning?.substring(0, 100) + (reasoning?.length > 100 ? '...' : '')
     });
 
     // 如果已经获取了一些内容，返回已获取的内容而不是抛出错误
     if (content && content.length > 0) {
       log('INFO', '尽管发生错误，但返回已获取的内容:', content.substring(0, 50) + '...');
-      return { content };
+      return { content, reasoning };
     }
 
     throw error;
@@ -624,7 +648,7 @@ async function streamCompletion(
 export async function sendSiliconFlowRequest(
   messages: Message[],
   model: Model,
-  onUpdate?: (text: string) => void,
+  onUpdate?: (text: string, reasoning?: string) => void,
 ) {
   try {
     const apiKey = model.apiKey || '';
@@ -680,6 +704,7 @@ export async function sendSiliconFlowRequest(
         const reader = response.data.getReader();
         const decoder = new TextDecoder('utf-8');
         let fullText = '';
+        let fullReasoning = ''; // 添加累积的推理内容
         let doneFlag = false;
 
         while (!doneFlag) {
@@ -706,9 +731,21 @@ export async function sendSiliconFlowRequest(
               try {
                 const data = JSON.parse(jsonStr);
                 const content = data.choices[0]?.delta?.content || '';
+                // 提取reasoning_content
+                const reasoningContent = data.choices[0]?.delta?.reasoning_content || '';
+                
+                // 累积内容和推理过程
                 if (content) {
                   fullText += content;
-                  onUpdate(fullText);
+                }
+                if (reasoningContent) {
+                  fullReasoning += reasoningContent;
+                  log('DEBUG', '收到推理内容片段:', reasoningContent);
+                }
+                
+                // 只要有内容或推理过程更新，就调用回调
+                if (content || reasoningContent) {
+                  onUpdate(fullText, fullReasoning);
                 }
               } catch (parseError) {
                 log('WARN', '解析流响应JSON时出错:', parseError, jsonStr);
@@ -729,6 +766,11 @@ export async function sendSiliconFlowRequest(
               throw readError;
             }
           }
+        }
+
+        // 记录推理过程信息
+        if (fullReasoning && fullReasoning.length > 0) {
+          log('INFO', '硅基流流式响应返回了推理过程，长度:', fullReasoning.length);
         }
 
         // 如果成功获取了内容，记录和返回
@@ -766,10 +808,23 @@ export async function sendSiliconFlowRequest(
         logApiResponse('SiliconFlow-收到响应', 'INFO', {
           tokens: response.data.usage?.total_tokens || 0,
           promptTokens: response.data.usage?.prompt_tokens || 0,
-          completionTokens: response.data.usage?.completion_tokens || 0
+          completionTokens: response.data.usage?.completion_tokens || 0,
+          reasoningTokens: response.data.usage?.completion_tokens_details?.reasoning_tokens || 0
         });
 
-        return response.data.choices[0].message.content;
+        // 检查是否有推理内容
+        const content = response.data.choices[0].message.content;
+        const reasoning = response.data.choices[0].message.reasoning_content;
+        
+        if (reasoning) {
+          log('INFO', '硅基流API返回了推理过程，长度:', reasoning.length);
+          // 如果有onUpdate回调但未使用stream模式，也可以提供推理内容
+          if (onUpdate) {
+            onUpdate(content, reasoning);
+          }
+        }
+
+        return content;
       } catch (nonStreamError) {
         log('ERROR', '非流式请求失败:', nonStreamError);
         throw nonStreamError;

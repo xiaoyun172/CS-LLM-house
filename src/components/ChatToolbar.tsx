@@ -1,17 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, useTheme } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import ImageIcon from '@mui/icons-material/Image';
 import SearchIcon from '@mui/icons-material/Search';
-import { AssistantService } from '../shared/services/AssistantService';
-import { createTopic } from '../shared/utils';
-import { useDispatch, useSelector } from 'react-redux';
-import { createTopic as createTopicAction, setCurrentTopic } from '../shared/store/messagesSlice';
+import { useSelector } from 'react-redux';
 import type { RootState } from '../shared/store';
+import { TopicService } from '../shared/services/TopicService';
 
 interface ChatToolbarProps {
-  onNewTopic?: () => void;
   onClearTopic?: () => void;
   imageGenerationMode?: boolean; // 是否处于图像生成模式
   toggleImageGenerationMode?: () => void; // 切换图像生成模式
@@ -25,7 +22,6 @@ interface ChatToolbarProps {
  * 使用独立气泡式设计，支持横向滑动
  */
 const ChatToolbar: React.FC<ChatToolbarProps> = ({
-  onNewTopic,
   onClearTopic,
   imageGenerationMode = false,
   toggleImageGenerationMode,
@@ -36,73 +32,15 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
-  const dispatch = useDispatch();
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
   
   // 从Redux获取网络搜索设置
   const webSearchEnabled = useSelector((state: RootState) => state.webSearch?.enabled || false);
 
-  // 创建新话题的安全实现
-  const safeCreateTopic = () => {
-    // 先检查是否有传入的回调
-    if (onNewTopic) {
-      onNewTopic();
-      return;
-    }
-
-    // 如果没有回调，则自己实现创建话题逻辑
-    try {
-      // 获取当前助手
-      const currentAssistantId = localStorage.getItem('currentAssistant');
-      if (!currentAssistantId) {
-        console.error('无法创建话题: 未找到当前助手');
-        alert('请先选择一个助手');
-        return;
-      }
-
-      // 创建新话题
-      const newTopic = createTopic('新聊天');
-      
-      // 添加到Redux
-      dispatch(createTopicAction(newTopic));
-      dispatch(setCurrentTopic(newTopic));
-      
-      // 获取助手列表
-      const assistants = AssistantService.getUserAssistants();
-      const currentAssistant = assistants.find(a => a.id === currentAssistantId);
-      
-      if (!currentAssistant) {
-        console.error('无法找到当前助手');
-        return;
-      }
-      
-      console.log(`将新话题"${newTopic.title}"关联到助手"${currentAssistant.name}"`);
-      
-      // 关联话题到助手
-      AssistantService.addTopicToAssistant(currentAssistantId, newTopic.id);
-      
-      // 验证关联是否成功
-      const updatedAssistants = AssistantService.getUserAssistants();
-      const updatedAssistant = updatedAssistants.find(a => a.id === currentAssistantId);
-      
-      if (updatedAssistant && updatedAssistant.topicIds?.includes(newTopic.id)) {
-        console.log('验证成功: 新话题已关联到助手');
-      } else {
-        console.error('验证失败: 新话题未显示在助手的话题列表中');
-      }
-      
-      // 派发一个自定义事件，通知应用新话题已创建
-      const topicCreatedEvent = new CustomEvent('topicCreated', { 
-        detail: { topic: newTopic, assistantId: currentAssistantId } 
-      });
-      window.dispatchEvent(topicCreatedEvent);
-      
-      // 手动触发Redux store的变化，确保所有相关组件都能感知到更新
-      dispatch({ type: 'FORCE_TOPICS_UPDATE' });
-      
-      console.log('已派发话题创建事件，通知应用刷新话题列表');
-    } catch (error) {
-      console.error('创建新话题时出错:', error);
-    }
+  // 创建新话题 - 使用统一的TopicService
+  const handleCreateTopic = async () => {
+    await TopicService.createNewTopic();
   };
 
   // 处理拖动滑动
@@ -150,27 +88,27 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const buttons = [
     {
       id: 'new-topic',
-      icon: <AddIcon sx={{ fontSize: '18px', color: '#4CAF50' }} />,
+      icon: <AddIcon sx={{ fontSize: '18px', color: isDarkMode ? '#9E9E9E' : '#4CAF50' }} />,
       label: '新建话题',
-      onClick: safeCreateTopic,
-      color: '#4CAF50', // 绿色
-      bgColor: '#FFFFFF'
+      onClick: handleCreateTopic,
+      color: '#FFFFFF', // 白色文字
+      bgColor: isDarkMode ? '#1E1E1E' : '#FFFFFF'
     },
     {
       id: 'clear-topic',
-      icon: <DeleteSweepIcon sx={{ fontSize: '18px', color: '#2196F3' }} />,
+      icon: <DeleteSweepIcon sx={{ fontSize: '18px', color: isDarkMode ? '#9E9E9E' : '#2196F3' }} />,
       label: '清空内容',
       onClick: onClearTopic,
-      color: '#2196F3', // 蓝色
-      bgColor: '#FFFFFF'
+      color: '#FFFFFF', // 白色文字
+      bgColor: isDarkMode ? '#1E1E1E' : '#FFFFFF'
     },
     {
       id: 'generate-image',
-      icon: <ImageIcon sx={{ fontSize: '18px', color: imageGenerationMode ? '#FFFFFF' : '#9C27B0' }} />,
+      icon: <ImageIcon sx={{ fontSize: '18px', color: imageGenerationMode ? '#FFFFFF' : isDarkMode ? '#9E9E9E' : '#9C27B0' }} />,
       label: imageGenerationMode ? '取消生成' : '生成图片',
       onClick: toggleImageGenerationMode,
-      color: imageGenerationMode ? '#FFFFFF' : '#9C27B0', // 紫色
-      bgColor: imageGenerationMode ? '#9C27B0' : '#FFFFFF' // 激活时背景色变成紫色
+      color: '#FFFFFF', // 白色文字
+      bgColor: imageGenerationMode ? (isDarkMode ? '#424242' : '#9C27B0') : isDarkMode ? '#1E1E1E' : '#FFFFFF' // 激活时背景色变深
     }
   ];
   
@@ -178,11 +116,11 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   if (webSearchEnabled && toggleWebSearch) {
     buttons.push({
       id: 'web-search',
-      icon: <SearchIcon sx={{ fontSize: '18px', color: webSearchActive ? '#FFFFFF' : '#3b82f6' }} />,
+      icon: <SearchIcon sx={{ fontSize: '18px', color: webSearchActive ? '#FFFFFF' : isDarkMode ? '#9E9E9E' : '#3b82f6' }} />,
       label: webSearchActive ? '关闭搜索' : '网络搜索',
       onClick: toggleWebSearch,
-      color: webSearchActive ? '#FFFFFF' : '#3b82f6', // 蓝色
-      bgColor: webSearchActive ? '#3b82f6' : '#FFFFFF' // 激活时背景色变成蓝色
+      color: '#FFFFFF', // 白色文字
+      bgColor: webSearchActive ? (isDarkMode ? '#424242' : '#3b82f6') : isDarkMode ? '#1E1E1E' : '#FFFFFF' // 激活时背景色变深
     });
   }
 
@@ -230,26 +168,26 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
             sx={{
               display: 'flex',
               alignItems: 'center',
-              background: button.bgColor || 'rgba(255, 255, 255, 0.85)', // 使用按钮指定的背景色或默认色
+              background: button.bgColor || (isDarkMode ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)'), // 根据主题使用不同背景色
               backdropFilter: 'blur(5px)', // 毛玻璃效果
               WebkitBackdropFilter: 'blur(5px)', // Safari支持
-              color: button.color,
-              border: '1px solid rgba(230, 230, 230, 0.8)',
+              color: isDarkMode ? '#FFFFFF' : button.id === 'new-topic' ? '#4CAF50' : button.id === 'clear-topic' ? '#2196F3' : button.id === 'generate-image' ? (imageGenerationMode ? '#FFFFFF' : '#9C27B0') : button.id === 'web-search' ? (webSearchActive ? '#FFFFFF' : '#3b82f6') : button.color,
+              border: `1px solid ${isDarkMode ? 'rgba(60, 60, 60, 0.8)' : 'rgba(230, 230, 230, 0.8)'}`,
               borderRadius: '50px',
               padding: '6px 12px', // 减小padding
               margin: '0 4px',
               cursor: 'pointer',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
+              boxShadow: `0 1px 3px ${isDarkMode ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.07)'}`,
               transition: 'all 0.2s ease',
               minWidth: 'max-content',
               userSelect: 'none',
               '&:hover': {
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                boxShadow: `0 2px 4px ${isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)'}`,
                 background: button.id === 'web-search' && webSearchActive
                   ? button.bgColor // 保持激活状态的背景色
                   : button.id === 'generate-image' && imageGenerationMode
                     ? button.bgColor // 保持图片生成模式的背景色
-                    : 'rgba(255, 255, 255, 0.95)' // 默认悬停背景色
+                    : isDarkMode ? 'rgba(40, 40, 40, 0.95)' : 'rgba(255, 255, 255, 0.95)' // 根据主题设置悬停背景色
               },
               '&:active': {
                 transform: 'scale(0.98)'

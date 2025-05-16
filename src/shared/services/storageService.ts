@@ -2,6 +2,7 @@ import { openDB } from 'idb';
 import type { IDBPDatabase, DBSchema } from 'idb';
 import type { ChatTopic } from '../types';
 import type { Assistant } from '../types/Assistant';
+import { Preferences } from '@capacitor/preferences';
 
 // 定义数据库schema
 interface AetherLinkDB extends DBSchema {
@@ -22,7 +23,7 @@ interface AetherLinkDB extends DBSchema {
 // 数据库名和版本
 const OLD_DB_NAME_1 = 'cherry-studio-db'; // 保留第一个旧名称用于数据迁移
 const OLD_DB_NAME_2 = 'llm-house-db'; // 保留第二个旧名称用于数据迁移
-const DB_NAME = 'aetherlink-db'; // 新的数据库名称
+const DB_NAME = 'aetherlink-db-new'; // 新的数据库名称，与DataService保持一致
 const DB_VERSION = 1;
 
 // 对象仓库名称
@@ -575,4 +576,132 @@ export const storageService = {
 };
 
 // 初始化存储服务
-initStorageService().catch(console.error); 
+initStorageService().catch(console.error);
+
+/**
+ * 存储服务 - 使用Capacitor Storage API替代localStorage
+ * 提供更可靠的移动端存储解决方案
+ */
+export class StorageService {
+  /**
+   * 设置存储项
+   * @param key 键名
+   * @param value 值（将被转换为JSON字符串）
+   */
+  static async setItem(key: string, value: any): Promise<void> {
+    try {
+      const jsonValue = typeof value === 'string' ? value : JSON.stringify(value);
+      await Preferences.set({
+        key,
+        value: jsonValue
+      });
+    } catch (error) {
+      console.error('StorageService.setItem 失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取存储项
+   * @param key 键名
+   * @param defaultValue 默认值（如果未找到项）
+   * @returns 解析后的值或默认值
+   */
+  static async getItem<T>(key: string, defaultValue: T | null = null): Promise<T | null> {
+    try {
+      const { value } = await Preferences.get({ key });
+      
+      if (value === null || value === undefined) {
+        return defaultValue;
+      }
+      
+      try {
+        return JSON.parse(value) as T;
+      } catch {
+        // 如果不是有效的JSON，返回原始字符串
+        return value as unknown as T;
+      }
+    } catch (error) {
+      console.error('StorageService.getItem 失败:', error);
+      return defaultValue;
+    }
+  }
+
+  /**
+   * 移除存储项
+   * @param key 键名
+   */
+  static async removeItem(key: string): Promise<void> {
+    try {
+      await Preferences.remove({ key });
+    } catch (error) {
+      console.error('StorageService.removeItem 失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 清除所有存储
+   */
+  static async clear(): Promise<void> {
+    try {
+      await Preferences.clear();
+    } catch (error) {
+      console.error('StorageService.clear 失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取所有键
+   * @returns 所有存储键的数组
+   */
+  static async keys(): Promise<string[]> {
+    try {
+      const { keys } = await Preferences.keys();
+      return keys;
+    } catch (error) {
+      console.error('StorageService.keys 失败:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * 批量设置多个键值对
+   * @param items 键值对对象
+   */
+  static async setItems(items: Record<string, any>): Promise<void> {
+    try {
+      const operations = Object.entries(items).map(([key, value]) => {
+        return this.setItem(key, value);
+      });
+      
+      await Promise.all(operations);
+    } catch (error) {
+      console.error('StorageService.setItems 失败:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 从localStorage迁移数据到Capacitor Storage
+   * 用于应用从使用localStorage迁移到StorageService的情况
+   */
+  static async migrateFromLocalStorage(keys: string[]): Promise<void> {
+    try {
+      const operations = keys.map(key => {
+        const value = localStorage.getItem(key);
+        if (value !== null) {
+          return this.setItem(key, value);
+        }
+        return Promise.resolve();
+      });
+      
+      await Promise.all(operations);
+      console.log('从localStorage迁移数据成功');
+    } catch (error) {
+      console.error('从localStorage迁移数据失败:', error);
+      throw error;
+    }
+  }
+} 

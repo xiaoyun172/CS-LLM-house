@@ -4,7 +4,7 @@ export interface Assistant {
   id: string;
   name: string;
   description: string;
-  icon: ReactNode;
+  icon?: ReactNode | null;
   isSystem?: boolean;
   topicIds?: string[];
   systemPrompt?: string; // 助手系统提示词

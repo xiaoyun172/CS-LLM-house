@@ -80,7 +80,54 @@ class FirecrawlService {
    */
   public async scrapeUrl(url: string, format: 'markdown' | 'html' | 'text' = 'markdown'): Promise<string> {
     try {
+      // 调用新的方法，支持SDK格式
+      const result = await this.scrapeUrlWithOptions(url, { formats: [format] });
+      
+      if (!result.success) {
+        throw new Error(result.error || '无法获取指定格式的内容');
+      }
+      
+      if (format === 'markdown' && result.markdown) {
+        return result.markdown;
+      } else if (format === 'html' && result.html) {
+        return result.html;
+      } else if (format === 'text' && result.rawText) {
+        return result.rawText;
+      } else {
+        throw new Error('无法获取指定格式的内容');
+      }
+    } catch (error) {
+      console.error('Firecrawl 网页抓取失败:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 使用Firecrawl SDK兼容格式抓取单个网页内容
+   * @param url 要抓取的URL
+   * @param options 抓取选项，包括formats数组等
+   * @returns 完整的抓取结果对象
+   */
+  public async scrapeUrlWithOptions(url: string, options: {
+    formats?: ('markdown' | 'html' | 'text')[];
+    onlyMainContent?: boolean;
+    waitFor?: number;
+  } = {}): Promise<any> {
+    try {
       this.updateConfig();
+      
+      const { formats = ['markdown'], onlyMainContent = true, waitFor } = options;
+      
+      const requestBody: any = {
+        url,
+        formats,
+        onlyMainContent
+      };
+      
+      // 如果提供了waitFor参数，添加到请求中
+      if (waitFor !== undefined) {
+        requestBody.waitFor = waitFor;
+      }
       
       const response = await fetch(`${this.baseUrl}/v1/scrape`, {
         method: 'POST',
@@ -88,32 +135,32 @@ class FirecrawlService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`
         },
-        body: JSON.stringify({
-          url,
-          formats: [format],
-          onlyMainContent: true
-        })
+        body: JSON.stringify(requestBody)
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`Firecrawl API 错误 (${response.status}): ${errorData.error || response.statusText}`);
-      }
-      
+      // 解析响应JSON
       const data = await response.json();
       
-      if (format === 'markdown' && data.markdown) {
-        return data.markdown;
-      } else if (format === 'html' && data.html) {
-        return data.html;
-      } else if (format === 'text' && data.rawText) {
-        return data.rawText;
-      } else {
-        throw new Error('无法获取指定格式的内容');
+      // 如果响应不成功，返回带有错误信息的对象
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Firecrawl API 错误 (${response.status}): ${data.error || response.statusText}`
+        };
       }
+      
+      // 返回成功结果
+      return {
+        success: true,
+        ...data // 包含markdown、html等所有返回的格式
+      };
     } catch (error) {
       console.error('Firecrawl 网页抓取失败:', error);
-      throw error;
+      // 返回错误信息
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
   
@@ -286,5 +333,6 @@ class FirecrawlService {
   }
 }
 
-// 导出单例实例
-export default new FirecrawlService(); 
+// 创建并导出单例实例
+const firecrawlService = new FirecrawlService();
+export default firecrawlService; 

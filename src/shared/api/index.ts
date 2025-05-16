@@ -181,8 +181,24 @@ export const sendChatRequest = async (options: ChatRequest): Promise<{ success: 
       const updateThreshold = 50; // 毫秒
       const minChunkSize = 5; // 最小字符变化阈值
       
+      // 新增思考过程相关数据存储
+      let reasoningContent = '';
+      let reasoningStartTime = 0;
+      let hasReceivedReasoning = false;
+      
       const onUpdate = options.onChunk 
-        ? (content: string) => {
+        ? (content: string, reasoning?: string) => {
+            // 如果收到了新的思考过程，则更新思考过程相关数据
+            if (reasoning && reasoning !== reasoningContent) {
+              reasoningContent = reasoning;
+              hasReceivedReasoning = true;
+              if (reasoningStartTime === 0) {
+                reasoningStartTime = Date.now(); // 记录第一次收到思考过程的时间
+              }
+              
+              console.log(`[流式响应] 收到思考过程, 长度: ${reasoning.length}`);
+            }
+            
             // 计算新增的部分
             const newContent = content.substring(contentAccumulator.length);
             const currentTime = Date.now();
@@ -194,12 +210,25 @@ export const sendChatRequest = async (options: ChatRequest): Promise<{ success: 
             // 3. 或者内容长度变短（可能是替换/修改）
             if (newContent.length >= minChunkSize || 
                 timeSinceLastUpdate >= updateThreshold || 
-                content.length < contentAccumulator.length) {
+                content.length < contentAccumulator.length ||
+                hasReceivedReasoning) { // 如果刚刚收到思考过程，则必须触发更新
               
               contentAccumulator = content;
               lastUpdateTime = currentTime;
+              
+              // 计算思考过程时间
+              const currentReasoningTime = reasoningStartTime > 0 ? Date.now() - reasoningStartTime : undefined;
+              
+              // 将当前收到的思考过程和内容一起发送出去
+              const chunkWithMetadata = {
+                content: content,
+                reasoning: reasoningContent,
+                reasoningTime: currentReasoningTime
+              };
+              
               // 发送完整内容而不是增量，避免增量更新带来的问题
-              options.onChunk!(content);
+              options.onChunk!(JSON.stringify(chunkWithMetadata));
+              hasReceivedReasoning = false; // 重置标志
             }
           }
         : undefined;

@@ -4,10 +4,18 @@ import SendIcon from '@mui/icons-material/Send';
 import PhotoIcon from '@mui/icons-material/Photo';
 import KeyboardVoiceIcon from '@mui/icons-material/KeyboardVoice';
 import CancelIcon from '@mui/icons-material/Cancel';
-import ImageUploadService from '../shared/services/ImageUploadService';
+import LinkIcon from '@mui/icons-material/Link';
+import { ImageUploadService } from '../shared/services/ImageUploadService';
 import type { ImageContent, SiliconFlowImageFormat } from '../shared/types';
 import ImageIcon from '@mui/icons-material/Image';
 import SearchIcon from '@mui/icons-material/Search';
+import { isValidUrl } from '../shared/utils';
+import UrlScraperStatus from './UrlScraperStatus';
+import type { ScraperStatus } from './UrlScraperStatus';
+import { dataService } from '../shared/services/DataService';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../shared/store';
+import { useTheme } from '@mui/material/styles';
 
 interface ChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[]) => void;
@@ -16,6 +24,7 @@ interface ChatInputProps {
   imageGenerationMode?: boolean; // 是否处于图像生成模式
   onSendImagePrompt?: (prompt: string) => void; // 发送图像生成提示词的回调
   webSearchActive?: boolean; // 是否处于网络搜索模式
+  onDetectUrl?: (url: string) => Promise<string>; // 用于检测并解析URL的回调
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({ 
@@ -24,19 +33,35 @@ const ChatInput: React.FC<ChatInputProps> = ({
   allowConsecutiveMessages = true, // 默认允许连续发送
   imageGenerationMode = false, // 默认不是图像生成模式
   onSendImagePrompt,
-  webSearchActive = false // 默认不是网络搜索模式
+  webSearchActive = false, // 默认不是网络搜索模式
+  onDetectUrl
 }) => {
+  const theme = useTheme(); // 获取当前主题
   const [message, setMessage] = useState('');
   const [images, setImages] = useState<ImageContent[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 添加一个状态来跟踪键盘是否显示
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  // 增加URL解析相关状态
+  const [detectedUrl, setDetectedUrl] = useState<string>('');
+  const [parsedContent, setParsedContent] = useState<string>('');
+  const [urlScraperStatus, setUrlScraperStatus] = useState<ScraperStatus>('idle');
+  const [scraperError, setScraperError] = useState<string>('');
+
+  // 判断当前主题是否为深色模式
+  const isDarkMode = theme.palette.mode === 'dark';
+
+  // 根据主题模式选择颜色
+  const inputBgColor = isDarkMode ? '#1E1E1E' : '#FFFFFF';
+  const textColor = isDarkMode ? '#E0E0E0' : '#000000';
+  const iconColor = isDarkMode ? '#9E9E9E' : '#797979';
+  const disabledColor = isDarkMode ? '#555' : '#ccc';
 
   // 判断是否允许发送消息
   const canSendMessage = () => {
     // 必须有文本或图片才能发送
-    const hasContent = message.trim() || images.length > 0;
+    const hasContent = message.trim() || images.length > 0 || parsedContent.trim();
     // 如果允许连续发送，则只要有内容就可以发送
     // 如果不允许连续发送，则需要检查isLoading状态
     return hasContent && (allowConsecutiveMessages || !isLoading);
@@ -45,9 +70,19 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     
-    if ((!message.trim() && images.length === 0) || isLoading) return;
+    if ((!message.trim() && images.length === 0 && !parsedContent) || isLoading) return;
     
     let processedMessage = message.trim();
+    
+    // 如果有解析的内容，添加到消息中
+    if (parsedContent && urlScraperStatus === 'success') {
+      // 将网页内容和用户消息合并
+      processedMessage = `${processedMessage}\n\n${parsedContent}`;
+      // 重置URL解析状态
+      setDetectedUrl('');
+      setParsedContent('');
+      setUrlScraperStatus('idle');
+    }
     
     // 如果是图像生成模式，则调用生成图像的回调
     if (imageGenerationMode && onSendImagePrompt) {
@@ -74,7 +109,49 @@ const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMessage(e.target.value);
+    const newMessage = e.target.value;
+    setMessage(newMessage);
+    
+    // 如果URL已经被检测到，不再重复检测
+    if (detectedUrl || urlScraperStatus !== 'idle') return;
+    
+    // 如果消息包含URL并且我们有处理函数，尝试检测URL
+    if (onDetectUrl) {
+      // 使用正则表达式寻找可能的URL
+      const urlMatch = newMessage.match(/https?:\/\/\S+/);
+      if (urlMatch && urlMatch[0]) {
+        const potentialUrl = urlMatch[0];
+        // 检验URL是否有效
+        if (isValidUrl(potentialUrl)) {
+          setDetectedUrl(potentialUrl);
+          handleUrlScraping(potentialUrl);
+        }
+      }
+    }
+  };
+
+  // 处理URL抓取
+  const handleUrlScraping = async (url: string) => {
+    if (!onDetectUrl) return;
+    
+    try {
+      setUrlScraperStatus('parsing');
+      const content = await onDetectUrl(url);
+      setParsedContent(content);
+      setUrlScraperStatus('success');
+    } catch (error) {
+      console.error('URL抓取失败:', error);
+      setUrlScraperStatus('error');
+      setScraperError(error instanceof Error ? error.message : '网页解析失败');
+    }
+  };
+
+  // 重置URL抓取状态
+  const resetUrlScraper = () => {
+    setDetectedUrl('');
+    setParsedContent('');
+    setUrlScraperStatus('idle');
+    setScraperError('');
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -123,6 +200,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
     try {
       setUploadingImages(true);
       
+      // 获取当前话题
+      const currentTopicState = useSelector((state: RootState) => state.messages.currentTopic);
+      
       // 选择图片
       const selectedImages = await ImageUploadService.selectImages(source);
       if (selectedImages.length === 0) {
@@ -130,18 +210,70 @@ const ChatInput: React.FC<ChatInputProps> = ({
         return;
       }
       
-      // 压缩图片
-      const compressedImages = await Promise.all(
-        selectedImages.map(img => ImageUploadService.compressImage(img, 1024)) // 限制1MB
+      // 压缩图片并存储进度
+      const totalImages = selectedImages.length;
+      let completedImages = 0;
+      
+      // 创建一个进度更新函数
+      const updateProgress = (increment: number = 1) => {
+        completedImages += increment;
+        // 这里可以添加进度百分比显示的逻辑，比如设置状态或显示进度条
+        console.log(`处理图片进度: ${completedImages}/${totalImages}`);
+      };
+      
+      // 处理并保存图片到DataService
+      const processedImages = await Promise.all(
+        selectedImages.map(async (img, index) => {
+          try {
+            // 1. 压缩图片
+            const compressedImage = await ImageUploadService.compressImage(img, 1024); // 限制1MB
+            
+            // 更新进度
+            updateProgress(0.5); // 算作半个完成单位
+            
+            // 2. 保存到DataService
+            if (currentTopicState) {
+              // 如果有当前话题，使用DataService存储
+              const imageRef = await dataService.saveBase64Image(
+                compressedImage.base64Data || '',
+                {
+                  mimeType: compressedImage.mimeType,
+                  width: compressedImage.width,
+                  height: compressedImage.height,
+                  size: compressedImage.size,
+                  topicId: currentTopicState.id
+                }
+              );
+              
+              updateProgress(0.5); // 完成剩余进度
+              
+              // 返回图片引用而不是完整的base64数据
+              return {
+                url: `[图片:${imageRef.id}]`, // 特殊格式，会被MessageItem识别
+                mimeType: compressedImage.mimeType,
+                width: compressedImage.width,
+                height: compressedImage.height
+              } as ImageContent;
+            } else {
+              // 没有当前话题，使用原始方式
+              const formattedImage = ImageUploadService.ensureCorrectFormat(compressedImage);
+              updateProgress(0.5);
+              return formattedImage;
+            }
+          } catch (error) {
+            console.error(`处理第 ${index + 1} 张图片时出错:`, error);
+            updateProgress(1); // 即使出错也更新进度
+            // 返回错误图片，但强制类型为ImageContent以避免TypeScript错误
+            return null; // 返回null，稍后过滤掉
+          }
+        })
       );
       
-      // 确保所有图片格式正确
-      const formattedImages = compressedImages.map(
-        img => ImageUploadService.ensureCorrectFormat(img)
-      );
+      // 过滤掉错误的图片（null值）
+      const validImages = processedImages.filter(img => img !== null) as ImageContent[];
       
       // 更新状态
-      setImages(prev => [...prev, ...formattedImages]);
+      setImages(prev => [...prev, ...validImages]);
       setUploadingImages(false);
     } catch (error) {
       console.error('图片上传失败:', error);
@@ -172,6 +304,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
       transition: 'all 0.3s ease',
       marginBottom: isKeyboardVisible ? '0' : '0'
     }}>
+      {/* URL解析状态显示 */}
+      {urlScraperStatus !== 'idle' && (
+        <UrlScraperStatus
+          status={urlScraperStatus}
+          url={detectedUrl}
+          error={scraperError}
+          onClose={resetUrlScraper}
+        />
+      )}
+    
       {/* 已选择的图片预览 */}
       {images.length > 0 && (
         <div style={{
@@ -231,7 +373,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           alignItems: 'center',
         padding: '5px 8px',
         borderRadius: '20px',
-        backgroundColor: '#ffffff',
+        backgroundColor: inputBgColor,
           border: 'none',
         minHeight: '40px',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
@@ -242,7 +384,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           <IconButton
           size="medium"
           style={{
-            color: '#797979',
+            color: iconColor,
             padding: '8px',
             marginRight: '4px'
           }}
@@ -270,7 +412,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
               resize: 'none',
               overflow: 'hidden',
               minHeight: '24px',
-              maxHeight: '80px'
+              maxHeight: '80px',
+              color: textColor
             }}
             placeholder={imageGenerationMode ? "输入图像生成提示词..." : webSearchActive ? "输入网络搜索内容..." : "和ai助手说点什么"}
             value={message}
@@ -288,7 +431,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             onClick={() => handleImageUpload('photos')}
             disabled={uploadingImages || (isLoading && !allowConsecutiveMessages)}
             style={{
-              color: uploadingImages ? '#ccc' : '#797979',
+              color: uploadingImages ? disabledColor : iconColor,
               padding: '8px',
               position: 'relative'
             }}
@@ -309,7 +452,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           disabled={!canSendMessage() || isLoading && !allowConsecutiveMessages}
             size="medium"
             style={{
-            color: !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? '#ccc' : imageGenerationMode ? '#9C27B0' : webSearchActive ? '#3b82f6' : '#09bb07',
+            color: !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? disabledColor : imageGenerationMode ? '#9C27B0' : webSearchActive ? '#3b82f6' : urlScraperStatus === 'success' ? '#26C6DA' : isDarkMode ? '#4CAF50' : '#09bb07',
             padding: '8px'
               }}
             >
@@ -322,6 +465,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
           ) : webSearchActive ? (
             <Tooltip title="搜索网络">
               <SearchIcon />
+            </Tooltip>
+          ) : urlScraperStatus === 'success' ? (
+            <Tooltip title="发送解析的网页内容">
+              <LinkIcon />
             </Tooltip>
           ) : (
             <SendIcon />

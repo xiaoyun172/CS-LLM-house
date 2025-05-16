@@ -214,13 +214,60 @@ const messagesSlice = createSlice({
       try {
         const topicsJson = localStorage.getItem('chatTopics');
         if (topicsJson) {
-          const topics = JSON.parse(topicsJson);
-          state.topics = topics;
+          // 进行话题去重处理
+          const parsedTopics = JSON.parse(topicsJson);
           
-          // 初始化消息记录
-          topics.forEach((topic: ChatTopic) => {
-            state.messagesByTopic[topic.id] = topic.messages || [];
+          // 使用Map按照ID去重
+          const uniqueTopicsMap = new Map();
+          parsedTopics.forEach((topic: ChatTopic) => {
+            if (!uniqueTopicsMap.has(topic.id)) {
+              uniqueTopicsMap.set(topic.id, topic);
+            }
           });
+          
+          // 转换回数组
+          const uniqueTopics = Array.from(uniqueTopicsMap.values());
+          
+          // 去重后保存回localStorage
+          localStorage.setItem('chatTopics', JSON.stringify(uniqueTopics));
+          
+          // 更新到Redux状态
+          state.topics = uniqueTopics;
+          
+          // 初始化消息记录（需要对消息也进行去重）
+          uniqueTopics.forEach((topic: ChatTopic) => {
+            if (topic.messages && topic.messages.length > 0) {
+              // 使用Map对消息按照ID去重
+              const uniqueMessagesMap = new Map();
+              (topic.messages || []).forEach((msg: Message) => {
+                if (!uniqueMessagesMap.has(msg.id)) {
+                  // 清理错误状态和待处理状态的消息
+                  if (msg.status === 'error' || msg.status === 'pending') {
+                    msg.status = 'complete' as const;
+                    
+                    // 如果是error状态且没有内容，提供默认内容
+                    if (msg.status === 'complete' && (!msg.content || msg.content === '很抱歉，请求处理失败，请稍后再试。')) {
+                      msg.content = '您好！有什么我可以帮助您的吗？ (Hello! Is there anything I can assist you with?)';
+                    }
+                  }
+                  uniqueMessagesMap.set(msg.id, msg);
+                }
+              });
+              
+              // 转换回数组
+              const uniqueMessages = Array.from(uniqueMessagesMap.values());
+              
+              // 更新到Redux
+              state.messagesByTopic[topic.id] = uniqueMessages;
+              
+              // 更新话题中的消息
+              topic.messages = uniqueMessages;
+            } else {
+              state.messagesByTopic[topic.id] = [];
+            }
+          });
+          
+          console.log('话题和消息已成功加载并去重，话题数量:', uniqueTopics.length);
         }
       } catch (error) {
         console.error('从localStorage加载话题失败:', error);
@@ -252,6 +299,13 @@ const messagesSlice = createSlice({
         state.messagesByTopic[topicId] = [];
       }
 
+      // 检查消息是否已存在（避免重复添加）
+      const messageExists = state.messagesByTopic[topicId].some(msg => msg.id === message.id);
+      if (messageExists) {
+        console.log(`消息ID ${message.id} 已存在，不重复添加`);
+        return;
+      }
+
       state.messagesByTopic[topicId].push(message);
 
       // 如果是当前主题，更新主题的最后消息时间
@@ -268,9 +322,14 @@ const messagesSlice = createSlice({
           const topicIndex = topics.findIndex((t: ChatTopic) => t.id === topicId);
 
           if (topicIndex !== -1) {
-            topics[topicIndex].messages = state.messagesByTopic[topicId];
-            topics[topicIndex].lastMessageTime = message.timestamp;
-            localStorage.setItem('chatTopics', JSON.stringify(topics));
+            // 确保不重复添加消息
+            const existingMessages = topics[topicIndex].messages || [];
+            const messageExists = existingMessages.some((msg: Message) => msg.id === message.id);
+            if (!messageExists) {
+              topics[topicIndex].messages = [...existingMessages, message];
+              topics[topicIndex].lastMessageTime = message.timestamp;
+              localStorage.setItem('chatTopics', JSON.stringify(topics));
+            }
           }
         }
       } catch (error) {
@@ -654,6 +713,15 @@ const messagesSlice = createSlice({
       console.log(`[setTopicMessages] 已完成更新话题 ${topicId} 的消息列表操作`);
     },
   },
+  extraReducers: (builder) => {
+    builder
+      // 处理强制更新action
+      .addCase('FORCE_MESSAGES_UPDATE', (state) => {
+        console.log('执行强制更新操作');
+        // 这个action不需要修改state，仅用于触发React组件重新渲染
+        return state;
+      });
+  }
 });
 
 // 导出actions

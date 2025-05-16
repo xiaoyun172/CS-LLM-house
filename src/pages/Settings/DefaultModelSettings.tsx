@@ -21,14 +21,20 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useNavigate } from 'react-router-dom';
-import { useAppSelector } from '../../shared/store';
+import { useAppSelector, useAppDispatch } from '../../shared/store';
+import { setModelSelectorStyle } from '../../shared/store/settingsSlice';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import FormattedAlignLeftIcon from '@mui/icons-material/FormatAlignLeft';
+import ViewAgendaIcon from '@mui/icons-material/ViewAgenda';
 
 /**
  * 默认模型设置组件
  */
 const DefaultModelSettings: React.FC = () => {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const providers = useAppSelector(state => state.settings.providers);
+  const modelSelectorStyle = useAppSelector(state => state.settings.modelSelectorStyle);
 
   const handleBack = () => {
     navigate('/settings');
@@ -40,6 +46,12 @@ const DefaultModelSettings: React.FC = () => {
 
   const handleProviderClick = (providerId: string) => {
     navigate(`/settings/model-provider/${providerId}`);
+  };
+  
+  const toggleModelSelectorStyle = () => {
+    // 切换选择器样式
+    const newStyle = modelSelectorStyle === 'dialog' ? 'dropdown' : 'dialog';
+    dispatch(setModelSelectorStyle(newStyle));
   };
 
   return (
@@ -227,16 +239,76 @@ const DefaultModelSettings: React.FC = () => {
             }
           >
             <ListItem disablePadding>
-              <ListItemButton onClick={handleAddProvider} sx={{
-                transition: 'all 0.2s',
-                '&:hover': {
-                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
-                }
-              }}>
+              <ListItemButton 
+                onClick={() => navigate('/settings/default-model-settings')} 
+                sx={{
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                  }
+                }}
+              >
                 <ListItemAvatar>
                   <Avatar sx={{ 
-                    bgcolor: alpha('#9333EA', 0.12),
-                    color: '#9333EA',
+                    bgcolor: alpha('#4f46e5', 0.12),
+                    color: '#4f46e5',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
+                  }}>
+                    <SmartToyIcon />
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={<Typography sx={{ fontWeight: 600, color: 'text.primary' }}>默认模型设置</Typography>}
+                  secondary="设置默认使用的模型和自动化选项"
+                />
+                <ChevronRightIcon sx={{ color: 'text.secondary' }} />
+              </ListItemButton>
+            </ListItem>
+            
+            <Divider variant="inset" component="li" sx={{ ml: 0 }} />
+            
+            <ListItem disablePadding>
+              <ListItemButton 
+                onClick={toggleModelSelectorStyle} 
+                sx={{
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                  }
+                }}
+              >
+                <ListItemAvatar>
+                  <Avatar sx={{ 
+                    bgcolor: alpha('#06b6d4', 0.12),
+                    color: '#06b6d4',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
+                  }}>
+                    {modelSelectorStyle === 'dialog' ? <ViewAgendaIcon /> : <FormattedAlignLeftIcon />}
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={<Typography sx={{ fontWeight: 600, color: 'text.primary' }}>模型选择器样式</Typography>}
+                  secondary={modelSelectorStyle === 'dialog' ? "当前：弹窗式选择器（点击切换为下拉式）" : "当前：下拉式选择器（点击切换为弹窗式）"}
+                />
+              </ListItemButton>
+            </ListItem>
+            
+            <Divider variant="inset" component="li" sx={{ ml: 0 }} />
+            
+            <ListItem disablePadding>
+              <ListItemButton 
+                onClick={() => navigate('/settings/add-provider')} 
+                sx={{
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                  }
+                }}
+              >
+                <ListItemAvatar>
+                  <Avatar sx={{ 
+                    bgcolor: alpha('#9333ea', 0.12),
+                    color: '#9333ea',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
                   }}>
                     <AddIcon />
@@ -246,7 +318,7 @@ const DefaultModelSettings: React.FC = () => {
                   primary={<Typography sx={{ fontWeight: 600, color: 'text.primary' }}>添加模型服务商</Typography>}
                   secondary="设置新的模型服务商"
                 />
-                <ChevronRightIcon sx={{ color: (theme) => alpha(theme.palette.primary.main, 0.5) }} />
+                <ChevronRightIcon sx={{ color: 'text.secondary' }} />
               </ListItemButton>
             </ListItem>
           </List>

@@ -1,0 +1,95 @@
+import React from 'react';
+import { 
+  Select,
+  MenuItem,
+  FormControl,
+  Typography,
+  useTheme,
+  Box
+} from '@mui/material';
+import type { Model } from '../../../shared/types';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../../shared/store';
+import type { SelectChangeEvent } from '@mui/material';
+
+interface DropdownModelSelectorProps {
+  selectedModel: Model | null;
+  availableModels: Model[];
+  handleModelSelect: (model: Model) => void;
+}
+
+export const DropdownModelSelector: React.FC<DropdownModelSelectorProps> = ({
+  selectedModel,
+  availableModels,
+  handleModelSelect
+}) => {
+  const theme = useTheme();
+  const providers = useSelector((state: RootState) => state.settings.providers || []);
+  
+  // 获取提供商名称的函数
+  const getProviderName = React.useCallback((providerId: string) => {
+    const provider = providers.find(p => p.id === providerId);
+    // 如果找到提供商，返回用户设置的名称
+    if (provider) {
+      return provider.name;
+    }
+    // 没有找到，返回原始ID
+    return providerId;
+  }, [providers]);
+  
+  const handleChange = (event: SelectChangeEvent<string>) => {
+    const modelId = event.target.value;
+    const model = availableModels.find(m => m.id === modelId);
+    if (model) {
+      handleModelSelect(model);
+    }
+  };
+
+  return (
+    <FormControl 
+      variant="outlined" 
+      size="small" 
+      sx={{ 
+        minWidth: 180,
+        mr: 1,
+        '& .MuiOutlinedInput-root': {
+          borderRadius: '16px',
+          fontSize: '0.9rem',
+          bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
+          '&:hover .MuiOutlinedInput-notchedOutline': {
+            borderColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#e0e0e0',
+          }
+        }
+      }}
+    >
+      <Select
+        labelId="model-select-label"
+        id="model-select"
+        value={selectedModel?.id || ''}
+        onChange={handleChange}
+        displayEmpty
+      >
+        {availableModels.map((model) => {
+          const providerName = getProviderName(model.provider || model.providerType || '未知');
+          
+          return (
+            <MenuItem key={model.id} value={model.id} sx={{ py: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {model.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {providerName}
+                  </Typography>
+                </Box>
+              </Box>
+            </MenuItem>
+          );
+        })}
+      </Select>
+    </FormControl>
+  );
+};
+
+export default DropdownModelSelector; 

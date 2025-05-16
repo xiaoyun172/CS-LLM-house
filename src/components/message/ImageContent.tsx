@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, CircularProgress, IconButton, Dialog } from '@mui/material';
 import ZoomOutMapIcon from '@mui/icons-material/ZoomOutMap';
 import CloseIcon from '@mui/icons-material/Close';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import type { ImageContent as ImageContentType } from '../../shared/types';
+import { DataService } from '../../shared/services/DataService';
+
+// 获取DataService实例
+const dataService = DataService.getInstance();
 
 interface ImageContentProps {
   image: ImageContentType;
@@ -14,9 +18,108 @@ const ImageContent: React.FC<ImageContentProps> = ({ image, index }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [open, setOpen] = useState(false);
+  const [imgSrc, setImgSrc] = useState<string>('');
+  const imgRef = useRef<HTMLImageElement>(null);
+  const observer = useRef<IntersectionObserver | null>(null);
   
+  // 判断是否为图片引用 (格式为 [图片:ID])
+  useEffect(() => {
+    const checkImageReference = async () => {
   // 使用base64数据或URL
-  const imgSrc = image.base64Data || image.url;
+      if (image.base64Data) {
+        setImgSrc(image.base64Data);
+        return;
+      } else if (image.url) {
+        // 检查URL是否为图片引用格式 [图片:ID]
+        const refMatch = image.url.match(/\[图片:([a-zA-Z0-9_-]+)\]/);
+        if (refMatch && refMatch[1]) {
+          try {
+            // 从DataService获取图片
+            await loadImageFromReference(refMatch[1]);
+          } catch (err) {
+            console.error('加载图片引用失败:', err);
+            setError(true);
+            setLoading(false);
+          }
+        } else {
+          setImgSrc(image.url);
+        }
+      }
+    };
+    
+    checkImageReference();
+  }, [image]);
+  
+  // 图片懒加载
+  useEffect(() => {
+    if (!imgRef.current) return;
+    
+    observer.current = new IntersectionObserver((entries) => {
+      const [entry] = entries;
+      if (entry.isIntersecting) {
+        // 图片进入视口，加载图片
+        if (imgRef.current && imgRef.current.getAttribute('data-src')) {
+          imgRef.current.src = imgRef.current.getAttribute('data-src') || '';
+          observer.current?.unobserve(imgRef.current);
+        }
+      }
+    }, {
+      root: null,
+      threshold: 0.1,
+      rootMargin: '100px'
+    });
+    
+    if (imgRef.current) {
+      observer.current.observe(imgRef.current);
+    }
+    
+    return () => {
+      if (imgRef.current && observer.current) {
+        observer.current.unobserve(imgRef.current);
+      }
+    };
+  }, [imgSrc]);
+  
+  // 从图片引用加载图片
+  const loadImageFromReference = async (id: string) => {
+    try {
+      // 检查是否已有缓存
+      const cachedUrl = sessionStorage.getItem(`img_cache_${id}`);
+      if (cachedUrl) {
+        setImgSrc(cachedUrl);
+        return;
+      }
+      
+      // 获取图片Blob
+      const blob = await dataService.getImageBlob(id);
+      if (!blob) {
+        throw new Error('图片不存在');
+      }
+      
+      // 获取图片元数据
+      const metadata = await dataService.getImageMetadata(id);
+      console.debug('Image metadata loaded:', metadata);
+      
+      // 创建Blob URL
+      const url = URL.createObjectURL(blob);
+      
+      // 缓存到sessionStorage
+      sessionStorage.setItem(`img_cache_${id}`, url);
+      
+      // 设置图片源
+      setImgSrc(url);
+      
+      // 预加载高清图片（如果是在预览模式）
+      if (!open) {
+        const img = new Image();
+        img.src = url;
+      }
+    } catch (error) {
+      console.error('从引用加载图片失败:', error);
+      setError(true);
+      setLoading(false);
+    }
+  };
   
   const handleOpen = () => {
     setOpen(true);
@@ -87,6 +190,7 @@ const ImageContent: React.FC<ImageContentProps> = ({ image, index }) => {
         ) : (
           <Box sx={{ position: 'relative' }}>
             <img
+              ref={imgRef}
               src={imgSrc}
               alt={`上传图片 ${index + 1}`}
               style={{
@@ -94,7 +198,10 @@ const ImageContent: React.FC<ImageContentProps> = ({ image, index }) => {
                 maxHeight: '240px',
                 objectFit: 'contain',
                 cursor: 'pointer',
+                opacity: loading ? 0 : 1, // 加载时透明
+                transition: 'opacity 0.3s ease', // 平滑过渡
               }}
+              loading="lazy" // 原生懒加载
               onLoad={handleImageLoad}
               onError={handleImageError}
               onClick={handleOpen}

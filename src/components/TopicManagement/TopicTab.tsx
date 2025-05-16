@@ -68,6 +68,10 @@ export default function TopicTab({
   const [topicPrompt, setTopicPrompt] = useState('');
   const [useAssistantPrompt, setUseAssistantPrompt] = useState(false);
   
+  // 编辑话题名称对话框相关状态
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [topicName, setTopicName] = useState('');
+  
   // 分组相关状态
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   
@@ -247,6 +251,32 @@ export default function TopicTab({
         setTopicPendingDelete(current => current === topicId ? null : current);
       }, 5000);
     }
+  };
+  
+  // 编辑话题名称
+  const handleEditTopicName = () => {
+    if (!contextTopic) return;
+    
+    setTopicName(contextTopic.title || '');
+    setNameDialogOpen(true);
+    handleCloseMenu();
+  };
+  
+  // 保存话题名称
+  const handleSaveTopicName = () => {
+    if (contextTopic && onUpdateTopic) {
+      onUpdateTopic({
+        ...contextTopic,
+        title: topicName.trim() || '新对话'
+      });
+    }
+    handleCloseNameDialog();
+  };
+  
+  // 关闭名称编辑对话框
+  const handleCloseNameDialog = () => {
+    setNameDialogOpen(false);
+    setTopicName('');
   };
   
   // 渲染单个话题项
@@ -532,6 +562,10 @@ export default function TopicTab({
         open={isMenuOpen}
         onClose={handleCloseMenu}
       >
+        <MenuItem onClick={handleEditTopicName}>
+          <EditIcon fontSize="small" sx={{ mr: 1 }} />
+          编辑名称
+        </MenuItem>
         <MenuItem onClick={handleEditPrompt}>
           <EditIcon fontSize="small" sx={{ mr: 1 }} />
           编辑提示词
@@ -616,6 +650,37 @@ export default function TopicTab({
               >
                 保存
               </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* 话题名称编辑对话框 */}
+      <Dialog
+        open={nameDialogOpen}
+        onClose={handleCloseNameDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>编辑话题名称</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            label="话题名称"
+            fullWidth
+            variant="outlined"
+            value={topicName}
+            onChange={(e) => setTopicName(e.target.value)}
+            margin="dense"
+            placeholder="为您的对话起个名字"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseNameDialog}>取消</Button>
+          <Button 
+            onClick={handleSaveTopicName}
+            color="primary"
+          >
+            保存
+          </Button>
         </DialogActions>
       </Dialog>
       

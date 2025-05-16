@@ -6,6 +6,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
 import type { MathRendererType } from '../../shared/types';
+import remarkGfm from 'remark-gfm';
 
 interface MarkdownRendererProps {
   content: string;
@@ -222,6 +223,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
       '& img': { maxWidth: '100%' }
     }}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           // 代码高亮处理
           code({className, children, ...props}) {

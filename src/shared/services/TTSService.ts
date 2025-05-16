@@ -1,6 +1,6 @@
 /**
  * TTS服务类
- * 使用硅基流动TTS API和Web Speech API提供免费的文本到语音转换功能
+ * 使用硅基流动TTS API、OpenAI TTS API和Web Speech API提供免费的文本到语音转换功能
  */
 export class TTSService {
   private static instance: TTSService;
@@ -8,12 +8,30 @@ export class TTSService {
   private isPlaying: boolean = false;
   private currentAudioBlob: string | null = null;
   private currentMessageId: string | null = null;
+  
   // 硅基流动API Key，实际应用中应从环境变量或安全存储中获取
   private siliconFlowApiKey: string = '';
+  
+  // OpenAI API 设置
+  private openaiApiKey: string = '';
+  private useOpenAI: boolean = false;
+  
+  // OpenAI TTS 参数
+  private openaiModel: string = 'tts-1'; // 可选: tts-1, tts-1-hd
+  private openaiVoice: string = 'alloy'; // 可选: alloy, echo, fable, onyx, nova, shimmer
+  private openaiResponseFormat: string = 'mp3'; // 可选: mp3, opus, aac, flac
+  private openaiSpeed: number = 1.0; // 范围: 0.25-4.0
+  private useOpenAIStream: boolean = false; // 是否使用流式输出
+  
   // 默认使用的语音模型
   private defaultModel: string = 'FunAudioLLM/CosyVoice2-0.5B';
   // 默认使用的语音
   private defaultVoice: string = 'FunAudioLLM/CosyVoice2-0.5B:alex';
+  
+  // 音频上下文 - 用于流式播放
+  private audioContext: AudioContext | null = null;
+  private sourceNode: AudioBufferSourceNode | null = null;
+  private isStreamPlaying: boolean = false;
 
   /**
    * 构造函数
@@ -35,6 +53,13 @@ export class TTSService {
       this.isPlaying = false;
       this.currentMessageId = null;
     };
+    
+    // 尝试初始化AudioContext (用于流式播放)
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    } catch (e) {
+      console.warn('AudioContext初始化失败，流式播放可能不可用', e);
+    }
   }
 
   /**
@@ -53,6 +78,65 @@ export class TTSService {
    */
   public setApiKey(apiKey: string): void {
     this.siliconFlowApiKey = apiKey;
+  }
+
+  /**
+   * 设置OpenAI API密钥
+   * @param apiKey API密钥
+   */
+  public setOpenAIApiKey(apiKey: string): void {
+    this.openaiApiKey = apiKey;
+  }
+
+  /**
+   * 设置是否使用OpenAI TTS
+   * @param useOpenAI 是否使用OpenAI
+   */
+  public setUseOpenAI(useOpenAI: boolean): void {
+    this.useOpenAI = useOpenAI;
+  }
+
+  /**
+   * 设置OpenAI模型
+   * @param model 模型名称 (tts-1, tts-1-hd)
+   */
+  public setOpenAIModel(model: string): void {
+    this.openaiModel = model;
+  }
+
+  /**
+   * 设置OpenAI语音
+   * @param voice 语音名称 (alloy, echo, fable, onyx, nova, shimmer)
+   */
+  public setOpenAIVoice(voice: string): void {
+    this.openaiVoice = voice;
+  }
+
+  /**
+   * 设置OpenAI响应格式
+   * @param format 格式类型 (mp3, opus, aac, flac)
+   */
+  public setOpenAIResponseFormat(format: string): void {
+    this.openaiResponseFormat = format;
+  }
+
+  /**
+   * 设置OpenAI语速
+   * @param speed 语速 (0.25-4.0)
+   */
+  public setOpenAISpeed(speed: number): void {
+    // 确保语速在有效范围内
+    if (speed < 0.25) speed = 0.25;
+    if (speed > 4.0) speed = 4.0;
+    this.openaiSpeed = speed;
+  }
+
+  /**
+   * 设置是否使用OpenAI流式输出
+   * @param useStream 是否使用流式输出
+   */
+  public setUseOpenAIStream(useStream: boolean): void {
+    this.useOpenAIStream = useStream;
   }
 
   /**
@@ -83,6 +167,9 @@ export class TTSService {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+    
+    // 停止流式播放
+    this.stopStream();
 
     this.isPlaying = false;
     this.currentMessageId = null;
@@ -93,12 +180,29 @@ export class TTSService {
       this.currentAudioBlob = null;
     }
   }
+  
+  /**
+   * 停止流式播放
+   */
+  private stopStream(): void {
+    if (this.sourceNode) {
+      try {
+        this.sourceNode.stop();
+        this.sourceNode.disconnect();
+      } catch (e) {
+        console.error('停止音频源时出错', e);
+      }
+      this.sourceNode = null;
+    }
+    
+    this.isStreamPlaying = false;
+  }
 
   /**
    * 获取播放状态
    */
   public getIsPlaying(): boolean {
-    return this.isPlaying;
+    return this.isPlaying || this.isStreamPlaying;
   }
 
   /**
@@ -117,13 +221,13 @@ export class TTSService {
    */
   public async togglePlayback(messageId: string, text: string, voice: string = this.defaultVoice): Promise<boolean> {
     // 如果当前正在播放此消息，则停止播放
-    if (this.isPlaying && this.currentMessageId === messageId) {
+    if ((this.isPlaying || this.isStreamPlaying) && this.currentMessageId === messageId) {
       this.stop();
       return false;
     }
     
     // 如果正在播放其他消息，先停止
-    if (this.isPlaying) {
+    if (this.isPlaying || this.isStreamPlaying) {
       this.stop();
     }
     
@@ -144,7 +248,7 @@ export class TTSService {
   public async speak(text: string, voice: string = this.defaultVoice): Promise<boolean> {
     try {
       // 如果正在播放，先停止
-      if (this.isPlaying) {
+      if (this.isPlaying || this.isStreamPlaying) {
         this.stop();
       }
 
@@ -157,7 +261,19 @@ export class TTSService {
       console.log(`开始播放文本，语音: ${voice}`);
       this.isPlaying = true;
 
-      // 首先尝试使用硅基流动API
+      // 首先检查是否使用OpenAI TTS
+      if (this.useOpenAI) {
+        // 决定是否使用流式输出
+        if (this.useOpenAIStream && this.audioContext) {
+          const streamSuccess = await this.speakWithOpenAIStream(text);
+          if (streamSuccess) return true;
+        } else {
+          const success = await this.speakWithOpenAI(text);
+          if (success) return true;
+        }
+      }
+
+      // 然后尝试使用硅基流动API
       if (await this.speakWithSiliconFlow(text, voice)) {
         return true;
       }
@@ -175,6 +291,219 @@ export class TTSService {
       console.error('播放文本失败:', error);
       this.isPlaying = false;
       this.currentMessageId = null;
+      return false;
+    }
+  }
+
+  /**
+   * 使用OpenAI TTS API播放文本 (标准方式)
+   * @param text 要播放的文本
+   * @returns 是否成功播放
+   */
+  private async speakWithOpenAI(text: string): Promise<boolean> {
+    try {
+      // 检查API密钥是否已设置
+      if (!this.openaiApiKey) {
+        console.warn('OpenAI API密钥未设置，尝试其他方法');
+        return false;
+      }
+
+      // 准备API请求参数
+      const url = 'https://api.openai.com/v1/audio/speech';
+      const requestBody = {
+        model: this.openaiModel,
+        input: text,
+        voice: this.openaiVoice,
+        response_format: this.openaiResponseFormat,
+        speed: this.openaiSpeed
+      };
+
+      console.log('OpenAI TTS请求参数:', {
+        model: this.openaiModel,
+        voice: this.openaiVoice,
+        response_format: this.openaiResponseFormat,
+        speed: this.openaiSpeed
+      });
+
+      // 发送API请求
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.openaiApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      // 检查响应状态
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('OpenAI TTS API请求失败:', response.status, errorData);
+        return false;
+      }
+
+      // 获取音频数据
+      const audioBlob = await response.blob();
+      
+      // 释放之前的Blob URL
+      if (this.currentAudioBlob) {
+        URL.revokeObjectURL(this.currentAudioBlob);
+      }
+      
+      // 创建新的Blob URL
+      this.currentAudioBlob = URL.createObjectURL(audioBlob);
+      
+      // 播放音频
+      if (this.audio) {
+        this.audio.src = this.currentAudioBlob;
+        this.audio.play();
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('OpenAI TTS API播放失败:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * 使用OpenAI TTS API流式播放文本
+   * @param text 要播放的文本
+   * @returns 是否成功播放
+   */
+  private async speakWithOpenAIStream(text: string): Promise<boolean> {
+    try {
+      // 检查API密钥是否已设置
+      if (!this.openaiApiKey) {
+        console.warn('OpenAI API密钥未设置，尝试其他方法');
+        return false;
+      }
+      
+      // 确保AudioContext可用
+      if (!this.audioContext) {
+        console.warn('AudioContext不可用，无法使用流式播放');
+        return false;
+      }
+
+      // 准备API请求参数
+      const url = 'https://api.openai.com/v1/audio/speech';
+      const requestBody = {
+        model: this.openaiModel,
+        input: text,
+        voice: this.openaiVoice,
+        response_format: this.openaiResponseFormat,
+        speed: this.openaiSpeed
+      };
+
+      console.log('OpenAI TTS流式请求参数:', {
+        model: this.openaiModel,
+        voice: this.openaiVoice,
+        response_format: this.openaiResponseFormat,
+        speed: this.openaiSpeed
+      });
+
+      // 发送API请求，设置stream:true
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.openaiApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      // 检查响应状态
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('OpenAI TTS API流式请求失败:', response.status, errorData);
+        return false;
+      }
+      
+      // 重置流式播放状态
+      this.stopStream();
+      this.isStreamPlaying = true;
+      
+      // 获取响应体作为流
+      const reader = response.body?.getReader();
+      if (!reader) {
+        console.error('无法获取响应流');
+        return false;
+      }
+      
+      // 根据不同格式选择解码器
+      let mimeType = 'audio/mp3';
+      switch(this.openaiResponseFormat) {
+        case 'mp3': mimeType = 'audio/mp3'; break;
+        case 'opus': mimeType = 'audio/opus'; break;
+        case 'aac': mimeType = 'audio/aac'; break;
+        case 'flac': mimeType = 'audio/flac'; break;
+      }
+      
+      // 创建媒体源和解码器
+      const mediaSource = new MediaSource();
+      const audioElement = new Audio();
+      audioElement.src = URL.createObjectURL(mediaSource);
+      
+      // 收集所有块，然后一次性解码和播放
+      // 这种方法虽然不是实时流式播放，但比等待整个文件下载快
+      const chunks: Uint8Array[] = [];
+      
+      // 读取流
+      const processStream = async () => {
+        let done = false;
+        while (!done) {
+          const { value, done: isDone } = await reader.read();
+          done = isDone;
+          
+          if (value) {
+            chunks.push(value);
+          }
+          
+          if (done) {
+            // 合并所有块
+            const totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
+            const merged = new Uint8Array(totalLength);
+            let offset = 0;
+            
+            for (const chunk of chunks) {
+              merged.set(chunk, offset);
+              offset += chunk.length;
+            }
+            
+            // 创建Blob并播放
+            const blob = new Blob([merged], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            
+            if (this.audio) {
+              this.audio.src = url;
+              this.audio.play();
+              
+              // 监听播放完成事件
+              this.audio.onended = () => {
+                URL.revokeObjectURL(url);
+                this.isStreamPlaying = false;
+                this.currentMessageId = null;
+              };
+              
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      };
+      
+      // 开始处理流
+      processStream().catch(err => {
+        console.error('处理音频流时出错:', err);
+        this.isStreamPlaying = false;
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('OpenAI TTS API流式播放失败:', error);
+      this.isStreamPlaying = false;
       return false;
     }
   }

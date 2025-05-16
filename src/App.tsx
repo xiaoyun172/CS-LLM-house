@@ -8,10 +8,13 @@ import store from './shared/store';
 import LoggerService from './shared/services/LoggerService';
 import ExitConfirmDialog from './components/ExitConfirmDialog';
 import BackButtonHandler from './components/BackButtonHandler';
+import UpdateNoticeDialog from './components/UpdateNoticeDialog';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { loadTopics } from './shared/store/messagesSlice';
 import { useSelector } from 'react-redux';
+import { DataManager } from './shared/services';
+import { AssistantService } from './shared/services';
 
 // 初始化日志拦截器
 LoggerService.log('INFO', '应用初始化');
@@ -23,29 +26,48 @@ function App() {
   // 删除未使用的isReady状态
   const [appInitialized, setAppInitialized] = useState(false);
   const [mode, setMode] = useState<'light' | 'dark'>('light');
-  
+  // 添加数据结构迁移状态
+  const [dataMigrationComplete, setDataMigrationComplete] = useState(false);
+
   // 从Redux状态获取主题设置
   const themePreference = useSelector((state: any) => state.settings.theme);
-  
+
+  // 数据结构迁移
+  useEffect(() => {
+    const migrateDataStructure = async () => {
+      try {
+        console.log('[App] 开始检查并迁移数据结构...');
+        const migrationResult = await AssistantService.checkAndMigrateOnStartup();
+        console.log('[App] 数据结构迁移结果:', migrationResult ? '成功' : '失败或已完成');
+        setDataMigrationComplete(true);
+      } catch (error) {
+        console.error('[App] 数据结构迁移出错:', error);
+        setDataMigrationComplete(true); // 即使出错也继续应用启动
+      }
+    };
+
+    migrateDataStructure();
+  }, []);
+
   // 监听主题变化
   useEffect(() => {
     // 如果是system，检测系统主题
     if (themePreference === 'system') {
       const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
       setMode(isDarkMode ? 'dark' : 'light');
-      
+
       // 监听系统主题变化
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handler = (e: MediaQueryListEvent) => setMode(e.matches ? 'dark' : 'light');
       mediaQuery.addEventListener('change', handler);
-      
+
       return () => mediaQuery.removeEventListener('change', handler);
     } else {
       // 直接使用用户设置的主题
       setMode(themePreference as 'light' | 'dark');
     }
   }, [themePreference]);
-  
+
   // 根据当前模式创建主题
   const theme = useMemo(() => createTheme({
     palette: {
@@ -108,36 +130,48 @@ function App() {
     shape: {
       borderRadius: 8,
     },
+    shadows: [
+      'none',
+      mode === 'light'
+        ? '0 1px 2px rgba(0, 0, 0, 0.05)'
+        : '0 1px 2px rgba(255, 255, 255, 0.05)',
+      mode === 'light'
+        ? '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)'
+        : '0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.1)',
+      mode === 'light'
+        ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+        : '0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1)',
+      mode === 'light'
+        ? '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+        : '0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1)',
+      mode === 'light'
+        ? '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+        : '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+      '0px 3px 5px -1px rgba(0,0,0,0.2),0px 6px 10px 0px rgba(0,0,0,0.14),0px 1px 18px 0px rgba(0,0,0,0.12)',
+      '0px 4px 5px -2px rgba(0,0,0,0.2),0px 7px 10px 1px rgba(0,0,0,0.14),0px 2px 16px 1px rgba(0,0,0,0.12)',
+      '0px 5px 5px -3px rgba(0,0,0,0.2),0px 8px 10px 1px rgba(0,0,0,0.14),0px 3px 14px 2px rgba(0,0,0,0.12)',
+      '0px 5px 6px -3px rgba(0,0,0,0.2),0px 9px 12px 1px rgba(0,0,0,0.14),0px 3px 16px 2px rgba(0,0,0,0.12)',
+      '0px 6px 6px -3px rgba(0,0,0,0.2),0px 10px 14px 1px rgba(0,0,0,0.14),0px 4px 18px 3px rgba(0,0,0,0.12)',
+      '0px 6px 7px -4px rgba(0,0,0,0.2),0px 11px 15px 1px rgba(0,0,0,0.14),0px 4px 20px 3px rgba(0,0,0,0.12)',
+      '0px 7px 8px -4px rgba(0,0,0,0.2),0px 12px 17px 2px rgba(0,0,0,0.14),0px 5px 22px 4px rgba(0,0,0,0.12)',
+      '0px 7px 8px -4px rgba(0,0,0,0.2),0px 13px 19px 2px rgba(0,0,0,0.14),0px 5px 24px 4px rgba(0,0,0,0.12)',
+      '0px 7px 9px -4px rgba(0,0,0,0.2),0px 14px 21px 2px rgba(0,0,0,0.14),0px 5px 26px 4px rgba(0,0,0,0.12)',
+      '0px 8px 9px -5px rgba(0,0,0,0.2),0px 15px 22px 2px rgba(0,0,0,0.14),0px 6px 28px 5px rgba(0,0,0,0.12)',
+      '0px 8px 10px -5px rgba(0,0,0,0.2),0px 16px 24px 2px rgba(0,0,0,0.14),0px 6px 30px 5px rgba(0,0,0,0.12)',
+      '0px 8px 11px -5px rgba(0,0,0,0.2),0px 17px 26px 2px rgba(0,0,0,0.14),0px 6px 32px 5px rgba(0,0,0,0.12)',
+      '0px 9px 11px -5px rgba(0,0,0,0.2),0px 18px 28px 2px rgba(0,0,0,0.14),0px 7px 34px 6px rgba(0,0,0,0.12)',
+      '0px 9px 12px -6px rgba(0,0,0,0.2),0px 19px 29px 2px rgba(0,0,0,0.14),0px 7px 36px 6px rgba(0,0,0,0.12)',
+      '0px 10px 13px -6px rgba(0,0,0,0.2),0px 20px 31px 3px rgba(0,0,0,0.14),0px 8px 38px 7px rgba(0,0,0,0.12)',
+      '0px 10px 13px -6px rgba(0,0,0,0.2),0px 21px 33px 3px rgba(0,0,0,0.14),0px 8px 40px 7px rgba(0,0,0,0.12)',
+      '0px 10px 14px -6px rgba(0,0,0,0.2),0px 22px 35px 3px rgba(0,0,0,0.14),0px 8px 42px 7px rgba(0,0,0,0.12)',
+      '0px 11px 14px -7px rgba(0,0,0,0.2),0px 23px 36px 3px rgba(0,0,0,0.14),0px 9px 44px 8px rgba(0,0,0,0.12)',
+      '0px 11px 15px -7px rgba(0,0,0,0.2),0px 24px 38px 3px rgba(0,0,0,0.14),0px 9px 46px 8px rgba(0,0,0,0.12)',
+    ],
     components: {
-      MuiCssBaseline: {
-        styleOverrides: {
-          body: {
-            margin: 0,
-            padding: 0,
-            boxSizing: 'border-box',
-            // 减少滚动时的重绘次数
-            overscrollBehavior: 'none',
-            // 启用硬件加速
-            WebkitOverflowScrolling: 'touch',
-          },
-        },
-      },
-      MuiButton: {
+      MuiPaper: {
         styleOverrides: {
           root: {
-            textTransform: 'none',
-            boxShadow: 'none',
-            '&:hover': {
-              boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.05)',
-            },
-          },
-        },
-      },
-      MuiCard: {
-        styleOverrides: {
-          root: {
-            boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.05), 0px 1px 2px rgba(0, 0, 0, 0.03)',
-            borderRadius: 12,
+            backgroundImage: 'none',
           },
         },
       },
@@ -147,13 +181,16 @@ function App() {
   // 记录应用启动日志
   useEffect(() => {
     console.info('[App] 应用已启动');
+    
+    // 声明清理函数变量
+    let cleanup = () => {};
 
     // 初始化状态栏
     const setupStatusBar = async () => {
       try {
         // 设置状态栏不覆盖WebView
         await StatusBar.setOverlaysWebView({ overlay: false });
-        
+
         // 根据当前主题设置状态栏样式
         if (mode === 'dark') {
           await StatusBar.setStyle({ style: Style.Dark });
@@ -162,7 +199,7 @@ function App() {
           await StatusBar.setStyle({ style: Style.Dark }); // 仍然使用浅色图标，但背景色为浅色
           await StatusBar.setBackgroundColor({ color: '#475569' }); // 浅色模式状态栏
         }
-        
+
         console.log('[App] 状态栏已初始化');
       } catch (error) {
         console.error('[App] 状态栏初始化失败:', error);
@@ -172,23 +209,51 @@ function App() {
     // 调用状态栏初始化
     setupStatusBar();
 
-    // 加载话题数据
-    store.dispatch(loadTopics());
-    console.log('[App] 初始化时加载话题数据');
+    // 等待数据迁移完成后再加载话题数据
+    if (dataMigrationComplete) {
+      // 加载话题数据并修复重复话题 - 使用标记避免重复加载
+      const hasLoadedTopics = sessionStorage.getItem('_topicsLoaded');
 
-    // 延迟非关键初始化逻辑
-    const timer = setTimeout(() => {
-      console.log('[App] 主题:', theme);
-      console.log('[App] Redux Store已初始化');
-      setAppInitialized(true);
+      if (!hasLoadedTopics) {
+        // 标记已加载话题，避免重复加载
+        sessionStorage.setItem('_topicsLoaded', 'true');
 
-      // 设置性能监控定时器
-      const performanceTimer = setInterval(monitorPerformance, 30000); // 每30秒监控一次
+        console.log('[App] 初始化时加载话题数据');
+        store.dispatch(loadTopics());
 
-      return () => {
-        clearInterval(performanceTimer);
-      };
-    }, 100);
+        // 修复重复话题
+        DataManager.fixDuplicateTopics()
+          .then(result => {
+            if (result.fixed > 0) {
+              console.log(`[App] 已修复 ${result.fixed} 个重复话题，共 ${result.total} 个话题`);
+              // 重新加载话题
+              store.dispatch(loadTopics());
+            } else {
+              console.log('[App] 未发现重复话题');
+            }
+          })
+          .catch(error => {
+            console.error('[App] 修复重复话题失败:', error);
+          });
+      } else {
+        console.log('[App] 话题已在本次会话中加载，跳过重复加载');
+      }
+
+      // 延迟非关键初始化逻辑
+      const initTimer = setTimeout(() => {
+        console.log('[App] 主题:', theme);
+        console.log('[App] Redux Store已初始化');
+        setAppInitialized(true);
+
+        // 设置性能监控定时器
+        const performanceTimer = setInterval(monitorPerformance, 30000); // 每30秒监控一次
+
+        cleanup = () => {
+          clearInterval(performanceTimer);
+          clearTimeout(initTimer);
+        };
+      }, 100);
+    }
 
     // 禁用Capacitor的默认返回键行为
     const setupListener = async () => {
@@ -206,18 +271,18 @@ function App() {
 
     return () => {
       // 清理监听器
-      const cleanup = async () => {
+      const cleanupListeners = async () => {
         try {
           await CapApp.removeAllListeners();
-          clearTimeout(timer);
+          cleanup(); // 调用清理函数
         } catch (error) {
-          console.error('[App] 移除监听器失败:', error);
+          console.error('[App] 清理监听器失败:', error);
         }
       };
-
-      cleanup();
+      
+      cleanupListeners();
     };
-  }, [theme]);
+  }, [dataMigrationComplete, theme]); // 添加依赖，当迁移完成时重新执行
 
   // 性能监控函数
   const monitorPerformance = () => {
@@ -237,6 +302,7 @@ function App() {
             <AppRouter />
             <BackButtonHandler />
             <MemoizedExitConfirmDialog />
+            <UpdateNoticeDialog />
           </>
         ) : (
           <div style={{
@@ -246,10 +312,10 @@ function App() {
             height: '100vh',
             background: mode === 'light' ? '#F8FAFC' : '#1a1a1a'
           }}>
-            <div style={{ 
-              color: mode === 'light' ? '#64748B' : '#a0a0a0', 
+            <div style={{
+              color: mode === 'light' ? '#64748B' : '#a0a0a0',
               fontWeight: 600,
-              fontSize: '18px' 
+              fontSize: '18px'
             }}>AetherLink 正在启动...</div>
           </div>
         )}

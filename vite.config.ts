@@ -1,9 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import vue from '@vitejs/plugin-vue'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    vue({
+      template: {
+        compilerOptions: {
+          // 将所有带vue-前缀的标签视为自定义元素
+          isCustomElement: tag => tag.startsWith('vue-')
+        }
+      }
+    })
+  ],
 
   // 优化构建配置
   build: {
@@ -23,7 +34,9 @@ export default defineConfig({
           // 将UI库拆分到单独的chunk
           'mui-vendor': ['@mui/material', '@mui/icons-material'],
           // 将工具库拆分到单独的chunk
-          'utils-vendor': ['redux', '@reduxjs/toolkit']
+          'utils-vendor': ['redux', '@reduxjs/toolkit'],
+          // Vue相关库
+          'vue-vendor': ['vue']
         },
         // 限制chunk大小
         chunkFileNames: 'assets/js/[name]-[hash].js',
@@ -36,7 +49,7 @@ export default defineConfig({
   },
   // 优化依赖预构建
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@mui/material', '@reduxjs/toolkit'],
+    include: ['react', 'react-dom', 'react-router-dom', '@mui/material', '@reduxjs/toolkit', 'vue'],
   },
   // 启用esbuild优化
   esbuild: {

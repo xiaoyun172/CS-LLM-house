@@ -1,5 +1,12 @@
+import { v4 as uuidv4 } from 'uuid';
 import { approximateTokenSize } from 'tokenx';
 import type { Message, MessageContent, SiliconFlowImageFormat } from '../types';
+
+/**
+ * 生成UUID
+ * @returns {string} UUID
+ */
+export const uuid = (): string => uuidv4();
 
 /**
  * 生成唯一ID
@@ -60,7 +67,7 @@ export function createMessage(options: {
     role,
     status = 'complete',
     modelId,
-    id = generateId(),
+    id = uuid(),
     parentMessageId,
     version = 1,
     alternateVersions = [],
@@ -90,7 +97,7 @@ export function createMessage(options: {
 // 创建新主题
 export function createTopic(title: string): any {
   return {
-    id: generateId(),
+    id: uuid(),
     title,
     lastMessageTime: formatDate(new Date()),
     messages: [],

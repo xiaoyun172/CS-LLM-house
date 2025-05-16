@@ -26,6 +26,9 @@ interface SettingsState {
   defaultModelId?: string;
   currentModelId?: string;
   generatedImages?: GeneratedImage[];
+  autoNameTopic: boolean;
+  topicNamingModelId?: string;
+  modelSelectorStyle: 'dialog' | 'dropdown';
 }
 
 // 初始预设供应商
@@ -147,6 +150,8 @@ const loadFromStorage = (): SettingsState => {
     enableNotifications: true,
     models: [],
     providers: initialProviders,
+    autoNameTopic: true,
+    modelSelectorStyle: 'dialog' as 'dialog' | 'dropdown',
   };
 
   // 设置默认模型
@@ -378,6 +383,15 @@ const settingsSlice = createSlice({
       // 保存到localStorage
       saveToStorage(state);
     },
+    // 更新设置
+    updateSettings: (state, action: PayloadAction<Partial<SettingsState>>) => {
+      Object.assign(state, action.payload);
+      saveToStorage(state);
+    },
+    setModelSelectorStyle: (state, action: PayloadAction<'dialog' | 'dropdown'>) => {
+      state.modelSelectorStyle = action.payload;
+      saveToStorage(state);
+    },
   },
 });
 
@@ -412,6 +426,8 @@ export const {
   addGeneratedImage,
   deleteGeneratedImage,
   clearGeneratedImages,
+  updateSettings,
+  setModelSelectorStyle,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;

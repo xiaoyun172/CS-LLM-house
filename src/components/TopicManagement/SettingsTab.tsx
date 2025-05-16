@@ -257,8 +257,8 @@ export default function SettingsTab({
         <Slider
           value={contextLength}
           onChange={handleContextLengthChange}
-          min={500}
-          max={8000}
+          min={1000}
+          max={20000}
           step={100}
           valueLabelDisplay="auto"
           aria-labelledby="context-length-slider"

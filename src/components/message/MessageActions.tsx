@@ -10,6 +10,7 @@ import type { RootState } from '../../shared/store';
 import { switchToVersion } from '../../shared/store/messagesSlice';
 import MessageEditor from '../../components/message/MessageEditor';
 import { TTSService } from '../../shared/services/TTSService';
+import { useTheme } from '@mui/material/styles';
 
 interface MessageActionsProps {
   message: Message;
@@ -50,6 +51,14 @@ const MessageActions: React.FC<MessageActionsProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   // TTS功能启用状态
   const [enableTTS, setEnableTTS] = useState(true);
+
+  const theme = useTheme();
+  // AI回复气泡颜色
+  const aiBubbleColor = theme.palette.mode === 'dark' ? '#1a3b61' : '#e6f4ff';
+  // 气泡激活颜色，稍微深一点
+  const aiBubbleActiveColor = theme.palette.mode === 'dark' ? '#234b79' : '#d3e9ff';
+  // 文字颜色
+  const textColor = theme.palette.mode === 'dark' ? '#ffffff' : '#333333';
 
   // 初始化TTS服务
   useEffect(() => {
@@ -388,7 +397,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
             size="small"
             label={isPlaying ? "播放中" : "播放"}
             variant="filled"
-            color={isPlaying ? "success" : "primary"}
+            color="primary"
             onClick={handleTextToSpeech}
             icon={isPlaying ? <VolumeUpIcon style={{ fontSize: 12 }} /> : <VolumeOffIcon style={{ fontSize: 12 }} />}
             sx={{
@@ -398,21 +407,21 @@ const MessageActions: React.FC<MessageActionsProps> = ({
               fontSize: '10px',
               fontWeight: 'medium',
               opacity: 0.95,
-              backgroundColor: isPlaying ? 'rgba(76, 175, 80, 0.9)' : 'rgba(79, 146, 255, 0.9)',
-              color: 'white',
+              backgroundColor: isPlaying ? aiBubbleActiveColor : aiBubbleColor,
+              color: textColor,
               boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
               borderRadius: '10px',
               border: 'none',
               '&:hover': {
                 opacity: 1,
                 cursor: 'pointer',
-                backgroundColor: isPlaying ? 'rgba(56, 155, 60, 1)' : 'rgba(64, 132, 244, 1)'
+                backgroundColor: aiBubbleActiveColor
               },
               '& .MuiChip-icon': {
                 ml: 0.3,
                 mr: -0.3,
                 fontSize: '10px',
-                color: 'white'
+                color: textColor
               },
               '& .MuiChip-label': {
                 padding: '0 4px',
@@ -438,21 +447,21 @@ const MessageActions: React.FC<MessageActionsProps> = ({
               fontSize: '10px',
               fontWeight: 'medium',
               opacity: 0.95,
-              backgroundColor: 'rgba(79, 146, 255, 0.9)',
-              color: 'white',
+              backgroundColor: aiBubbleColor,
+              color: textColor,
               boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
               borderRadius: '10px',
               border: 'none',
               '&:hover': {
                 opacity: 1,
                 cursor: 'pointer',
-                backgroundColor: 'rgba(64, 132, 244, 1)'
+                backgroundColor: aiBubbleActiveColor
               },
               '& .MuiChip-icon': {
                 ml: 0.3,
                 mr: -0.3,
                 fontSize: '10px',
-                color: 'white'
+                color: textColor
               },
               '& .MuiChip-label': {
                 padding: '0 4px',

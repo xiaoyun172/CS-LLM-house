@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Box, 
-  List, 
-  ListItemButton, 
-  ListItemIcon, 
-  ListItemText, 
+import {
+  Box,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
   Typography,
   Dialog,
   DialogTitle,
@@ -41,60 +41,69 @@ import { type Assistant } from '../../shared/types/Assistant';
 import { useDispatch, useSelector } from 'react-redux';
 import type { RootState } from '../../shared/store';
 import { addItemToGroup, removeItemFromGroup } from '../../shared/store/slices/groupsSlice';
+import { deleteTopic } from '../../shared/store/messagesSlice';
 import { CreateGroupButton, DraggableGroup, DraggableItem } from './GroupComponents';
 import GroupDialog from './GroupDialog';
 
 // 预设助手数据 - 应该移动到服务中
 const predefinedAssistants: Assistant[] = [
-  { 
-    id: 'default', 
-    name: '默认助手', 
-    description: '通用型AI助手，可以回答各种问题', 
+  {
+    id: 'default',
+    name: '默认助手',
+    description: '通用型AI助手，可以回答各种问题',
     icon: <EmojiEmotionsIcon sx={{ color: '#FFD700' }} />,
-    isSystem: true
+    isSystem: true,
+    systemPrompt: '你是一个友好、专业、乐于助人的AI助手。你会以客观、准确的态度回答用户的问题，并在不确定的情况下坦诚表明。你可以协助用户完成各种任务，提供信息，或进行有意义的对话。'
   },
-  { 
-    id: 'browser', 
-    name: '消息器顽天助手', 
-    description: '帮助分析各种网页内容', 
+  {
+    id: 'browser',
+    name: '消息器顽天助手',
+    description: '帮助分析各种网页内容',
     icon: <AutoAwesomeIcon sx={{ color: '#1E90FF' }} />,
-    isSystem: true 
+    isSystem: true,
+    systemPrompt: '你是一个专注于网页内容分析的AI助手。你能帮助用户理解、总结和提取网页中的关键信息。无论是新闻、文章、论坛还是社交媒体内容，你都能提供有价值的见解和分析。'
   },
-  { 
-    id: 'product-manager', 
-    name: '产品经理', 
-    description: '帮助规划和设计产品功能', 
-    icon: <WorkIcon sx={{ color: '#FF9800' }} />
+  {
+    id: 'product-manager',
+    name: '产品经理',
+    description: '帮助规划和设计产品功能',
+    icon: <WorkIcon sx={{ color: '#FF9800' }} />,
+    systemPrompt: '你是一位经验丰富的产品经理。你擅长产品规划、需求分析、功能设计和用户体验优化。你会从用户需求和商业价值的角度思考问题，并提供专业的产品建议和解决方案。'
   },
-  { 
-    id: 'strategy-pm', 
-    name: '策略产品经理', 
-    description: '专注于产品战略和路线图规划', 
-    icon: <AnalyticsIcon sx={{ color: '#F44336' }} />
+  {
+    id: 'strategy-pm',
+    name: '策略产品经理',
+    description: '专注于产品战略和路线图规划',
+    icon: <AnalyticsIcon sx={{ color: '#F44336' }} />,
+    systemPrompt: '你是一位专注于产品战略的产品经理。你擅长分析市场趋势、竞品研究、商业模式设计和产品路线图规划。你能从宏观角度思考产品发展方向，并提供有价值的战略建议。'
   },
-  { 
-    id: 'community-ops', 
-    name: '社群运营', 
-    description: '帮助社区和用户管理', 
-    icon: <PeopleIcon sx={{ color: '#2196F3' }} />
+  {
+    id: 'community-ops',
+    name: '社群运营',
+    description: '帮助社区和用户管理',
+    icon: <PeopleIcon sx={{ color: '#2196F3' }} />,
+    systemPrompt: '你是一位专业的社群运营专家。你擅长用户互动、内容策划、活动组织和社区氛围营造。你了解如何提升用户黏性和活跃度，构建健康有序的社区生态。'
   },
-  { 
-    id: 'content-ops', 
-    name: '内容运营', 
-    description: '协助内容创作和管理', 
-    icon: <ArticleIcon sx={{ color: '#4CAF50' }} />
+  {
+    id: 'content-ops',
+    name: '内容运营',
+    description: '协助内容创作和管理',
+    icon: <ArticleIcon sx={{ color: '#4CAF50' }} />,
+    systemPrompt: '你是一位专业的内容运营专家。你擅长内容策划、创作指导、质量把控和传播优化。你了解如何通过优质内容吸引用户，提升品牌影响力。'
   },
-  { 
-    id: 'merchant-ops', 
-    name: '商家运营', 
-    description: '协助商家管理和优化', 
-    icon: <StorefrontIcon sx={{ color: '#9C27B0' }} />
+  {
+    id: 'merchant-ops',
+    name: '商家运营',
+    description: '协助商家管理和优化',
+    icon: <StorefrontIcon sx={{ color: '#9C27B0' }} />,
+    systemPrompt: '你是一位专业的商家运营专家。你擅长商家引入、管理、培训和绩效优化。你了解如何提升商家满意度和平台生态健康度，促进双赢合作。'
   },
-  { 
-    id: 'product-ops', 
-    name: '产品运营', 
-    description: '帮助产品功能推广和用户增长', 
-    icon: <InventoryIcon sx={{ color: '#795548' }} />
+  {
+    id: 'product-ops',
+    name: '产品运营',
+    description: '帮助产品功能推广和用户增长',
+    icon: <InventoryIcon sx={{ color: '#795548' }} />,
+    systemPrompt: '你是一位专业的产品运营专家。你擅长功能推广、用户激活、留存提升和数据分析。你了解如何让产品更好地触达用户，提升关键指标。'
   }
 ];
 
@@ -115,79 +124,86 @@ export default function AssistantTab({
   onUpdateAssistant,
   onDeleteAssistant
 }: AssistantTabProps) {
+  const dispatch = useDispatch();
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
-  const dispatch = useDispatch();
-  
+
   // 编辑助手对话框状态
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [assistantToEdit, setAssistantToEdit] = useState<Assistant | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPrompt, setEditPrompt] = useState('');
-  
+
   // 编辑分组模式状态
   const [isGroupEditMode, setIsGroupEditMode] = useState(false);
-  
+
   // 助手操作菜单状态
   const [assistantMenuAnchorEl, setAssistantMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedMenuAssistant, setSelectedMenuAssistant] = useState<Assistant | null>(null);
-  
+
   // 添加助手到分组对话框状态
   const [addToGroupMenuAnchorEl, setAddToGroupMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [assistantToGroup, setAssistantToGroup] = useState<Assistant | null>(null);
-  
+
   // 从Redux获取分组数据
   const { groups, assistantGroupMap } = useSelector((state: RootState) => state.groups);
-  
+
   // 添加分组相关状态
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
-  
+
   // 获取助手分组
   const assistantGroups = useMemo(() => {
     return groups
       .filter(group => group.type === 'assistant')
       .sort((a, b) => a.order - b.order);
   }, [groups]);
-  
+
   // 获取未分组的助手
   const ungroupedAssistants = useMemo(() => {
     return userAssistants.filter(assistant => !assistantGroupMap[assistant.id]);
   }, [userAssistants, assistantGroupMap]);
-  
+
   // 打开助手选择对话框
   const handleOpenAssistantDialog = () => {
     setAssistantDialogOpen(true);
     setSelectedAssistantId(null);
   };
-  
+
   // 关闭助手选择对话框
   const handleCloseAssistantDialog = () => {
     setAssistantDialogOpen(false);
   };
-  
+
   // 选择助手
   const handleSelectAssistant = (assistantId: string) => {
     setSelectedAssistantId(assistantId);
   };
-  
+
   // 确认添加助手
   const handleAddAssistant = () => {
     if (!selectedAssistantId) return;
-    
+
     // 获取选择的助手模板
     const selected = predefinedAssistants.find(assistant => assistant.id === selectedAssistantId);
     if (!selected) return;
-    
-    // 创建一个带有新ID的助手实例
-    const newAssistant = {
-      ...selected,
-      // 基于原始ID和时间戳生成新的唯一ID
-      id: `${selected.id}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-      topicIds: []
+
+    // 检查是否已存在相同名称的助手
+    const existingSameNameCount = userAssistants.filter(a =>
+      a.name === selected.name || a.name.startsWith(`${selected.name} (`)
+    ).length;
+
+    // 准备助手数据
+    const assistantData = {
+      name: existingSameNameCount > 0 ? `${selected.name} (${existingSameNameCount + 1})` : selected.name,
+      description: selected.description,
+      systemPrompt: selected.systemPrompt || ''
     };
-    
-    onAddAssistant(newAssistant);
+
+    console.log('准备创建助手:', assistantData);
+
+    // 使用onAddAssistant回调，它已经更新为使用统一的AssistantService.createNewAssistant方法
+    onAddAssistant(assistantData as Assistant);
     handleCloseAssistantDialog();
   };
 
@@ -195,22 +211,22 @@ export default function AssistantTab({
   const handleOpenGroupDialog = () => {
     setGroupDialogOpen(true);
   };
-  
+
   // 关闭分组对话框
   const handleCloseGroupDialog = () => {
     setGroupDialogOpen(false);
   };
-  
+
   // 切换分组编辑模式
   const toggleGroupEditMode = () => {
     setIsGroupEditMode(!isGroupEditMode);
   };
-  
+
   // 打开助手操作菜单或分组操作菜单
   const handleOpenMenu = (event: React.MouseEvent, assistant: Assistant) => {
     event.stopPropagation();
     event.preventDefault();
-    
+
     if (isGroupEditMode) {
       // 分组编辑模式 - 打开分组操作菜单
       setAssistantToGroup(assistant);
@@ -221,13 +237,13 @@ export default function AssistantTab({
       setAssistantMenuAnchorEl(event.currentTarget as HTMLElement);
     }
   };
-  
+
   // 关闭助手操作菜单
   const handleCloseAssistantMenu = () => {
     setAssistantMenuAnchorEl(null);
     setSelectedMenuAssistant(null);
   };
-  
+
   // 处理编辑助手
   const handleEditAssistant = () => {
     if (selectedMenuAssistant) {
@@ -240,51 +256,82 @@ export default function AssistantTab({
     }
     handleCloseAssistantMenu();
   };
-  
+
   // 处理复制助手
   const handleCopyAssistant = () => {
     if (selectedMenuAssistant) {
-      const copiedAssistant: Assistant = {
-        ...selectedMenuAssistant,
-        id: `${selectedMenuAssistant.id}-copy-${Date.now()}`,
+      // 准备复制的助手数据
+      const assistantData = {
         name: `${selectedMenuAssistant.name} (复制)`,
-      topicIds: []
-    };
-      onAddAssistant(copiedAssistant);
+        description: selectedMenuAssistant.description,
+        systemPrompt: selectedMenuAssistant.systemPrompt || ''
+      };
+
+      console.log('准备复制助手:', assistantData);
+
+      // 使用onAddAssistant回调，它已经更新为使用统一的AssistantService.createNewAssistant方法
+      onAddAssistant(assistantData as Assistant);
     }
     handleCloseAssistantMenu();
   };
-  
+
   // 处理清空话题
   const handleClearTopics = () => {
     if (selectedMenuAssistant && onUpdateAssistant) {
-      // 先保存当前助手是否是选中的助手
+      // 检查是否为当前选中的助手
       const isCurrentSelectedAssistant = currentAssistant && currentAssistant.id === selectedMenuAssistant.id;
-      
-      // 清空话题
+
+      // 保存要删除的话题ID列表
+      const topicIdsToDelete = [...(selectedMenuAssistant.topicIds || [])];
+
+      // 清空话题关联
       const updatedAssistant: Assistant = {
         ...selectedMenuAssistant,
         topicIds: []
       };
       onUpdateAssistant(updatedAssistant);
-      
-      // 如果是当前选中的助手，自动创建一个新话题
-      // 通过自定义事件通知需要创建新话题
-      if (isCurrentSelectedAssistant) {
-        console.log('清空了当前助手的话题，触发创建新话题事件');
-        
-        // 使用自定义事件触发创建新话题
-        const event = new CustomEvent('assistantNeedsTopic', {
+
+      // 使用Redux的deleteTopic action删除每个话题
+      if (topicIdsToDelete.length > 0) {
+        console.log('准备删除话题:', topicIdsToDelete);
+
+        topicIdsToDelete.forEach(topicId => {
+          dispatch(deleteTopic(topicId));
+          console.log(`删除话题: ${topicId}`);
+        });
+
+        // 添加强制更新机制
+        dispatch({ type: 'FORCE_MESSAGES_UPDATE' });
+
+        // 分发自定义事件通知其他组件清空话题完成
+        const clearTopicsEvent = new CustomEvent('topicsCleared', {
           detail: {
-            assistantId: selectedMenuAssistant.id
+            assistantId: selectedMenuAssistant.id,
+            clearedTopicIds: topicIdsToDelete
           }
         });
-        window.dispatchEvent(event);
+        window.dispatchEvent(clearTopicsEvent);
+        console.log('已分发topicsCleared事件，强制UI更新');
+      }
+
+      // 如果是当前选中的助手，自动创建一个新话题
+      if (isCurrentSelectedAssistant) {
+        console.log('清空了当前助手的话题，触发创建新话题事件');
+
+        // 延迟创建新话题，确保删除操作先完成
+        setTimeout(() => {
+          const event = new CustomEvent('assistantNeedsTopic', {
+            detail: {
+              assistantId: selectedMenuAssistant.id
+            }
+          });
+          window.dispatchEvent(event);
+        }, 100);
       }
     }
     handleCloseAssistantMenu();
   };
-  
+
   // 处理删除助手
   const handleDeleteAssistant = () => {
     if (selectedMenuAssistant && onDeleteAssistant) {
@@ -292,7 +339,7 @@ export default function AssistantTab({
     }
     handleCloseAssistantMenu();
   };
-  
+
   // 打开分组管理
   const handleOpenGroupManagement = () => {
     if (selectedMenuAssistant) {
@@ -301,51 +348,51 @@ export default function AssistantTab({
     }
     handleCloseAssistantMenu();
   };
-  
+
   // 关闭添加到分组菜单
   const handleCloseAddToGroupMenu = () => {
     setAddToGroupMenuAnchorEl(null);
     setAssistantToGroup(null);
   };
-  
+
   // 添加助手到分组
   const handleAddToGroup = (groupId: string) => {
     if (assistantToGroup) {
       // 如果助手已经在其他分组中，先移除
       if (assistantGroupMap[assistantToGroup.id]) {
-        dispatch(removeItemFromGroup({ 
-          itemId: assistantToGroup.id, 
-          type: 'assistant' 
+        dispatch(removeItemFromGroup({
+          itemId: assistantToGroup.id,
+          type: 'assistant'
         }));
       }
-      
+
       // 添加到新分组
-      dispatch(addItemToGroup({ 
-        groupId, 
-        itemId: assistantToGroup.id 
+      dispatch(addItemToGroup({
+        groupId,
+        itemId: assistantToGroup.id
       }));
     }
-    
+
     handleCloseAddToGroupMenu();
   };
-  
+
   // 添加助手到新分组
   const handleAddToNewGroup = () => {
     setGroupDialogOpen(true);
     handleCloseAddToGroupMenu();
   };
-  
+
   // 从分组中移除助手
   const handleRemoveFromGroup = (event: React.MouseEvent, assistant: Assistant) => {
     event.stopPropagation();
     event.preventDefault();
-    
-    dispatch(removeItemFromGroup({ 
-      itemId: assistant.id, 
-      type: 'assistant' 
+
+    dispatch(removeItemFromGroup({
+      itemId: assistant.id,
+      type: 'assistant'
     }));
   };
-  
+
   // 关闭编辑对话框
   const handleCloseEditDialog = () => {
     setEditDialogOpen(false);
@@ -354,7 +401,7 @@ export default function AssistantTab({
     setEditDescription('');
     setEditPrompt('');
   };
-  
+
   // 保存编辑后的助手
   const handleSaveAssistant = () => {
     if (assistantToEdit && onUpdateAssistant) {
@@ -364,12 +411,12 @@ export default function AssistantTab({
         description: editDescription,
         systemPrompt: editPrompt
       };
-      
+
         onUpdateAssistant(updatedAssistant);
       handleCloseEditDialog();
     }
   };
-  
+
   // 渲染单个助手项
   const renderAssistantItem = (assistant: Assistant, index: number, inGroup: boolean = false) => {
     const isSelected = currentAssistant?.id === assistant.id;
@@ -378,11 +425,11 @@ export default function AssistantTab({
       <Box key={assistant.id} sx={{ position: 'relative' }}>
         {inGroup ? (
           <DraggableItem id={assistant.id} index={index}>
-          <ListItemButton 
+          <ListItemButton
               onClick={() => onSelectAssistant(assistant)}
               selected={isSelected}
-            sx={{ 
-              borderRadius: '8px', 
+            sx={{
+              borderRadius: '8px',
               mb: 1,
                 pl: 2,
                 '&.Mui-selected': {
@@ -396,10 +443,10 @@ export default function AssistantTab({
               <ListItemIcon sx={{ minWidth: 40 }}>
                 {assistant.icon || <FaceIcon />}
             </ListItemIcon>
-            <ListItemText 
-              primary={assistant.name} 
+            <ListItemText
+              primary={assistant.name}
                 secondary={`${assistant.topicIds?.length || 0}个话题`}
-              primaryTypographyProps={{ 
+              primaryTypographyProps={{
                   variant: 'body2',
                   fontWeight: isSelected ? 600 : 400
                 }}
@@ -407,7 +454,7 @@ export default function AssistantTab({
                   variant: 'caption'
                 }}
               />
-              
+
               {isGroupEditMode ? (
             <IconButton
               size="small"
@@ -417,8 +464,8 @@ export default function AssistantTab({
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               ) : (
-                <IconButton 
-                  size="small" 
+                <IconButton
+                  size="small"
                   onClick={(e) => handleOpenMenu(e, assistant)}
                   sx={{ mr: -1 }}
             >
@@ -428,10 +475,10 @@ export default function AssistantTab({
           </ListItemButton>
           </DraggableItem>
         ) : (
-        <ListItemButton 
+        <ListItemButton
             onClick={() => onSelectAssistant(assistant)}
             selected={isSelected}
-          sx={{ 
+          sx={{
             borderRadius: '8px',
               mb: 1,
               '&.Mui-selected': {
@@ -445,10 +492,10 @@ export default function AssistantTab({
             <ListItemIcon sx={{ minWidth: 40 }}>
               {assistant.icon || <FaceIcon />}
           </ListItemIcon>
-            <ListItemText 
-              primary={assistant.name} 
+            <ListItemText
+              primary={assistant.name}
               secondary={`${assistant.topicIds?.length || 0}个话题`}
-              primaryTypographyProps={{ 
+              primaryTypographyProps={{
                 variant: 'body2',
                 fontWeight: isSelected ? 600 : 400
               }}
@@ -456,7 +503,7 @@ export default function AssistantTab({
                 variant: 'caption'
               }}
             />
-            
+
             <IconButton
               size="small"
               onClick={(e) => handleOpenMenu(e, assistant)}
@@ -469,53 +516,53 @@ export default function AssistantTab({
       </Box>
     );
   };
-  
+
   // 渲染分组和未分组的助手
   const renderAssistantGroups = () => {
               return (
       <>
         {/* 创建分组按钮 */}
         <CreateGroupButton type="assistant" onClick={handleOpenGroupDialog} />
-        
+
         {/* 分组列表 */}
         {assistantGroups.map((group) => {
           // 获取分组内的助手
           const groupAssistants = userAssistants.filter(
             assistant => assistantGroupMap[assistant.id] === group.id
           );
-          
+
           if (groupAssistants.length === 0) return null;
-          
+
           return (
-            <DraggableGroup 
-              key={group.id} 
-              group={group} 
+            <DraggableGroup
+              key={group.id}
+              group={group}
               onAddItem={() => handleOpenAssistantDialog()}
             >
-              {groupAssistants.map((assistant, index) => 
+              {groupAssistants.map((assistant, index) =>
                 renderAssistantItem(assistant, index, true)
               )}
             </DraggableGroup>
           );
         })}
-        
+
         {/* 未分组的助手 */}
         {ungroupedAssistants.length > 0 && (
           <Box sx={{ mb: 2 }}>
-            <Typography 
-              variant="body2" 
+            <Typography
+              variant="body2"
                   sx={{
-                mb: 1, 
-                fontWeight: 500, 
+                mb: 1,
+                fontWeight: 500,
                 color: 'text.secondary',
                 fontSize: '0.875rem'
               }}
             >
               未分组
                     </Typography>
-            
+
             <List sx={{ pl: 1 }}>
-              {ungroupedAssistants.map((assistant, index) => 
+              {ungroupedAssistants.map((assistant, index) =>
                 renderAssistantItem(assistant, index)
               )}
             </List>
@@ -524,7 +571,7 @@ export default function AssistantTab({
       </>
     );
   };
-  
+
   // 助手操作菜单
   const renderAssistantMenu = () => (
       <Menu
@@ -538,28 +585,28 @@ export default function AssistantTab({
           </ListItemIcon>
           <ListItemText primary="编辑助手" />
         </MenuItem>
-        
+
       <MenuItem onClick={handleCopyAssistant}>
           <ListItemIcon>
           <ContentCopyIcon fontSize="small" />
           </ListItemIcon>
         <ListItemText primary="复制助手" />
         </MenuItem>
-        
+
       <MenuItem onClick={handleOpenGroupManagement}>
           <ListItemIcon>
           <FolderIcon fontSize="small" />
           </ListItemIcon>
         <ListItemText primary="分组管理" />
         </MenuItem>
-        
+
       <MenuItem onClick={handleClearTopics}>
           <ListItemIcon>
             <DeleteSweepIcon fontSize="small" sx={{ color: 'warning.main' }} />
           </ListItemIcon>
         <ListItemText primary="清空话题" />
         </MenuItem>
-        
+
       <MenuItem onClick={handleDeleteAssistant}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" sx={{ color: 'error.main' }} />
@@ -568,7 +615,7 @@ export default function AssistantTab({
         </MenuItem>
       </Menu>
   );
-  
+
   // 添加到分组菜单
   const renderAddToGroupMenu = () => (
     <Menu
@@ -580,16 +627,16 @@ export default function AssistantTab({
         <AddIcon fontSize="small" sx={{ mr: 1 }} />
         创建新分组
       </MenuItem>
-      
+
       {assistantGroups.length > 0 && (
         <>
           <MenuItem disabled sx={{ opacity: 0.7 }}>
             选择现有分组
           </MenuItem>
-          
+
           {assistantGroups.map(group => (
-            <MenuItem 
-              key={group.id} 
+            <MenuItem
+              key={group.id}
               onClick={() => handleAddToGroup(group.id)}
               sx={{ pl: 3 }}
             >
@@ -609,8 +656,8 @@ export default function AssistantTab({
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Tooltip title={isGroupEditMode ? "退出分组编辑模式" : "进入分组编辑模式"}>
-            <IconButton 
-              onClick={toggleGroupEditMode} 
+            <IconButton
+              onClick={toggleGroupEditMode}
               size="small"
               color={isGroupEditMode ? "primary" : "default"}
               sx={{ mr: 1 }}
@@ -618,15 +665,15 @@ export default function AssistantTab({
               {isGroupEditMode ? <EditAttributesIcon /> : <EditOffIcon />}
             </IconButton>
           </Tooltip>
-          <IconButton 
-            onClick={handleOpenAssistantDialog} 
+          <IconButton
+            onClick={handleOpenAssistantDialog}
             size="small"
           >
             <AddIcon />
           </IconButton>
             </Box>
           </Box>
-      
+
       {isGroupEditMode && (
         <Box sx={{ mb: 2, px: 1 }}>
           <Typography variant="caption" color="text.secondary">
@@ -634,12 +681,12 @@ export default function AssistantTab({
           </Typography>
         </Box>
       )}
-      
+
       {renderAssistantGroups()}
-      
+
       {/* 助手选择对话框 */}
       <Dialog
-        open={assistantDialogOpen} 
+        open={assistantDialogOpen}
         onClose={handleCloseAssistantDialog}
         maxWidth="md"
         fullWidth
@@ -649,7 +696,7 @@ export default function AssistantTab({
           {/* 预设助手列表 */}
           <List>
             {predefinedAssistants.map(assistant => (
-              <ListItemButton 
+              <ListItemButton
                   key={assistant.id}
                 onClick={() => handleSelectAssistant(assistant.id)}
                 selected={selectedAssistantId === assistant.id}
@@ -658,8 +705,8 @@ export default function AssistantTab({
                 <ListItemIcon>
                       {assistant.icon}
                 </ListItemIcon>
-                <ListItemText 
-                  primary={assistant.name} 
+                <ListItemText
+                  primary={assistant.name}
                   secondary={assistant.description}
                 />
                   {selectedAssistantId === assistant.id && (
@@ -671,16 +718,16 @@ export default function AssistantTab({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseAssistantDialog}>取消</Button>
-          <Button 
+          <Button
             onClick={handleAddAssistant}
-            variant="contained" 
+            variant="contained"
             disabled={!selectedAssistantId}
           >
             添加
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       {/* 编辑助手对话框 */}
       <Dialog
         open={editDialogOpen}
@@ -728,28 +775,28 @@ export default function AssistantTab({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseEditDialog}>取消</Button>
-          <Button 
+          <Button
             onClick={handleSaveAssistant}
-            variant="contained" 
+            variant="contained"
             disabled={!editName}
           >
             保存
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       {/* 分组对话框 */}
-      <GroupDialog 
+      <GroupDialog
         open={groupDialogOpen}
         onClose={handleCloseGroupDialog}
         type="assistant"
       />
-      
+
       {/* 助手操作菜单 */}
       {renderAssistantMenu()}
-      
+
       {/* 添加到分组菜单 */}
       {renderAddToGroupMenu()}
     </>
   );
-} 
+}

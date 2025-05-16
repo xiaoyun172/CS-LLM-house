@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Paper, Typography, Box, Avatar, CircularProgress, useTheme } from '@mui/material';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import type { Message, ImageContent } from '../shared/types';
@@ -16,6 +16,9 @@ interface MessageItemProps {
   onDelete?: (messageId: string) => void;
   onSwitchVersion?: (messageId: string) => void;
 }
+
+// 图片引用正则表达式
+const IMAGE_REF_REGEX = /\[图片:([a-zA-Z0-9_-]+)\]/g;
 
 const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDelete, onSwitchVersion }) => {
   const theme = useTheme();
@@ -42,15 +45,67 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
   // 判断消息内容类型
   const isComplexContent = typeof message.content === 'object';
 
-  // 获取文本内容
-  const textContent = isComplexContent
-    ? (message.content as {text?: string}).text || ''
-    : message.content as string;
+  // 提取图片引用的辅助函数
+  const extractImageReferences = useCallback((content: string): {
+    processedContent: string,
+    extractedImages: ImageContent[]
+  } => {
+    const extractedImages: ImageContent[] = [];
+    let match;
+    const imageIds = new Set<string>();
+    
+    // 重置正则表达式
+    IMAGE_REF_REGEX.lastIndex = 0;
+    
+    // 查找所有图片引用
+    while ((match = IMAGE_REF_REGEX.exec(content)) !== null) {
+      const imageId = match[1];
+      
+      // 避免重复添加
+      if (!imageIds.has(imageId)) {
+        imageIds.add(imageId);
+        
+        // 创建图片内容对象
+        extractedImages.push({
+          url: match[0], // 保留原始引用格式 [图片:ID]
+          mimeType: 'image/jpeg' // 默认类型，会在ImageContent组件中通过元数据更新
+        });
+      }
+    }
+    
+    return {
+      processedContent: content, // 保留引用文本，由渲染器处理
+      extractedImages
+    };
+  }, []);
 
-  // 获取图片内容 - 增加从message.images获取
-  const contentImages = isComplexContent
-    ? (message.content as {images?: ImageContent[]}).images || []
-    : [];
+  // 获取文本内容
+  let textContent = '';
+  let extractedImages: ImageContent[] = [];
+  
+  if (isComplexContent) {
+    // 复杂内容类型
+    textContent = (message.content as {text?: string}).text || '';
+    
+    // 提取文本中的图片引用
+    if (textContent) {
+      const extracted = extractImageReferences(textContent);
+      textContent = extracted.processedContent;
+      extractedImages = extracted.extractedImages;
+    }
+    
+    // 获取现有图片内容
+    const contentImages = (message.content as {images?: ImageContent[]}).images || [];
+    extractedImages = [...extractedImages, ...contentImages];
+  } else {
+    // 字符串内容类型
+    textContent = message.content as string;
+    
+    // 提取文本中的图片引用
+    const extracted = extractImageReferences(textContent);
+    textContent = extracted.processedContent;
+    extractedImages = extracted.extractedImages;
+  }
 
   // 从message.images获取新格式图片
   const directImages = message.images || [];
@@ -64,10 +119,12 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
   }));
 
   // 合并所有图片
-  const allImages = [...contentImages, ...convertedImages];
+  const allImages = [...extractedImages, ...convertedImages];
 
-  // 显示图片数量进行调试
-  console.log(`[MessageItem] 消息ID: ${message.id}, 旧格式图片: ${contentImages.length}, 新格式图片: ${directImages.length}, 总图片: ${allImages.length}`);
+  // 仅在开发环境显示调试信息
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[MessageItem] 消息ID: ${message.id}, 提取图片引用: ${extractedImages.length}, 旧格式图片: ${(message.content as any)?.images?.length || 0}, 新格式图片: ${directImages.length}, 总图片: ${allImages.length}`);
+  }
 
   // 从本地存储加载头像
   useEffect(() => {
@@ -91,151 +148,42 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
   const tokenCount = estimateTokens(textContent);
   const tokenStr = `~${tokenCount} tokens`;
 
-  // 格式化模型名称，处理各种模型ID格式
-  const formatModelName = (modelName: string, providerName?: string): string => {
-    // 如果没有模型名称，返回默认名称
-    if (!modelName) return "AI助手";
-
-    // 处理包含随机ID的格式，如"75srv668hpo2vq7kpdvzgt/DeepSeek-V3"
-    if (modelName.includes('/')) {
-      // 直接使用斜杠后面的部分作为模型名称
-      const parts = modelName.split('/');
-      if (parts.length >= 2 && parts[1]) {
-        // 如果有提供商名称，组合显示
-        if (providerName) {
-          return `${providerName}/${parts[1]}`;
-        }
-        // 否则只返回模型名称部分
-        return parts[1];
-      }
-    }
-
-    // 清理模型名和提供商名
-    const cleanProvider = providerName?.split('/')[0] || '';
-    const cleanModel = modelName.split('/').pop() || modelName;
-
-    // 分解模型名称
-    const modelParts = cleanModel.split('-');
-    const providerParts = cleanProvider.split('-');
-    const displayProvider = providerParts[0] || '';
-
-    let displayModel = modelName;
-
-    // 处理不同格式的模型名
-    if (cleanModel.includes('-')) {
-      // 保留模型的主要版本名，如"gemini-2.5"中只取"gemini"
-      const mainModelName = modelParts[0];
-
-      // 检查是否有重要标识符需要保留(如"pro", "turbo", "opus"等)
-      const importantIdentifiers = ["pro", "turbo", "opus", "vision", "ultra"];
-      const hasImportantIdentifier = modelParts.some(part =>
-        importantIdentifiers.some(id => part.toLowerCase().includes(id))
-      );
-
-      if (hasImportantIdentifier) {
-        // 找出所有重要标识符
-        const importantParts = modelParts.filter(part =>
-          importantIdentifiers.some(id => part.toLowerCase().includes(id))
-        );
-
-        // 对于长名称如"gemini-2.5-pro-preview-05-06"，转化为简洁形式
-        if (modelParts.length > 3) {
-          // 保留前两部分和重要标识符
-          const versionPart = modelParts.length > 1 ? `-${modelParts[1]}` : '';
-          displayModel = `${mainModelName}${versionPart}${importantParts.length > 0 ? '-' + importantParts[0] : ''}`;
-        } else {
-          // 对于较短名称，保持原样
-          displayModel = cleanModel;
-        }
-      } else {
-        // 如果没有重要标识符，只保留主要名称和版本
-        displayModel = modelParts.length > 1 ? `${mainModelName}-${modelParts[1]}` : mainModelName;
-      }
-    }
-
-    // 最终组合显示名称
-    if (displayProvider && displayModel) {
-      return `${displayProvider}/${displayModel}`;
-    } else if (displayModel) {
-      return displayModel;
-    } else if (displayProvider) {
-      return displayProvider;
-    }
-
-    return modelName;
-  };
-
   // 获取模型信息
   const getAssistantName = () => {
     if (isUser) return "我";
 
     // 调试日志
     console.log(`[MessageItem] 获取助手名称: messageId=${message.id}, messageModelId=${message.modelId}, topicModelId=${currentTopic?.modelId}, defaultModelId=${defaultModelId}`);
-    console.log(`[MessageItem] 可用模型数量: ${allModels.length}`);
-
-    // 如果消息中有模型ID，则根据模型ID查找模型名称
-    let modelName = "AI助手"; // 默认名称
+    
+    // 确定要使用的模型ID
     let modelId = message.modelId || currentTopic?.modelId || defaultModelId;
-
-    // 检查modelId是否包含斜杠，如果是，可能是直接使用了完整ID
-    if (modelId && modelId.includes('/')) {
-      // 直接从ID中提取模型名称部分
-      const parts = modelId.split('/');
-      if (parts.length >= 2 && parts[1]) {
-        // 尝试查找匹配的提供商
-        const providerName = parts[0].split('-')[0]; // 提取提供商名称
-        return formatModelName(modelId, providerName);
+    
+    // 查找对应的模型和提供商
+    if (modelId && providers.length > 0) {
+      // 遍历所有提供商
+      for (const provider of providers) {
+        // 查找该提供商下的匹配模型
+        const model = provider.models.find(m => m.id === modelId);
+        if (model) {
+          // 找到匹配模型，返回提供商/模型格式
+          return `${provider.name}/${model.name}`;
+        }
+      }
+      
+      // 如果没找到精确匹配，检查ID是否包含提供商信息
+      if (modelId.includes('/')) {
+        const [providerId, modelPart] = modelId.split('/');
+        // 尝试查找对应的提供商
+        const provider = providers.find(p => p.id === providerId);
+        if (provider && modelPart) {
+          return `${provider.name}/${modelPart}`;
+        }
+        return modelPart || modelId; // 至少返回模型部分
       }
     }
-
-    if (modelId && allModels.length > 0) {
-      // 查找完全匹配的模型
-      let model = allModels.find(m => m.id === modelId);
-
-      // 如果没找到完全匹配的，尝试查找部分匹配的模型
-      if (!model) {
-        // 先尝试查找ID包含在modelId中的模型
-        for (const m of allModels) {
-          if (modelId.includes(m.id)) {
-            model = m;
-            break;
-          }
-        }
-
-        // 如果还没找到，尝试查找modelId包含在ID中的模型
-        if (!model) {
-          for (const m of allModels) {
-            if (m.id.includes(modelId)) {
-              model = m;
-              break;
-            }
-          }
-        }
-
-        // 最后尝试查找名称匹配的模型
-        if (!model) {
-          for (const m of allModels) {
-            if (modelId.includes(m.name) || m.name.includes(modelId)) {
-              model = m;
-              break;
-            }
-          }
-        }
-      }
-
-      console.log(`[MessageItem] 查找模型结果:`, model ? `找到模型 ${model.name}/${model.provider}` : "未找到模型", "搜索的modelId:", modelId);
-
-      if (model) {
-        // 使用格式化函数处理模型名称
-        modelName = formatModelName(model.name, model.provider);
-      } else {
-        // 如果没有找到模型，尝试直接格式化模型ID
-        modelName = formatModelName(modelId);
-      }
-    }
-
-    console.log(`[MessageItem] 最终显示名称: ${modelName}`);
-    return modelName;
+    
+    // 如果所有尝试都失败，返回原始ID或默认名称
+    return modelId || "AI助手";
   };
 
   // 预先计算模型名称以便在界面中使用
@@ -286,10 +234,24 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
         </Typography>
       </Box>
 
+      {/* 思考过程，只对AI回复显示，移动到这里，在模型名字后、气泡前显示 */}
+      {!isUser && reasoning && (
+        <Box sx={{ 
+          width: '95%',  // 与AI消息宽度匹配
+          mb: 1
+        }}>
+          <ThinkingProcess 
+            reasoning={reasoning} 
+            reasoningTime={reasoningTime} 
+          />
+        </Box>
+      )}
+
       <Paper
         elevation={0}
         sx={{
-          maxWidth: '85%',
+          maxWidth: isUser ? '85%' : '95%',
+          width: isUser ? 'auto' : '95%', // AI消息宽度固定为95%
           minWidth: isUser ? 'auto' : '150px',
           p: 1.5,
           borderRadius: isUser ? '20px 4px 20px 20px' : '4px 20px 20px 20px',
@@ -317,14 +279,45 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
         {isError && (
           <Box sx={{ 
             display: 'flex', 
-            alignItems: 'center', 
+            flexDirection: 'column',
+            alignItems: 'flex-start', 
             mb: 1, 
             color: theme.palette.error.main
           }}>
-            <ErrorOutlineIcon fontSize="small" sx={{ mr: 1 }} />
-            <Typography variant="body2" color="error">
-              请求失败，请重试
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <ErrorOutlineIcon fontSize="small" sx={{ mr: 1 }} />
+              <Typography variant="body2" color="error">
+                请求处理失败
+              </Typography>
+            </Box>
+            <Box sx={{ 
+              ml: 4, 
+              mt: 0.5, 
+              display: 'flex', 
+              alignItems: 'center',
+              gap: 1
+            }}>
+              <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                {textContent || '连接超时或网络错误，请稍后再试'}
+              </Typography>
+              {onRegenerate && (
+                <Box 
+                  component="span" 
+                  onClick={() => onRegenerate(message.id)}
+                  sx={{ 
+                    fontSize: '0.75rem',
+                    color: theme.palette.primary.main,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    '&:hover': {
+                      opacity: 0.8
+                    }
+                  }}
+                >
+                  重试
+                </Box>
+              )}
+            </Box>
           </Box>
         )}
 
@@ -381,16 +374,6 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, onDele
                 />
               ))}
             </Box>
-          </Box>
-        )}
-
-        {/* 思考过程，只对AI回复显示 */}
-        {!isUser && reasoning && (
-          <Box sx={{ mt: 1 }}>
-            <ThinkingProcess 
-              reasoning={reasoning} 
-              reasoningTime={reasoningTime} 
-            />
           </Box>
         )}
 

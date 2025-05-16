@@ -15,6 +15,7 @@ import { createMessage } from '../../../shared/utils';
 import { sendChatRequest } from '../../../shared/api';
 import type { ChatTopic, Message, Model, SiliconFlowImageFormat, WebSearchResult } from '../../../shared/types';
 import { isThinkingSupported } from '../../../shared/services/ThinkingService';
+import { TopicNamingService } from '../../../shared/services/TopicNamingService';
 
 export function useMessageHandling(selectedModel: Model | null, currentTopic: ChatTopic | null) {
   const dispatch = useDispatch();
@@ -75,7 +76,31 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
     // 将占位消息添加到Redux
     dispatch(addMessage({ topicId: currentTopic.id, message: assistantMessage }));
 
-    // 启动单独的加载状态追踪器，而不是使用全局的主题加载状态
+    // 检查是否需要自动命名主题
+    const shouldAutoName = store.getState().settings.autoNameTopic;
+    if (shouldAutoName) {
+      // 获取最新的主题信息
+      const updatedTopic = store.getState().messages.topics.find(t => t.id === currentTopic.id);
+      
+      console.log('自动命名触发检查:', {
+        topicId: currentTopic.id,
+        shouldAutoName,
+        hasUpdatedTopic: !!updatedTopic,
+        messageCount: updatedTopic?.messages?.length || 0
+      });
+      
+      if (updatedTopic && TopicNamingService.shouldNameTopic(updatedTopic)) {
+        console.log('已达到自动命名条件，将生成主题名称');
+        // 获取指定的话题命名模型ID
+        const topicNamingModelId = store.getState().settings.topicNamingModelId || store.getState().settings.defaultModelId;
+        // 延迟生成主题名称，不阻塞主流程
+        setTimeout(() => {
+          TopicNamingService.generateTopicName(updatedTopic, topicNamingModelId);
+        }, 1000);
+      }
+    }
+
+    // 用于单独的加载状态追踪器，而不是使用全局的主题加载状态
     // 这样即使有多个请求同时发送，输入框也不会被禁用
     let isRequestPending = true;
 
@@ -203,18 +228,38 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
           // 尝试从localStorage获取userAssistants数据
           const assistantsJson = localStorage.getItem('userAssistants');
           if (assistantsJson) {
+            console.log('成功从localStorage获取userAssistants数据');
             const assistants = JSON.parse(assistantsJson);
+            console.log('助手数量:', assistants.length);
 
             // 查找关联到当前话题的助手
             const currentAssistant = assistants.find((a: any) =>
               a.topicIds && Array.isArray(a.topicIds) && a.topicIds.includes(currentTopic.id)
             );
 
+            if (currentAssistant) {
+              console.log('找到关联到当前话题的助手:', {
+                id: currentAssistant.id,
+                name: currentAssistant.name,
+                hasSystemPrompt: !!currentAssistant.systemPrompt,
+                systemPromptLength: currentAssistant.systemPrompt?.length || 0
+              });
+            } else {
+              console.log('未找到关联到当前话题的助手');
+            }
+
             if (currentAssistant?.systemPrompt) {
               systemPrompt = currentAssistant.systemPrompt;
-              console.log('使用助手提示词:', systemPrompt);
+              console.log('使用助手系统提示词，长度:', systemPrompt?.length || 0, '前30个字符:', systemPrompt?.substring(0, 30) || '');
             } else {
-              console.log('未找到助手提示词');
+              // 尝试直接使用默认助手的系统提示词
+              const defaultAssistant = assistants.find((a: any) => a.isSystem === true || a.name === '默认助手');
+              if (defaultAssistant?.systemPrompt) {
+                systemPrompt = defaultAssistant.systemPrompt;
+                console.log('使用默认助手的系统提示词，长度:', systemPrompt?.length || 0);
+              } else {
+                console.log('未找到任何系统提示词，将使用默认系统提示词');
+              }
             }
           } else {
             console.log('localStorage中不存在userAssistants数据');
@@ -224,17 +269,20 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         }
       }
 
+      // 3. 确保始终有一个系统提示词，即使是默认的
+      if (!systemPrompt) {
+        systemPrompt = '你是一个友好、专业、乐于助人的AI助手。你会以客观、准确的态度回答用户的问题，并在不确定的情况下坦诚表明。你可以协助用户完成各种任务，提供信息，或进行有意义的对话。';
+        console.log('未找到任何系统提示词，使用默认提示词');
+      }
+
       // 如果找到系统提示词，将其作为系统消息添加到请求中
       const requestMessages = [...processedMessages];
 
-      // 添加系统消息到请求的开始，如果有的话
-      if (systemPrompt) {
-        // 为API请求创建一个简化的系统消息对象
-        requestMessages.unshift({
-          role: 'system',
-          content: systemPrompt
-        } as any); // 使用类型断言，因为这里我们只关心API请求格式
-      }
+      // 添加系统消息到请求的开始，始终添加，确保API请求中包含系统提示词
+      requestMessages.unshift({
+        role: 'system',
+        content: systemPrompt
+      } as any); // 使用类型断言，因为这里我们只关心API请求格式
 
       console.log('发送API请求的消息列表:', requestMessages.map(m => ({
         role: m.role,
@@ -255,25 +303,76 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         modelId,
         onChunk: (chunk) => {
           if (chunk) {
-            // 优化流式输出性能 - 减少更新频率
-            // 只有当内容至少增加了5个字符或是最后一个chunk时才更新UI
-            const currentContent = typeof assistantMessage.content === 'string' 
-              ? assistantMessage.content 
-              : (assistantMessage.content as any)?.text || '';
-            const currentLength = currentContent.length;
-            const newLength = chunk.length;
-            
-            // 增加防抖动机制，避免频繁更新导致卡顿
-            if (newLength - currentLength >= 5 || newLength < currentLength) {
-              dispatch(updateMessage({
-                topicId: currentTopic.id,
-                messageId: assistantMessage.id,
-                updates: {
-                  content: chunk,  // 直接使用chunk作为完整内容
-                  status: 'complete',
-                  modelId: selectedModel?.id || currentModelId // 保留模型ID
+            try {
+              // 尝试解析JSON格式的数据
+              let chunkData;
+              try {
+                chunkData = JSON.parse(chunk);
+              } catch (e) {
+                // 如果解析失败，则假定是纯文本内容
+                chunkData = { content: chunk };
+              }
+
+              // 从解析后的数据中提取内容和思考过程
+              const content = chunkData.content;
+              const reasoning = chunkData.reasoning;
+              const reasoningTime = chunkData.reasoningTime;
+              
+              if (content) {
+                // 优化流式输出性能 - 减少更新频率
+                // 只有当内容至少增加了5个字符或是最后一个chunk时才更新UI
+                const currentContent = typeof assistantMessage.content === 'string' 
+                  ? assistantMessage.content 
+                  : (assistantMessage.content as any)?.text || '';
+                const currentLength = currentContent.length;
+                const newLength = content.length;
+                
+                // 增加防抖动机制，避免频繁更新导致卡顿
+                if (newLength - currentLength >= 5 || newLength < currentLength) {
+                  // 构建更新对象，包含内容和思考过程
+                  const updates: any = {
+                    content: content,
+                    status: 'complete',
+                    modelId: selectedModel?.id || currentModelId
+                  };
+                  
+                  // 如果有思考过程，添加到更新对象
+                  if (reasoning) {
+                    console.log('收到思考过程，长度:', reasoning.length, '思考时间:', reasoningTime);
+                    updates.reasoning = reasoning;
+                    if (reasoningTime) {
+                      updates.reasoningTime = reasoningTime;
+                    }
+                  }
+                  
+                  // 更新消息
+                  dispatch(updateMessage({
+                    topicId: currentTopic.id,
+                    messageId: assistantMessage.id,
+                    updates: updates
+                  }));
                 }
-              }));
+              }
+            } catch (error) {
+              console.error('解析响应数据失败:', error);
+              // 如果解析失败，尝试以纯文本方式处理
+              const currentContent = typeof assistantMessage.content === 'string'
+                ? assistantMessage.content
+                : (assistantMessage.content as any)?.text || '';
+              const currentLength = currentContent.length;
+              const newLength = chunk.length;
+              
+              if (newLength - currentLength >= 5 || newLength < currentLength) {
+                dispatch(updateMessage({
+                  topicId: currentTopic.id,
+                  messageId: assistantMessage.id,
+                  updates: {
+                    content: chunk,
+                    status: 'complete',
+                    modelId: selectedModel?.id || currentModelId
+                  }
+                }));
+              }
             }
           }
         }
@@ -290,17 +389,28 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         const reasoning = responseObj.reasoning;
         const reasoningTime = responseObj.reasoningTime;
 
-        // 确保最终内容与API返回一致，并添加思考过程
+        // 确保最终内容与API返回一致，并添加思考过程（如果尚未添加）
+        // 检查当前消息是否已经有思考过程，如果没有才添加
+        const currentMessages = messagesByTopic[currentTopic.id] || [];
+        const currentMessage = currentMessages.find(msg => msg.id === assistantMessage.id);
+        
+        const updates: any = {
+          content: response.content,
+          status: 'complete',
+          modelId: selectedModel?.id || currentModelId // 确保更新后保留模型ID
+        };
+        
+        // 如果还没有思考过程，且API返回了思考过程，则添加
+        if (reasoning && (!currentMessage?.reasoning || currentMessage.reasoning.length === 0)) {
+          console.log('收到最最终思考过程，长度:', reasoning.length);
+          updates.reasoning = reasoning;
+          updates.reasoningTime = reasoningTime;
+        }
+        
         dispatch(updateMessage({
           topicId: currentTopic.id,
           messageId: assistantMessage.id,
-          updates: {
-            content: response.content,
-            status: 'complete',
-            reasoning: reasoning,
-            reasoningTime: reasoningTime,
-            modelId: selectedModel?.id || currentModelId // 确保更新后保留模型ID
-          }
+          updates: updates
         }));
 
         // 保存消息到本地缓存
@@ -308,6 +418,22 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
       }
     } catch (error) {
       console.error('发送消息失败:', error);
+
+      // 获取更详细的错误信息
+      let errorMessage = '请求处理失败';
+      if (error instanceof Error) {
+        // 提取具体错误原因
+        if (error.message.includes('network') || error.message.includes('timeout') || error.message.includes('connect')) {
+          errorMessage = '网络连接问题，请检查网络并重试';
+        } else if (error.message.includes('api key') || error.message.includes('apiKey') || error.message.includes('authentication')) {
+          errorMessage = 'API密钥无效或已过期，请更新API密钥';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = '请求超时，服务器响应时间过长';
+        } else if (error.message.length < 100) {
+          // 如果错误消息不太长，直接使用
+          errorMessage = error.message;
+        }
+      }
 
       // 设置错误状态 - 修复：直接传入字符串而不是对象
       dispatch(setError(
@@ -319,7 +445,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         topicId: currentTopic.id,
         messageId: assistantMessage.id,
         updates: {
-          content: '很抱歉，请求处理失败，请稍后再试。',
+          content: errorMessage,
           status: 'error'
         }
       }));
@@ -421,18 +547,38 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
           // 尝试从localStorage获取userAssistants数据
           const assistantsJson = localStorage.getItem('userAssistants');
           if (assistantsJson) {
+            console.log('成功从localStorage获取userAssistants数据');
             const assistants = JSON.parse(assistantsJson);
+            console.log('助手数量:', assistants.length);
 
             // 查找关联到当前话题的助手
             const currentAssistant = assistants.find((a: any) =>
               a.topicIds && Array.isArray(a.topicIds) && a.topicIds.includes(currentTopic.id)
             );
 
+            if (currentAssistant) {
+              console.log('找到关联到当前话题的助手:', {
+                id: currentAssistant.id,
+                name: currentAssistant.name,
+                hasSystemPrompt: !!currentAssistant.systemPrompt,
+                systemPromptLength: currentAssistant.systemPrompt?.length || 0
+              });
+            } else {
+              console.log('未找到关联到当前话题的助手');
+            }
+
             if (currentAssistant?.systemPrompt) {
               systemPrompt = currentAssistant.systemPrompt;
-              console.log('使用助手提示词:', systemPrompt);
+              console.log('使用助手系统提示词，长度:', systemPrompt?.length || 0, '前30个字符:', systemPrompt?.substring(0, 30) || '');
             } else {
-              console.log('未找到助手提示词');
+              // 尝试直接使用默认助手的系统提示词
+              const defaultAssistant = assistants.find((a: any) => a.isSystem === true || a.name === '默认助手');
+              if (defaultAssistant?.systemPrompt) {
+                systemPrompt = defaultAssistant.systemPrompt;
+                console.log('使用默认助手的系统提示词，长度:', systemPrompt?.length || 0);
+              } else {
+                console.log('未找到任何系统提示词，将使用默认系统提示词');
+              }
             }
           } else {
             console.log('localStorage中不存在userAssistants数据');
@@ -440,6 +586,12 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         } catch (error) {
           console.error('获取助手信息失败:', error);
         }
+      }
+
+      // 3. 确保始终有一个系统提示词，即使是默认的
+      if (!systemPrompt) {
+        systemPrompt = '你是一个友好、专业、乐于助人的AI助手。你会以客观、准确的态度回答用户的问题，并在不确定的情况下坦诚表明。你可以协助用户完成各种任务，提供信息，或进行有意义的对话。';
+        console.log('重新生成消息：未找到任何系统提示词，使用默认提示词');
       }
 
       // 获取到该用户消息之前的所有历史消息 - 不包括被重新生成的消息
@@ -528,14 +680,11 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
 
       const requestMessages = [...processedMessages];
 
-      // 添加系统消息到请求的开始，如果有的话
-      if (systemPrompt) {
-        // 为API请求创建一个简化的系统消息对象
-        requestMessages.unshift({
-          role: 'system',
-          content: systemPrompt
-        } as any); // 使用类型断言，因为这里我们只关心API请求格式
-      }
+      // 添加系统消息到请求的开始，始终添加，确保API请求中包含系统提示词
+      requestMessages.unshift({
+        role: 'system',
+        content: systemPrompt
+      } as any); // 使用类型断言，因为这里我们只关心API请求格式
 
       console.log('重新生成消息的请求列表:', requestMessages.map(m => ({
         role: m.role,
@@ -610,6 +759,22 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
     } catch (error) {
       console.error('重新生成消息失败:', error);
 
+      // 获取更详细的错误信息
+      let errorMessage = '请求处理失败';
+      if (error instanceof Error) {
+        // 提取具体错误原因
+        if (error.message.includes('network') || error.message.includes('timeout') || error.message.includes('connect')) {
+          errorMessage = '网络连接问题，请检查网络并重试';
+        } else if (error.message.includes('api key') || error.message.includes('apiKey') || error.message.includes('authentication')) {
+          errorMessage = 'API密钥无效或已过期，请更新API密钥';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = '请求超时，服务器响应时间过长';
+        } else if (error.message.length < 100) {
+          // 如果错误消息不太长，直接使用
+          errorMessage = error.message;
+        }
+      }
+
       // 设置错误状态
       dispatch(setError(
         `重新生成消息失败: ${error instanceof Error ? error.message : String(error)}`
@@ -620,7 +785,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         topicId: currentTopic.id,
         messageId: newAssistantMessage.id,
         updates: {
-          content: '很抱歉，请求处理失败，请稍后再试。',
+          content: errorMessage,
           status: 'error'
         }
       }));

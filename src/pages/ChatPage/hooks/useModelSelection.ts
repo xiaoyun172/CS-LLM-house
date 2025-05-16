@@ -10,21 +10,18 @@ export function useModelSelection() {
   const currentModelId = useSelector((state: RootState) => state.settings.currentModelId);
   
   // 模型选择菜单相关状态
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   
-  // 菜单打开状态
-  const menuOpen = Boolean(anchorEl);
-  
   // 打开模型选择菜单
-  const handleModelMenuClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
+  const handleModelMenuClick = () => {
+    setDialogOpen(true);
   };
   
   // 关闭模型选择菜单
   const handleModelMenuClose = () => {
-    setAnchorEl(null);
+    setDialogOpen(false);
   };
   
   // 选择模型
@@ -127,7 +124,6 @@ export function useModelSelection() {
     handleModelSelect,
     handleModelMenuClick,
     handleModelMenuClose,
-    anchorEl,
-    menuOpen
+    menuOpen: dialogOpen
   };
 } 

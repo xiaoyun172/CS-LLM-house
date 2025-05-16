@@ -330,23 +330,66 @@ const streamCompletion = async (
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
   temperature?: number,
   maxTokens?: number,
-  onUpdate?: (content: string) => void
+  onUpdate?: (content: string, reasoning?: string) => void
 ): Promise<string> => {
   try {
     const startTime = new Date().getTime();
     let firstTokenTime = 0;
+    let reasoningStartTime = 0;
 
-    console.log(`开始流式请求，模型ID: ${modelId}`);
+    // 检查是否包含思考提示
+    const hasThinkingPrompt = messages.some(msg => 
+      msg.role === 'system' && 
+      typeof msg.content === 'string' && 
+      (msg.content.includes('thinking') || 
+       msg.content.includes('reasoning') ||
+       msg.content.includes('思考过程'))
+    );
 
-    const stream = await openai.chat.completions.create({
+    console.log(`开始流式请求，模型ID: ${modelId}, 是否包含思考提示: ${hasThinkingPrompt}`);
+
+    // 创建流式请求参数
+    const streamParams: any = {
       model: modelId,
       messages: messages,
       temperature: temperature,
       max_tokens: maxTokens,
       stream: true,
-    });
+    };
+
+    // 如果模型支持思考提示，添加思考工具
+    if (modelId.includes('gpt-4') || modelId.includes('gpt-4o')) {
+      // 尝试添加思考工具
+      try {
+        streamParams.tools = [
+          {
+            "type": "function",
+            "function": {
+              "name": "thinking",
+              "description": "Display the step-by-step thinking process before answering a question",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "thinking": {
+                    "type": "string",
+                    "description": "The step-by-step reasoning process"
+                  }
+                },
+                "required": ["thinking"]
+              }
+            }
+          }
+        ];
+      } catch (e) {
+        console.log('思考工具添加失败，继续处理');
+      }
+    }
+
+    const stream = await openai.chat.completions.create(streamParams) as unknown as AsyncIterable<OpenAI.Chat.ChatCompletionChunk>;
 
     let content = '';
+    let reasoning = '';
+    let isCollectingReasoning = false;
 
     for await (const chunk of stream) {
       // 记录首个token的时间
@@ -355,32 +398,106 @@ const streamCompletion = async (
         console.log(`首个token响应时间: ${firstTokenTime}ms`);
       }
 
+      // 检查工具调用
+      const toolCalls = chunk.choices[0]?.delta?.tool_calls;
+      if (toolCalls && toolCalls.length > 0) {
+        // 检查是否是思考工具调用
+        const toolCall = toolCalls[0];
+        if (toolCall.function?.name === 'thinking') {
+          try {
+            // 记录思考开始时间
+            if (!reasoningStartTime) {
+              reasoningStartTime = new Date().getTime();
+              console.log('[思考过程] 开始接收思考过程');
+            }
+            
+            // 提取思考过程
+            if (toolCall.function?.arguments) {
+              const argumentsPart = toolCall.function.arguments;
+              try {
+                const parsedArgs = JSON.parse(argumentsPart);
+                if (parsedArgs.thinking) {
+                  reasoning += parsedArgs.thinking;
+                  
+                  // 通知思考过程更新
+                  if (onUpdate) {
+                    onUpdate(content, reasoning);
+                  }
+                }
+              } catch (e) {
+                // 如果JSON解析失败，直接添加到思考过程
+                reasoning += argumentsPart;
+                if (onUpdate) {
+                  onUpdate(content, reasoning);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('解析思考工具调用失败', e);
+          }
+          continue;
+        }
+      }
+
+      // 提取内容
       const delta = chunk.choices[0]?.delta?.content || '';
       if (delta) {
-        content += delta;
+        // 检查是否是思考过程
+        if (delta.includes('<thinking>') || delta.includes('<reasoning>')) {
+          isCollectingReasoning = true;
+          if (!reasoningStartTime) {
+            reasoningStartTime = new Date().getTime();
+            console.log('[思考过程] 收到思考过程开始标记');
+          }
+        }
+        
+        // 检查是否是思考过程结束
+        if (delta.includes('</thinking>') || delta.includes('</reasoning>')) {
+          isCollectingReasoning = false;
+        }
+        
+        // 根据当前状态收集内容
+        if (isCollectingReasoning) {
+          // 收集思考过程
+          reasoning += delta;
+          // 不添加到最终内容
+        } else {
+          // 普通内容收集
+          content += delta;
+        }
+        
+        // 无条件通知更新
         if (onUpdate) {
-          onUpdate(content);
+          onUpdate(content, reasoning);
         }
       }
     }
 
     const completionTime = new Date().getTime() - startTime;
-    console.log(`[API流式响应] 完成响应时间: ${completionTime}ms`);
-    console.log('[API流式响应] 完整内容:', {
-      model: modelId,
-      content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-      totalLength: content.length,
-      completionTimeMs: completionTime
-    });
+    const reasoningTime = reasoningStartTime ? (new Date().getTime() - reasoningStartTime) : 0;
+    
+    if (reasoning) {
+      console.log(`[API流式响应] 完成响应时间: ${completionTime}ms, 思考过程长度: ${reasoning.length}, 思考过程时间: ${reasoningTime}ms`);
+    }
+    
+    console.log(`[API流式响应] 完整内容: ${content.substring(0, 100) + (content.length > 100 ? '...' : '')}`);
 
     // 记录API响应
     logApiResponse('OpenAI Chat Completions Stream', 200, {
       model: modelId,
       content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
       totalLength: content.length,
+      reasoning: reasoning ? `${reasoning.substring(0, 100)}... (${reasoning.length} chars)` : 'none',
+      reasoningTime,
       completionTimeMs: completionTime
     });
 
+    // 如果包含思考过程，在完成时再次调用
+    if (reasoning && onUpdate) {
+      onUpdate(content, reasoning);
+    }
+
+    // 返回包含思考过程的内容
     return content;
   } catch (error: any) {
     console.error('流式响应处理失败:', error);

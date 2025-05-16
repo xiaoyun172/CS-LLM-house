@@ -164,7 +164,7 @@ function formatMessageContent(content: MessageContent): string {
  */
 export async function handleStreamResponse(
   response: Response,
-  onChunk: (chunk: string, _done: boolean) => void,
+  onChunk: (chunk: string, _done: boolean, reasoning?: string) => void,
   onDone?: () => void
 ): Promise<void> {
   if (!response.body) {
@@ -174,6 +174,48 @@ export async function handleStreamResponse(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  
+  // 用于收集推理过程
+  let fullContent = '';
+  let reasoning = '';
+  let isCollectingReasoning = false;
+  let reasoningStartTime = 0;
+
+  // 处理流式数据和解析推理过程的逻辑
+  const processStreamData = (content: string): { text: string, reasoning?: string } => {
+    fullContent += content;
+    
+    // 检查是否开始收集推理过程
+    if ((content.includes('<reasoning>') || content.includes('<thinking>')) && !isCollectingReasoning) {
+      isCollectingReasoning = true;
+      if (!reasoningStartTime) {
+        reasoningStartTime = Date.now();
+        console.log('[DeepSeek] 开始收集推理过程');
+      }
+    }
+    
+    // 检查是否结束收集推理过程
+    if ((content.includes('</reasoning>') || content.includes('</thinking>')) && isCollectingReasoning) {
+      isCollectingReasoning = false;
+      console.log('[DeepSeek] 收集推理过程完成');
+      
+      // 提取完整的推理过程
+      const reasoningRegex = /<(reasoning|thinking)>([\s\S]*?)<\/(reasoning|thinking)>/;
+      const match = fullContent.match(reasoningRegex);
+      if (match && match[2]) {
+        reasoning = match[2].trim();
+        console.log(`[DeepSeek] 提取到推理过程，长度: ${reasoning.length}`);
+      }
+    }
+    
+    // 如果正在收集推理过程，返回空字符串，将当前内容添加到推理过程
+    if (isCollectingReasoning) {
+      return { text: '', reasoning: content };
+    }
+    
+    // 如果正在处理推理过程块，返回空字符串，将当前内容添加到推理过程
+    return { text: content };
+  };
 
   try {
     while (true) {
@@ -181,7 +223,9 @@ export async function handleStreamResponse(
       
       if (done) {
         if (buffer.trim()) {
-          onChunk(buffer, true);
+          // 最终处理
+          const { text, reasoning: newReasoning } = processStreamData(buffer);
+          onChunk(text, true, newReasoning);
         }
         onDone?.();
         break;
@@ -206,7 +250,18 @@ export async function handleStreamResponse(
             const content = data.choices[0]?.delta?.content || '';
             
             if (content) {
-              onChunk(content, false);
+              // 解析推理过程
+              const { text, reasoning: newReasoning } = processStreamData(content);
+              
+              // 如果有新的推理过程，添加到推理过程
+              if (newReasoning) {
+                reasoning += newReasoning;
+              }
+              
+              // 如果有新的文本内容，返回给回调函数
+              if (text) {
+                onChunk(text, false, reasoning);
+              }
             }
           } catch (error) {
             console.error('Error parsing stream data:', error);
@@ -230,7 +285,7 @@ export async function handleStreamResponse(
 export async function sendChatRequest(
   messages: Message[],
   model: Model,
-  onUpdate?: (content: string) => void
+  onUpdate?: (content: string, reasoning?: string) => void
 ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
   try {
     console.log(`[DeepSeek API] 发送聊天请求，使用模型: ${model.id}`);
@@ -300,13 +355,18 @@ export async function sendChatRequest(
       
       // 创建累积内容的变量
       let accumulatedContent = '';
+      let currentReasoning = '';
       
       // 处理流式响应
       await handleStreamResponse(
         response,
-        (chunk, _done) => {
+        (chunk, _done, reasoning) => {
           accumulatedContent += chunk;
-          onUpdate?.(accumulatedContent);
+          if (reasoning && reasoning !== currentReasoning) {
+            currentReasoning = reasoning;
+            console.log(`[DeepSeek] 收集到新的推理过程，长度: ${reasoning.length}`);
+          }
+          onUpdate?.(accumulatedContent, currentReasoning);
         }
       );
       
@@ -315,8 +375,17 @@ export async function sendChatRequest(
       const reasoningTime = endTime - startTime;
       
       // 如果是推理模型，尝试提取思考过程
-      if (isReasoningModel) {
-        const { content, reasoning } = extractReasoningFromContent(accumulatedContent);
+      if (currentReasoning) {
+        return {
+          content: accumulatedContent,
+          reasoning: currentReasoning,
+          reasoningTime
+        };
+      }
+      
+      // 提取思考过程
+      const { content, reasoning } = extractReasoningFromContent(accumulatedContent);
+      if (reasoning) {
         return {
           content,
           reasoning,

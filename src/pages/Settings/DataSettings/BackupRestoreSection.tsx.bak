@@ -1,0 +1,687 @@
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  Snackbar,
+  Alert,
+  CircularProgress,
+  Divider,
+  Avatar
+} from '@mui/material';
+import BackupIcon from '@mui/icons-material/Backup';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import CloudSyncIcon from '@mui/icons-material/CloudSync';
+import SaveAltIcon from '@mui/icons-material/SaveAlt';
+import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
+import { FileOpener } from '@capacitor-community/file-opener';
+import { 
+  getAllTopicsFromDB, 
+  getAllAssistantsFromDB, 
+  saveTopicToDB, 
+  saveAssistantToDB 
+} from '../../../shared/services/storageService';
+import { alpha } from '@mui/material/styles';
+
+/**
+ * 备份和恢复组件
+ * 提供数据备份和恢复功能
+ */
+const BackupRestoreSection: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info' as 'success' | 'error' | 'info' | 'warning'
+  });
+
+  // 默认备份目录
+  const DEFAULT_BACKUP_DIRECTORY = 'AetherLink/backups';
+  
+  // 从localStorage获取备份设置
+  const backupStorageType = localStorage.getItem('backup-storage-type') === 'external' 
+    ? 'external' 
+    : 'documents';
+  const backupLocation = localStorage.getItem('backup-location') || DEFAULT_BACKUP_DIRECTORY;
+
+  // 显示提示信息
+  const showMessage = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity
+    });
+  };
+
+  // 关闭提示信息
+  const handleCloseSnackbar = () => {
+    setSnackbar({...snackbar, open: false});
+  };
+
+  // 确保备份目录存在
+  const ensureBackupDirectory = async () => {
+    try {
+      await Filesystem.mkdir({
+        path: backupLocation,
+        directory: backupStorageType === 'external' ? Directory.External : Directory.Documents,
+        recursive: true
+      });
+      return true;
+    } catch (error) {
+      console.error('创建备份目录失败:', error);
+      return false;
+    }
+  };
+
+  // 复制到剪贴板
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (error) {
+      console.error('复制到剪贴板失败:', error);
+      // 备用方法
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return success;
+      } catch (fallbackError) {
+        console.error('备用剪贴板方法也失败:', fallbackError);
+        return false;
+      }
+    }
+  };
+
+  // 创建备份
+  const handleBackup = async () => {
+    try {
+      setIsLoading(true);
+      
+      // 确保目录存在
+      await ensureBackupDirectory();
+      
+      // 获取数据
+      const allTopics = await getAllTopicsFromDB();
+      const allAssistants = await getAllAssistantsFromDB();
+      
+      const backupData = {
+        topics: allTopics,
+        assistants: allAssistants,
+        timestamp: Date.now(),
+        appInfo: {
+          version: '1.0.0',
+          name: 'AetherLink'
+        }
+      };
+      
+      // 创建文件名
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `AetherLink_Backup_${timestamp}.json`;
+      const path = `${backupLocation}/${fileName}`;
+      
+      // 将JSON转换为字符串
+      const jsonString = JSON.stringify(backupData);
+      
+      // 写入文件 - 使用UTF8编码
+      await Filesystem.writeFile({
+        path,
+        data: jsonString,
+        directory: backupStorageType === 'external' ? Directory.External : Directory.Documents,
+        recursive: true,
+        encoding: Encoding.UTF8
+      });
+      
+      // 获取完整路径
+      try {
+        const uriResult = await Filesystem.getUri({
+          path,
+          directory: backupStorageType === 'external' ? Directory.External : Directory.Documents
+        });
+        
+        if (uriResult && uriResult.uri) {
+          // 复制到剪贴板
+          const copied = await copyToClipboard(uriResult.uri);
+          showMessage(`备份创建成功: ${uriResult.uri}${copied ? ' (已复制到剪贴板)' : ''}`, 
+            'success');
+        } else {
+          showMessage('备份创建成功', 'success');
+        }
+      } catch (pathError) {
+        console.error('获取备份路径失败:', pathError);
+        showMessage('备份创建成功', 'success');
+      }
+    } catch (error) {
+      console.error('创建备份失败:', error);
+      showMessage('创建备份失败: ' + (error as Error).message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 创建完整备份
+  const handleFullBackup = async () => {
+    try {
+      setIsLoading(true);
+      
+      // 获取对话和助手数据
+      const allTopics = await getAllTopicsFromDB();
+      const allAssistants = await getAllAssistantsFromDB();
+      
+      // 获取所有设置数据
+      const settingsJson = localStorage.getItem('settings');
+      const settings = settingsJson ? JSON.parse(settingsJson) : {};
+      
+      // 获取备份设置
+      const backupSettings = {
+        location: localStorage.getItem('backup-location') || DEFAULT_BACKUP_DIRECTORY,
+        storageType: localStorage.getItem('backup-storage-type') || 'documents'
+      };
+      
+      // 获取所有其他localStorage项目
+      const localStorageItems: Record<string, any> = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key !== 'settings' && !key.startsWith('aetherlink-migration') && key !== 'idb-migration-done') {
+          try {
+            const value = localStorage.getItem(key);
+            if (value) {
+              // 尝试解析JSON，如果失败则存储原始字符串
+              try {
+                localStorageItems[key] = JSON.parse(value);
+              } catch {
+                localStorageItems[key] = value;
+              }
+            }
+          } catch (e) {
+            console.error(`读取localStorage项 "${key}" 失败:`, e);
+          }
+        }
+      }
+      
+      // 构建完整备份数据
+      const backupData = {
+        // 主要数据
+        topics: allTopics,
+        assistants: allAssistants,
+        
+        // 所有设置
+        settings: {
+          // 完整设置对象
+          ...settings,
+          // 确保这些关键字段存在
+          providers: settings.providers || [],
+          models: settings.models || [],
+          defaultModelId: settings.defaultModelId,
+          currentModelId: settings.currentModelId,
+          theme: settings.theme,
+          fontSize: settings.fontSize,
+          language: settings.language,
+          sendWithEnter: settings.sendWithEnter,
+          enableNotifications: settings.enableNotifications,
+          generatedImages: settings.generatedImages || [],
+        },
+        
+        // 备份设置
+        backupSettings,
+        
+        // 其他localStorage数据
+        localStorage: localStorageItems,
+        
+        // 元数据
+        timestamp: Date.now(),
+        appInfo: {
+          version: '1.0.0',
+          name: 'AetherLink',
+          backupVersion: 2 // 增加版本号以区分新格式
+        }
+      };
+      
+      // 创建文件名
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `AetherLink_Backup_Full_${timestamp}.json`;
+      
+      // 将JSON转换为字符串
+      const jsonString = JSON.stringify(backupData);
+      
+      // 首先创建临时文件
+      const tempPath = fileName;
+      
+      await Filesystem.writeFile({
+        path: tempPath,
+        data: jsonString,
+        directory: Directory.Cache,
+        encoding: Encoding.UTF8
+      });
+      
+      // 获取临时文件URI
+      const tempFileResult = await Filesystem.getUri({
+        path: tempPath,
+        directory: Directory.Cache
+      });
+      
+      if (tempFileResult && tempFileResult.uri) {
+        try {
+          // 尝试使用Share API调用系统的分享/保存功能
+          await Share.share({
+            title: '保存完整备份文件',
+            text: '选择位置保存备份文件',
+            url: tempFileResult.uri,
+            dialogTitle: '选择保存位置'
+          });
+          
+          showMessage('请在系统分享菜单中选择"保存到设备"或文件管理器应用', 'info');
+        } catch (shareError) {
+          console.error('分享文件失败:', shareError);
+          
+          // 尝试使用文件打开器
+          try {
+            await FileOpener.open({
+              filePath: tempFileResult.uri,
+              contentType: 'application/json'
+            });
+            
+            showMessage('文件已打开，请使用"另存为"保存到您想要的位置', 'info');
+          } catch (openError) {
+            console.error('打开文件失败:', openError);
+            // 回退到保存到下载目录
+            await saveToDownloadDirectory(fileName, jsonString);
+          }
+        }
+      } else {
+        // 无法获取临时文件URI，回退到下载目录
+        await saveToDownloadDirectory(fileName, jsonString);
+      }
+    } catch (error) {
+      console.error('创建自定义位置备份失败:', error);
+      showMessage('创建备份失败: ' + (error as Error).message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 保存到下载目录
+  const saveToDownloadDirectory = async (fileName: string, jsonString: string) => {
+    try {
+      // 确保下载目录存在
+      const downloadDir = "Download";
+      try {
+        await Filesystem.mkdir({
+          path: downloadDir,
+          directory: Directory.External,
+          recursive: true
+        });
+      } catch (mkdirError) {
+        console.log('目录可能已存在:', mkdirError);
+      }
+      
+      // 写入文件到下载目录
+      const filePath = `${downloadDir}/${fileName}`;
+      await Filesystem.writeFile({
+        path: filePath,
+        data: jsonString,
+        directory: Directory.External,
+        encoding: Encoding.UTF8
+      });
+      
+      // 获取完整URI以显示
+      const uriResult = await Filesystem.getUri({
+        path: filePath,
+        directory: Directory.External
+      });
+      
+      if (uriResult && uriResult.uri) {
+        // 尝试使用FileOpener打开文件所在目录
+        try {
+          await FileOpener.open({
+            filePath: uriResult.uri,
+            contentType: 'application/json'
+          });
+          
+          const copied = await copyToClipboard(uriResult.uri);
+          showMessage(
+            `备份已保存到下载目录: ${uriResult.uri}${copied ? ' (已复制到剪贴板)' : ''}`, 
+            'success'
+          );
+        } catch (openError) {
+          console.error('打开文件失败，但文件已保存:', openError);
+          const copied = await copyToClipboard(uriResult.uri);
+          showMessage(
+            `备份已保存到下载目录: ${uriResult.uri}${copied ? ' (已复制到剪贴板)' : ''}`, 
+            'success'
+          );
+        }
+      } else {
+        showMessage('备份已保存到下载目录', 'success');
+      }
+    } catch (error) {
+      console.error('保存到下载目录失败:', error);
+      
+      // 回退到保存到内部存储根目录
+      try {
+        await Filesystem.writeFile({
+          path: fileName,
+          data: jsonString,
+          directory: Directory.External,
+          encoding: Encoding.UTF8
+        });
+        
+        const uriResult = await Filesystem.getUri({
+          path: fileName,
+          directory: Directory.External
+        });
+        
+        if (uriResult && uriResult.uri) {
+          const copied = await copyToClipboard(uriResult.uri);
+          showMessage(
+            `备份已保存到内部存储根目录: ${uriResult.uri}${copied ? ' (已复制到剪贴板)' : ''}`,
+            'success'
+          );
+        } else {
+          showMessage('备份已保存到内部存储根目录', 'success');
+        }
+      } catch (fallbackError) {
+        console.error('保存到内部存储根目录也失败:', fallbackError);
+        showMessage('保存备份失败: ' + (fallbackError as Error).message, 'error');
+      }
+    }
+  };
+
+  // 处理恢复备份
+  const handleRestore = async () => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      
+      input.onchange = async (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        const file = target.files?.[0];
+        
+        if (!file) return;
+        
+        setIsLoading(true);
+        
+        try {
+          // 读取文件内容
+          const reader = new FileReader();
+          
+          reader.onload = async (event) => {
+            try {
+              const content = event.target?.result as string;
+              
+              // 验证JSON格式
+              try {
+                const backupData = JSON.parse(content);
+                
+                // 验证基本数据结构
+                if (!backupData.topics && !backupData.assistants && !backupData.settings) {
+                  showMessage('无效的备份文件格式：缺少必要的数据字段', 'error');
+                  setIsLoading(false);
+                  return;
+                }
+                
+                // 恢复话题
+                if (Array.isArray(backupData.topics)) {
+                  for (const topic of backupData.topics) {
+                    await saveTopicToDB(topic);
+                  }
+                  console.log(`已恢复 ${backupData.topics.length} 个话题`);
+                }
+                
+                // 恢复助手
+                if (Array.isArray(backupData.assistants)) {
+                  for (const assistant of backupData.assistants) {
+                    await saveAssistantToDB(assistant);
+                  }
+                  console.log(`已恢复 ${backupData.assistants.length} 个助手`);
+                }
+                
+                // 检查备份版本（新格式会有backupVersion字段）
+                const isNewFormat = backupData.appInfo && backupData.appInfo.backupVersion >= 2;
+                
+                // 恢复设置数据（如果存在）
+                if (backupData.settings) {
+                  // 获取当前设置
+                  const currentSettingsJson = localStorage.getItem('settings');
+                  const currentSettings = currentSettingsJson ? JSON.parse(currentSettingsJson) : {};
+                  
+                  if (isNewFormat) {
+                    // 新格式 - 恢复完整设置
+                    localStorage.setItem('settings', JSON.stringify(backupData.settings));
+                  } else {
+                    // 旧格式 - 只恢复模型和供应商相关设置
+                    const mergedSettings = {
+                      ...currentSettings,
+                      providers: backupData.settings.providers || currentSettings.providers,
+                      models: backupData.settings.models || currentSettings.models,
+                      defaultModelId: backupData.settings.defaultModelId || currentSettings.defaultModelId,
+                      currentModelId: backupData.settings.currentModelId || currentSettings.currentModelId,
+                    };
+                    
+                    // 保存合并后的设置
+                    localStorage.setItem('settings', JSON.stringify(mergedSettings));
+                  }
+                  console.log('已恢复设置数据');
+                }
+                
+                // 恢复备份设置（如果存在）
+                if (isNewFormat && backupData.backupSettings) {
+                  const { location, storageType } = backupData.backupSettings;
+                  if (location) localStorage.setItem('backup-location', location);
+                  if (storageType) localStorage.setItem('backup-storage-type', storageType);
+                }
+                
+                // 恢复其他localStorage项目（如果存在）
+                if (isNewFormat && backupData.localStorage) {
+                  const keys = Object.keys(backupData.localStorage);
+                  
+                  for (const key of keys) {
+                    // 跳过已经恢复的项目和迁移相关标记
+                    if (key !== 'settings' && 
+                        key !== 'backup-location' && 
+                        key !== 'backup-storage-type' && 
+                        !key.startsWith('aetherlink-migration') && 
+                        key !== 'idb-migration-done') {
+                      
+                      try {
+                        const value = backupData.localStorage[key];
+                        localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+                      } catch (e) {
+                        console.error(`恢复localStorage项 "${key}" 失败:`, e);
+                      }
+                    }
+                  }
+                }
+                
+                // 展示恢复成功信息
+                let restoreMessage = '';
+                
+                if (backupData.topics) {
+                  restoreMessage += `• 已恢复 ${backupData.topics.length} 个对话话题\n`;
+                }
+                
+                if (backupData.assistants) {
+                  restoreMessage += `• 已恢复 ${backupData.assistants.length} 个助手\n`;
+                }
+                
+                if (backupData.settings) {
+                  restoreMessage += `• 已恢复${isNewFormat ? '所有' : '模型和供应商'}设置\n`;
+                }
+                
+                if (isNewFormat && backupData.localStorage) {
+                  restoreMessage += '• 已恢复其他应用数据\n';
+                }
+                
+                showMessage(`备份恢复成功：\n${restoreMessage}\n请重启应用以应用所有更改`, 'success');
+              } catch (parseError) {
+                console.error('JSON解析失败:', parseError);
+                showMessage('无效的备份文件格式: ' + (parseError as Error).message, 'error');
+              }
+            } catch (error) {
+              console.error('恢复备份失败:', error);
+              showMessage('恢复备份失败: ' + (error as Error).message, 'error');
+            } finally {
+              setIsLoading(false);
+            }
+          };
+          
+          reader.onerror = () => {
+            showMessage('读取文件失败', 'error');
+            setIsLoading(false);
+          };
+          
+          reader.readAsText(file);
+        } catch (error) {
+          console.error('处理文件失败:', error);
+          showMessage('处理文件失败: ' + (error as Error).message, 'error');
+          setIsLoading(false);
+        }
+      };
+      
+      input.click();
+    } catch (error) {
+      console.error('打开文件选择器失败:', error);
+      showMessage('打开文件选择器失败: ' + (error as Error).message, 'error');
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 3,
+        mb: 3,
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+        <Avatar
+          sx={{
+            width: 56,
+            height: 56,
+            bgcolor: '#9333EA',
+            fontSize: '1.5rem',
+            mr: 2,
+            boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+          }}
+        >
+          <CloudSyncIcon />
+        </Avatar>
+        <Box>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 600,
+              backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
+              backgroundClip: 'text',
+              color: 'transparent',
+            }}
+          >
+            数据备份与恢复
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            备份您的对话和助手数据，以便在更换设备或重新安装应用后恢复
+          </Typography>
+        </Box>
+      </Box>
+      
+      <Divider sx={{ my: 2 }} />
+      
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 1 }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="contained"
+            startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : <BackupIcon />}
+            fullWidth
+            onClick={handleBackup}
+            disabled={isLoading}
+            sx={{ 
+              py: 1.5,
+              borderRadius: 2,
+              background: 'linear-gradient(90deg, #9333EA, #754AB4)',
+              fontWeight: 600,
+              '&:hover': {
+                background: 'linear-gradient(90deg, #8324DB, #6D3CAF)',
+              },
+            }}
+          >
+            {isLoading ? '备份中...' : '备份聊天和助手'}
+          </Button>
+          
+          <Button
+            variant="contained"
+            startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : <SaveAltIcon />}
+            fullWidth
+            onClick={handleFullBackup}
+            disabled={isLoading}
+            sx={{ 
+              py: 1.5,
+              borderRadius: 2,
+              backgroundColor: '#6B7280',
+              fontWeight: 600,
+              '&:hover': {
+                backgroundColor: '#4B5563',
+              },
+            }}
+          >
+            {isLoading ? '备份中...' : '完整系统备份'}
+          </Button>
+        </Box>
+        
+        <Button
+          variant="outlined"
+          startIcon={<FileDownloadIcon />}
+          fullWidth
+          onClick={handleRestore}
+          disabled={isLoading}
+          sx={{ 
+            py: 1.5,
+            borderRadius: 2,
+            borderColor: 'divider',
+            '&:hover': {
+              borderColor: 'primary.main',
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+            },
+          }}
+        >
+          导入备份文件并恢复
+        </Button>
+      </Box>
+
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity} 
+          sx={{ 
+            width: '100%',
+            borderRadius: 2,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          }}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Paper>
+  );
+};
+
+export default BackupRestoreSection; 
