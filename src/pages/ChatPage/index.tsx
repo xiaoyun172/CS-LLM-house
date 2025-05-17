@@ -17,7 +17,6 @@ import type { SiliconFlowImageFormat } from '../../shared/types';
 import { addMessage, updateMessage } from '../../shared/store/messagesSlice';
 import { generateId, createMessage } from '../../shared/utils';
 import WebSearchService from '../../shared/services/WebSearchService';
-import { DataAdapter } from '../../shared/services/DataAdapter';
 import FirecrawlService from '../../shared/services/FirecrawlService';
 
 const ChatPage: React.FC = () => {
@@ -36,7 +35,7 @@ const ChatPage: React.FC = () => {
 
   // 使用自定义钩子
   const { selectedModel, availableModels, handleModelSelect, handleModelMenuClick, handleModelMenuClose, menuOpen } = useModelSelection();
-  const { handleNewTopic, handleClearTopic } = useTopicManagement(currentTopic);
+  const { handleClearTopic } = useTopicManagement(currentTopic);
   const { handleSendMessage, handleDeleteMessage, handleRegenerateMessage, handleSwitchMessageVersion } = useMessageHandling(selectedModel, currentTopic);
 
   // 当屏幕尺寸变化时更新抽屉状态
@@ -71,51 +70,8 @@ const ChatPage: React.FC = () => {
     };
   }, [dispatch]);
 
-  // 确保在必要时才创建新话题
-  useEffect(() => {
-    // 只在删除话题后或明确需要新话题时创建
-    if (!currentTopic) {
-      console.log('ChatPage: 没有当前话题，检查是否需要创建新话题');
-
-      // 检查是否刚刚删除了当前话题
-      const isAfterDeletion = localStorage.getItem('_justDeletedTopic') === 'true';
-
-      // 检查是否已经有话题存在于数据库中
-      const checkExistingTopics = async () => {
-        try {
-          // 使用DataAdapter检查是否有现有话题
-          const dataAdapter = DataAdapter.getInstance();
-          const existingTopics = await dataAdapter.getAllTopics();
-
-          // 只有在确实没有话题或刚刚删除了话题时才创建新话题
-          if (existingTopics.length === 0 || isAfterDeletion) {
-            console.log('ChatPage: 没有现有话题或刚刚删除了话题，创建新话题');
-
-            if (isAfterDeletion) {
-              // 清除标记
-              localStorage.removeItem('_justDeletedTopic');
-              console.log('ChatPage: 检测到刚刚删除了话题，立即创建新话题');
-            }
-
-            // 使用handleNewTopic创建新话题并设置为当前话题
-            setTimeout(() => {
-              handleNewTopic();
-            }, 100);
-          } else {
-            console.log('ChatPage: 已有话题存在，不创建新话题');
-          }
-        } catch (error) {
-          console.error('ChatPage: 检查现有话题失败', error);
-          // 出错时创建新话题作为后备方案
-          setTimeout(() => {
-            handleNewTopic();
-          }, 100);
-        }
-      };
-
-      checkExistingTopics();
-    }
-  }, [currentTopic, handleNewTopic]);
+  // 移除了自动创建话题的逻辑
+  // 当没有当前话题时，不再自动创建新话题
 
   // 获取当前主题的消息
   const currentMessages = currentTopic
@@ -349,12 +305,12 @@ const ChatPage: React.FC = () => {
         formats: ['markdown', 'html'],
         onlyMainContent: true
       });
-      
+
       // 检查抓取是否成功
       if (!result.success) {
         throw new Error(result.error || '网页解析失败');
       }
-      
+
       // 优先使用markdown格式，如果没有则使用html或文本
       let content = '';
       if (result.markdown) {
@@ -366,10 +322,10 @@ const ChatPage: React.FC = () => {
       } else {
         throw new Error('无法获取网页内容');
       }
-      
+
       // 格式化返回的内容，添加来源信息
       const formattedContent = `### 网页内容: ${url}\n\n${content}`;
-      
+
       return formattedContent;
     } catch (error) {
       console.error('URL解析失败:', error);
@@ -529,15 +485,12 @@ const ChatPage: React.FC = () => {
                 {/* 聊天输入框 */}
                 <ChatInput
                   onSendMessage={(content, images) => {
-                    // 如果没有当前话题，先创建一个
-                    if (!currentTopic) {
-                      handleNewTopic();
-                      // 简单延迟确保话题创建完成
-                      setTimeout(() => {
-                        handleMessageSend(content, images);
-                      }, 100);
-                    } else {
+                    // 移除自动创建话题的逻辑，只有在有当前话题时才发送消息
+                    if (currentTopic) {
                       handleMessageSend(content, images);
+                    } else {
+                      console.log('没有当前话题，无法发送消息');
+                      // 可以在这里添加提示用户先创建话题的逻辑
                     }
                   }}
                   isLoading={isLoading}
@@ -615,15 +568,12 @@ const ChatPage: React.FC = () => {
                 {/* 聊天输入框 */}
                 <ChatInput
                   onSendMessage={(content, images) => {
-                    // 如果没有当前话题，先创建一个
-                    if (!currentTopic) {
-                      handleNewTopic();
-                      // 简单延迟确保话题创建完成
-                      setTimeout(() => {
-                        handleMessageSend(content, images);
-                      }, 100);
-                    } else {
+                    // 移除自动创建话题的逻辑，只有在有当前话题时才发送消息
+                    if (currentTopic) {
                       handleMessageSend(content, images);
+                    } else {
+                      console.log('没有当前话题，无法发送消息');
+                      // 可以在这里添加提示用户先创建话题的逻辑
                     }
                   }}
                   isLoading={isLoading}

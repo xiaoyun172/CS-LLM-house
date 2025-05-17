@@ -33,38 +33,10 @@ export class TopicManager {
       }
 
       // 获取话题
-      let topic = await TopicService.getTopicById(topicId);
+      const topic = await TopicService.getTopicById(topicId);
       if (!topic) {
-        console.error(`话题 ${topicId} 不存在，尝试创建临时话题`);
-
-        // 创建临时话题
-        try {
-          // 创建一个确保有效的临时话题
-          const currentTime = new Date().toISOString();
-          const tempTopic = {
-            id: topicId,
-            title: '恢复的话题 ' + new Date().toLocaleTimeString(),
-            lastMessageTime: currentTime,
-            // 使用系统提示词而不是系统消息
-            prompt: '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。这是一个恢复的对话，请告诉我您需要什么帮助？',
-            messages: []
-          };
-
-          // 保存临时话题
-          await dataService.saveTopic(tempTopic);
-          console.log(`为ID ${topicId} 创建了临时话题，并添加了系统提示词确保有效性`);
-
-          // 重新获取确认
-          topic = await TopicService.getTopicById(topicId);
-          if (!topic) {
-            console.error(`创建临时话题后仍无法获取话题 ${topicId}`);
-            return false;
-          }
-          console.log(`临时话题 ${topicId} 创建成功，可以继续关联`);
-        } catch (createError) {
-          console.error(`无法创建临时话题: ${createError}`);
-          return false;
-        }
+        console.error(`话题 ${topicId} 不存在，无法添加到助手`);
+        return false;
       }
 
       // 验证话题有效性
@@ -247,16 +219,17 @@ export class TopicManager {
   }
 
   /**
-   * 确保助手有话题（如果没有则创建默认话题）
+   * 确保助手有话题（不再自动创建默认话题）
+   * 修改后的方法只返回现有话题，如果没有话题则抛出异常
    */
   static async ensureAssistantHasTopic(assistantId: string): Promise<ChatTopic> {
     try {
-      console.log(`[TopicManager] 确保助手 ${assistantId} 有话题`);
+      console.log(`[TopicManager] 检查助手 ${assistantId} 的话题`);
 
       // 获取助手
       const assistant = await dataService.getAssistant(assistantId);
       if (!assistant) {
-        console.error(`[TopicManager] 助手 ${assistantId} 不存在，无法确保话题`);
+        console.error(`[TopicManager] 助手 ${assistantId} 不存在，无法获取话题`);
         throw new Error(`助手 ${assistantId} 不存在`);
       }
 
@@ -285,15 +258,11 @@ export class TopicManager {
         }
       }
 
-      console.log(`[TopicManager] 助手 ${assistant.name} 没有有效话题，将创建默认话题`);
-
-      // 创建默认话题
-      const defaultTopic = await this.createDefaultTopicForAssistant(assistantId);
-      console.log(`[TopicManager] 成功为助手 ${assistant.name} 创建默认话题: ${defaultTopic.title} (${defaultTopic.id})`);
-
-      return defaultTopic;
+      // 移除自动创建话题的逻辑
+      console.log(`[TopicManager] 助手 ${assistant.name} 没有有效话题`);
+      throw new Error(`助手 ${assistant.name} 没有有效话题`);
     } catch (error) {
-      console.error(`[TopicManager] 确保助手有话题失败:`, error);
+      console.error(`[TopicManager] 获取助手话题失败:`, error);
       throw error;
     }
   }

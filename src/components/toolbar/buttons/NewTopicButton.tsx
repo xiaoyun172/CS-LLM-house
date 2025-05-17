@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import { TopicCreationService } from '../../../shared/services/TopicCreationService';
+import { TopicService } from '../../../shared/services/TopicService';
 import type { ToolbarButtonProps } from '../buttons/types';
 
 /**
@@ -11,19 +11,9 @@ const NewTopicButton: React.FC<ToolbarButtonProps> = ({
   displayStyle, 
   isDarkMode 
 }) => {
-  // 创建新话题 - 使用 TopicCreationService
+  // 创建新话题 - 使用统一的TopicService
   const handleCreateTopic = async () => {
-    console.log('[话题管理] 工具栏新建话题按钮被点击');
-    try {
-      const newTopic = await TopicCreationService.handleToolbarButtonCreation();
-      if (newTopic) {
-        console.log(`[话题管理] 工具栏新建话题成功，ID=${newTopic.id}`);
-      } else {
-        console.error('[话题管理] 工具栏新建话题失败');
-      }
-    } catch (error) {
-      console.error('[话题管理] 工具栏新建话题出错', error);
-    }
+    await TopicService.createNewTopic();
   };
   
   return (
