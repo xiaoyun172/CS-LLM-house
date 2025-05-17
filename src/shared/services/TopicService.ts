@@ -1,14 +1,11 @@
 import { v4 as uuid } from 'uuid';
 import type { ChatTopic, Message } from '../types';
-import { DataService } from './DataService';
 import { AssistantService } from './index';
 import store from '../store';
 import { createTopic, setCurrentTopic } from '../store/messagesSlice';
 import { formatDateForTopicTitle } from '../utils';
 import { DEFAULT_TOPIC_PROMPT } from '../config/prompts';
-
-// 获取DataService实例
-const dataService = DataService.getInstance();
+import { dexieStorage } from './DexieStorageService';
 
 /**
  * 话题服务 - 集中处理话题的创建、关联和管理
@@ -19,8 +16,8 @@ export class TopicService {
    */
   static async getAllTopics(): Promise<ChatTopic[]> {
     try {
-      // 从DataService获取数据
-      const topics = await dataService.getAllTopics();
+      // 从dexieStorage获取数据
+      const topics = await dexieStorage.getAllTopics();
       return topics;
     } catch (error) {
       console.error('获取话题失败:', error);
@@ -33,8 +30,8 @@ export class TopicService {
    */
   static async getTopicById(id: string): Promise<ChatTopic | null> {
     try {
-      // 从DataService获取
-      const topic = await dataService.getTopic(id);
+      // 从dexieStorage获取
+      const topic = await dexieStorage.getTopic(id);
       return topic || null;
     } catch (error) {
       console.error(`获取话题 ${id} 失败:`, error);
@@ -67,6 +64,7 @@ export class TopicService {
         id: topicId,
         title: `新的对话 ${formattedDate}`,
         lastMessageTime: now.toISOString(),
+        assistantId: currentAssistantId, // 确保设置助手ID
         // 使用配置文件中的默认话题提示词
         prompt: DEFAULT_TOPIC_PROMPT,
         messages: []
@@ -76,17 +74,18 @@ export class TopicService {
 
       // 3. 先保存话题到数据库
       console.log(`[话题创建监控] 正在保存话题 ${topicId} 到数据库`);
-      await dataService.saveTopic(newTopic);
+      const saveResult = await dexieStorage.saveTopic(newTopic);
+      console.log(`[话题创建监控] 话题保存结果: ${saveResult ? '成功' : '失败'}`);
 
       // 4. 验证话题是否被成功保存
-      const verifyTopic = await dataService.getTopic(topicId);
+      const verifyTopic = await dexieStorage.getTopic(topicId);
       if (!verifyTopic) {
         console.error(`[话题创建监控] 话题 ${topicId} 保存后验证失败，尝试重新保存`);
         // 再次尝试保存
-        await dataService.saveTopic(newTopic);
+        await dexieStorage.saveTopic(newTopic);
 
         // 再次验证
-        const secondVerify = await dataService.getTopic(topicId);
+        const secondVerify = await dexieStorage.getTopic(topicId);
         if (!secondVerify) {
           console.error(`[话题创建监控] 话题 ${topicId} 第二次保存仍然失败`);
           throw new Error(`话题创建失败: 无法保存到数据库`);
@@ -97,13 +96,40 @@ export class TopicService {
       }
 
       // 5. 添加到Redux (确保话题已存在于数据库中)
-      console.log(`[话题创建监控] 添加话题 ${topicId} 到Redux`);
+      console.log(`[话题创建监控] 添加话题 ${topicId} 到Redux store`);
       store.dispatch(createTopic(newTopic));
+      
+      // 立即强制更新话题列表
+      console.log('[话题创建监控] 触发FORCE_TOPICS_UPDATE动作');
       store.dispatch({ type: 'FORCE_TOPICS_UPDATE' });
 
       // 6. 关联话题到助手
       console.log(`[话题创建监控] 关联话题 ${topicId} 到助手 ${currentAssistantId}`);
-      await AssistantService.addTopicToAssistant(currentAssistantId, topicId);
+      const addResult = await AssistantService.addTopicToAssistant(currentAssistantId, topicId);
+      console.log(`[话题创建监控] 关联结果: ${addResult ? '成功' : '失败'}`);
+      
+      // 重新获取更新后的助手以确保话题ID已加入
+      try {
+        const updatedAssistant = await dexieStorage.getAssistant(currentAssistantId);
+        if (updatedAssistant) {
+          // 确认话题ID已添加到助手
+          const hasTopicId = updatedAssistant.topicIds && updatedAssistant.topicIds.includes(topicId);
+          console.log(`[话题创建监控] 话题ID添加验证: ${hasTopicId ? '成功' : '失败'}`);
+          
+          if (!hasTopicId) {
+            console.warn('[话题创建监控] 话题ID未添加到助手topicIds数组，尝试手动添加');
+            // 手动更新助手的topicIds数组
+            if (!updatedAssistant.topicIds) {
+              updatedAssistant.topicIds = [];
+            }
+            updatedAssistant.topicIds.push(topicId);
+            await dexieStorage.saveAssistant(updatedAssistant);
+            console.log('[话题创建监控] 已手动更新助手的topicIds数组');
+          }
+        }
+      } catch (err) {
+        console.warn('[话题创建监控] 无法验证话题ID是否添加到助手', err);
+      }
 
       // 7. 设置为当前话题
       console.log(`[话题创建监控] 设置话题 ${topicId} 为当前话题`);
@@ -113,12 +139,28 @@ export class TopicService {
       console.log(`[话题创建监控] 派发topicCreated事件, 话题ID=${topicId}`);
       this.notifyTopicCreated(newTopic, currentAssistantId);
 
-      // 9. 延时确保UI更新只需重置当前话题，不再触发事件
+      // 9. 再次强制更新话题列表，确保UI更新
+      console.log('[话题创建监控] 再次触发强制更新');
+      store.dispatch({ type: 'FORCE_TOPICS_UPDATE' });
+
+      // 10. 延时确保UI更新，再次设置当前话题和强制更新
       setTimeout(() => {
         console.log(`[话题创建监控] 定时器触发: 重新设置当前话题 ${topicId}`);
         store.dispatch(setCurrentTopic(newTopic));
-        // 不再重复触发事件
-      }, 200);
+        // 再次派发强制更新
+        store.dispatch({ type: 'FORCE_TOPICS_UPDATE' });
+        
+        // 通过直接修改DOM触发强制重新渲染
+        try {
+          const event = new CustomEvent('forceTopicListUpdate', {
+            detail: { timestamp: Date.now(), topicId }
+          });
+          console.log('[话题创建监控] 派发forceTopicListUpdate自定义事件');
+          window.dispatchEvent(event);
+        } catch (e) {
+          console.warn('[话题创建监控] 派发自定义事件失败', e);
+        }
+      }, 300);
 
       console.log(`[话题创建监控] 话题创建完成: ID=${topicId}, 标题="${newTopic.title}"`);
       return newTopic;
@@ -144,7 +186,7 @@ export class TopicService {
 
     // 尝试从IndexedDB获取
     try {
-      const storedId = await dataService.getSetting('currentAssistant');
+      const storedId = await dexieStorage.getSetting('currentAssistant');
       if (storedId) {
         return storedId;
       }
@@ -160,7 +202,7 @@ export class TopicService {
         // 更新当前助手
         await AssistantService.setCurrentAssistant(firstAssistant.id);
         // 保存到IndexedDB
-        await dataService.saveSetting('currentAssistant', firstAssistant.id);
+        await dexieStorage.saveSetting('currentAssistant', firstAssistant.id);
         return firstAssistant.id;
       }
     } catch (error) {
@@ -260,17 +302,17 @@ export class TopicService {
 
       // 保存到DataService
       console.log(`TopicService: 正在保存话题 ${topicId} 到数据库`);
-      await dataService.saveTopic(newTopic);
+      await dexieStorage.saveTopic(newTopic);
 
       // 验证话题是否被成功保存
-      const verifyTopic = await dataService.getTopic(topicId);
+      const verifyTopic = await dexieStorage.getTopic(topicId);
       if (!verifyTopic) {
         console.error(`TopicService: 话题 ${topicId} 保存后验证失败，尝试重新保存`);
         // 再次尝试保存
-        await dataService.saveTopic(newTopic);
+        await dexieStorage.saveTopic(newTopic);
 
         // 再次验证
-        const secondVerify = await dataService.getTopic(topicId);
+        const secondVerify = await dexieStorage.getTopic(topicId);
         if (!secondVerify) {
           console.error(`TopicService: 话题 ${topicId} 第二次保存仍然失败`);
           throw new Error(`话题创建失败: 无法保存到数据库`);
@@ -293,7 +335,7 @@ export class TopicService {
   static async saveTopic(topic: ChatTopic): Promise<boolean> {
     try {
       // 保存到DataService
-      await dataService.saveTopic(topic);
+      await dexieStorage.saveTopic(topic);
       return true;
     } catch (error) {
       console.error('保存话题失败:', error);
@@ -307,7 +349,7 @@ export class TopicService {
   static async deleteTopic(id: string): Promise<boolean> {
     try {
       // 从DataService删除
-      await dataService.deleteTopic(id);
+      await dexieStorage.deleteTopic(id);
       return true;
     } catch (error) {
       console.error(`删除话题 ${id} 失败:`, error);
@@ -419,7 +461,7 @@ export class TopicService {
           const mimeType = mimeMatch ? `image/${mimeMatch[1]}` : 'image/png';
 
           // 保存图片数据到DataService
-          const imageRef = await dataService.saveBase64Image(base64Data, {
+          const imageRef = await dexieStorage.saveBase64Image(base64Data, {
             mimeType,
             messageId
           });
@@ -427,7 +469,7 @@ export class TopicService {
           // 替换base64为图片引用
           processedContent = processedContent.replace(
             base64Data,
-            `[图片:${imageRef.id}]`
+            `[图片:${imageRef}]`
           );
         } catch (error) {
           console.error('保存图片数据失败:', error);

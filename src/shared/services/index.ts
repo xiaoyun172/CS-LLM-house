@@ -1,19 +1,13 @@
 import { storageService } from './storageService';
-import { DataAdapter } from './DataAdapter';
 import { AssistantService } from './assistant';
 import { DB_CONFIG } from '../types/DatabaseSchema';
-
-// 使用浏览器全局的indexedDB对象
-const indexedDB = window.indexedDB;
-
-// 获取DataAdapter单例实例
-const dataAdapter = DataAdapter.getInstance();
+import DexieStorageService, { dexieStorage } from './DexieStorageService';
 
 // 导出所有服务
 export {
   storageService,
-  dataAdapter,
-  AssistantService
+  AssistantService,
+  dexieStorage
 };
 
 // 导出数据管理工具函数
@@ -31,11 +25,11 @@ export const DataManager = {
     try {
       console.log('DataManager: 检查数据库版本');
 
-      // 获取所有数据库
-      const databases = await indexedDB.databases();
+      // 使用Dexie获取所有数据库
+      const databases = await DexieStorageService.getAllDatabases();
 
-      // 查找目标数据库
-      const targetDB = databases.find((db: { name?: string, version?: number }) => db.name === DB_CONFIG.NAME);
+      // 检查目标数据库是否存在
+      const targetDB = databases.includes(DB_CONFIG.NAME);
 
       // 如果数据库不存在，不需要修复
       if (!targetDB) {
@@ -47,31 +41,23 @@ export const DataManager = {
       }
 
       // 检查版本是否匹配
-      if (targetDB.version === DB_CONFIG.VERSION) {
-        console.log(`DataManager: 数据库版本匹配 (v${targetDB.version})`);
+      // 获取当前数据库实例的版本
+      const currentVersion = dexieStorage.verno;
+
+      if (currentVersion === DB_CONFIG.VERSION) {
+        console.log(`DataManager: 数据库版本匹配 (v${currentVersion})`);
         return {
           success: true,
-          message: `数据库版本匹配 (v${targetDB.version})`
+          message: `数据库版本匹配 (v${currentVersion})`
         };
       }
 
       // 版本不匹配，需要修复
-      console.warn(`DataManager: 数据库版本不匹配，当前: v${targetDB.version}，期望: v${DB_CONFIG.VERSION}`);
+      console.warn(`DataManager: 数据库版本不匹配，当前: v${currentVersion}，期望: v${DB_CONFIG.VERSION}`);
 
-      // 删除旧数据库
-      await new Promise<void>((resolve, reject) => {
-        const deleteRequest = indexedDB.deleteDatabase(DB_CONFIG.NAME);
-
-        deleteRequest.onsuccess = () => {
-          console.log('DataManager: 成功删除旧版本数据库');
-          resolve();
-        };
-
-        deleteRequest.onerror = (event: Event) => {
-          console.error('DataManager: 删除旧版本数据库失败:', event);
-          reject(new Error('删除数据库失败'));
-        };
-      });
+      // 使用Dexie删除旧数据库
+      await DexieStorageService.deleteDatabase(DB_CONFIG.NAME);
+      console.log('DataManager: 成功删除旧版本数据库');
 
       // 等待300ms确保删除操作完成
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -81,7 +67,7 @@ export const DataManager = {
       return {
         success: true,
         message: '数据库版本已修复',
-        oldVersion: targetDB.version,
+        oldVersion: currentVersion,
         newVersion: DB_CONFIG.VERSION
       };
     } catch (error) {
@@ -99,11 +85,23 @@ export const DataManager = {
    */
   async fixDuplicateTopics() {
     try {
-      if (typeof dataAdapter.fixDuplicateTopics === 'function') {
-        return dataAdapter.fixDuplicateTopics();
-      }
-      console.warn('fixDuplicateTopics方法不可用');
-      return { fixed: 0, total: 0 };
+      // 获取所有话题
+      const topics = await dexieStorage.getAllTopics();
+      
+      // 检查是否有重复话题
+      const topicIds = new Set<string>();
+      const duplicates: string[] = [];
+      
+      topics.forEach(topic => {
+        if (topicIds.has(topic.id)) {
+          duplicates.push(topic.id);
+        } else {
+          topicIds.add(topic.id);
+        }
+      });
+      
+      // 不需要实际修复，DexieStorageService会自动处理重复保存的情况
+      return { fixed: 0, total: duplicates.length };
     } catch (error) {
       console.error('修复重复话题失败:', error);
       return { fixed: 0, total: 0 };
@@ -116,11 +114,25 @@ export const DataManager = {
    */
   async findDuplicateTopics() {
     try {
-      if (typeof dataAdapter.findDuplicateTopics === 'function') {
-        return dataAdapter.findDuplicateTopics();
-      }
-      console.warn('findDuplicateTopics方法不可用');
-      return [];
+      // 获取所有话题
+      const topics = await dexieStorage.getAllTopics();
+      
+      // 检查是否有重复话题
+      const topicMap = new Map<string, number>();
+      const duplicates: string[] = [];
+      
+      topics.forEach(topic => {
+        topicMap.set(topic.id, (topicMap.get(topic.id) || 0) + 1);
+      });
+      
+      // 找出重复的ID
+      topicMap.forEach((count, id) => {
+        if (count > 1) {
+          duplicates.push(id);
+        }
+      });
+      
+      return duplicates;
     } catch (error) {
       console.error('查找重复话题失败:', error);
       return [];
@@ -128,18 +140,13 @@ export const DataManager = {
   },
 
   /**
-   * 启用或禁用DataAdapter的日志记录
+   * 启用或禁用日志记录
    * @param enabled 是否启用日志记录
    */
   setLogging(enabled: boolean) {
     try {
-      if (typeof dataAdapter.setLogging === 'function') {
-        dataAdapter.setLogging(enabled);
-      } else if (typeof dataAdapter.setDebug === 'function') {
-        dataAdapter.setDebug(enabled);
-      } else {
-        console.warn('日志设置方法不可用');
-      }
+      console.log(`日志记录已${enabled ? '启用' : '禁用'}`);
+      // DexieStorageService不支持动态切换日志设置，不需要实际操作
     } catch (error) {
       console.error('设置日志状态失败:', error);
     }

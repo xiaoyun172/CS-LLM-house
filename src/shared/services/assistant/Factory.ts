@@ -3,14 +3,15 @@ import React from 'react';
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { uuid } from '../../utils';
-import { DataService } from '../DataService';
 import { getDefaultTopic } from './types';
 import { AssistantManager } from './AssistantManager';
 import { DEFAULT_SYSTEM_PROMPT, WEB_ANALYSIS_PROMPT } from '../../config/prompts';
 import { SystemPromptService } from '../SystemPromptService';
+import { dexieStorage } from '../DexieStorageService';
 
-// 获取DataService实例
-const dataService = DataService.getInstance();
+// 移除DataService引用
+// import { DataService } from '../DataService';
+// const dataService = DataService.getInstance();
 const promptService = SystemPromptService.getInstance();
 
 /**
@@ -52,7 +53,7 @@ export class AssistantFactory {
 
       // 保存话题到数据库
       try {
-        await dataService.saveTopic(defaultTopic);
+        await dexieStorage.saveTopic(defaultTopic);
         console.log(`默认助手的默认话题已保存到数据库: ${defaultTopic.id}`);
       } catch (saveTopicError) {
         console.error(`保存默认助手 ${assistant.id} 的默认话题失败:`, saveTopicError);

@@ -1,6 +1,6 @@
 import type { ChatTopic } from '../types';
-import { DataAdapter } from './DataAdapter';
 import { TopicService } from './TopicService';
+import { dexieStorage } from './DexieStorageService';
 
 /**
  * 话题统计服务
@@ -72,14 +72,13 @@ export class TopicStatsService {
       // 优先使用TopicService获取话题
       topics = await TopicService.getAllTopics();
     } catch (error) {
-      console.error('通过TopicService获取话题失败，尝试通过DataAdapter获取', error);
+      console.error('通过TopicService获取话题失败，尝试通过dexieStorage获取', error);
 
       try {
-        // 备选方案：使用DataAdapter
-        const adapter = DataAdapter.getInstance();
-        topics = await adapter.getAllTopics();
-      } catch (adapterError) {
-        console.error('通过DataAdapter获取话题失败', adapterError);
+        // 备选方案：使用dexieStorage
+        topics = await dexieStorage.getAllTopics();
+      } catch (dexieError) {
+        console.error('通过dexieStorage获取话题失败', dexieError);
         // 如果两种方式都失败，返回空结果
         return {
           totalCount: 0,
@@ -155,14 +154,13 @@ export class TopicStatsService {
       return { removed: 0, total: stats.totalCount };
     }
 
-    const adapter = DataAdapter.getInstance();
     let removedCount = 0;
 
     // 删除无效话题
     for (const topic of stats.invalidTopics) {
       try {
         if (topic.id) {
-          await adapter.deleteTopic(topic.id);
+          await dexieStorage.deleteTopic(topic.id);
           removedCount++;
         }
       } catch (error) {

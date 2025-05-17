@@ -1,8 +1,9 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { Model } from '../types';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { GeneratedImage } from '../types';
 import { ThinkingDisplayStyle } from '../../components/message/ThinkingProcess';
+import { getStorageItem, setStorageItem } from '../utils/storage';
 
 export interface ModelProvider {
   id: string;
@@ -32,6 +33,7 @@ interface SettingsState {
   modelSelectorStyle: 'dialog' | 'dropdown';
   thinkingDisplayStyle: string;
   toolbarDisplayStyle: 'icon' | 'text' | 'both'; // 工具栏显示样式：仅图标、仅文字、图标+文字
+  isLoading: boolean; // 添加加载状态以处理异步操作
 }
 
 // 初始预设供应商
@@ -122,40 +124,10 @@ const getDefaultModelId = (providers: ModelProvider[]): string | undefined => {
   return undefined;
 };
 
-// 从localStorage加载数据或使用初始状态
-const loadFromStorage = (): SettingsState => {
-  try {
-    const savedSettings = localStorage.getItem('settings');
-    if (savedSettings) {
-      const parsed = JSON.parse(savedSettings);
-      const providers = parsed.providers || initialProviders;
-
-      // 如果没有存储当前模型ID，使用默认模型ID
-      if (!parsed.currentModelId) {
-        parsed.currentModelId = parsed.defaultModelId || getDefaultModelId(providers);
-      }
-
-      // 如果没有思考过程显示样式设置，使用默认值
-      if (!parsed.thinkingDisplayStyle) {
-        parsed.thinkingDisplayStyle = ThinkingDisplayStyle.COMPACT;
-      }
-
-      // 如果没有工具栏显示样式设置，使用默认值
-      if (!parsed.toolbarDisplayStyle) {
-        parsed.toolbarDisplayStyle = 'both';
-      }
-
-      return {
-        ...parsed,
-        providers
-      };
-    }
-  } catch (e) {
-    console.error('Failed to load settings from localStorage', e);
-  }
-  
-  // 初始状态
-  const defaultState = {
+// 初始化默认状态
+const getInitialState = (): SettingsState => {
+  // 默认状态
+  const defaultState: SettingsState = {
     theme: 'system' as 'light' | 'dark' | 'system',
     fontSize: 16,
     language: 'zh-CN',
@@ -165,8 +137,9 @@ const loadFromStorage = (): SettingsState => {
     providers: initialProviders,
     autoNameTopic: true,
     modelSelectorStyle: 'dialog' as 'dialog' | 'dropdown',
-    thinkingDisplayStyle: ThinkingDisplayStyle.COMPACT, // 默认使用紧凑型显示样式
-    toolbarDisplayStyle: 'both' as 'icon' | 'text' | 'both', // 默认显示图标+文字
+    thinkingDisplayStyle: ThinkingDisplayStyle.COMPACT,
+    toolbarDisplayStyle: 'both' as 'icon' | 'text' | 'both',
+    isLoading: true // 初始时设为加载中状态
   };
 
   // 设置默认模型
@@ -178,7 +151,54 @@ const loadFromStorage = (): SettingsState => {
   };
 };
 
-const initialState: SettingsState = loadFromStorage();
+// 创建异步加载设置的thunk
+export const loadSettings = createAsyncThunk('settings/load', async () => {
+  try {
+    const savedSettings = await getStorageItem<SettingsState>('settings');
+    if (savedSettings) {
+      const providers = savedSettings.providers || initialProviders;
+
+      // 如果没有存储当前模型ID，使用默认模型ID
+      if (!savedSettings.currentModelId) {
+        savedSettings.currentModelId = savedSettings.defaultModelId || getDefaultModelId(providers);
+      }
+
+      // 如果没有思考过程显示样式设置，使用默认值
+      if (!savedSettings.thinkingDisplayStyle) {
+        savedSettings.thinkingDisplayStyle = ThinkingDisplayStyle.COMPACT;
+      }
+
+      // 如果没有工具栏显示样式设置，使用默认值
+      if (!savedSettings.toolbarDisplayStyle) {
+        savedSettings.toolbarDisplayStyle = 'both';
+      }
+
+      return {
+        ...savedSettings,
+        providers
+      };
+    }
+    
+    // 如果没有保存的设置，返回null让reducer使用默认值
+    return null;
+  } catch (e) {
+    console.error('Failed to load settings from storage', e);
+    return null;
+  }
+});
+
+// 创建异步保存设置的thunk
+export const saveSettings = createAsyncThunk('settings/save', async (state: SettingsState) => {
+  try {
+    await setStorageItem('settings', state);
+    return true;
+  } catch (e) {
+    console.error('Failed to save settings to storage', e);
+    return false;
+  }
+});
+
+const initialState = getInitialState();
 
 const settingsSlice = createSlice({
   name: 'settings',
@@ -186,34 +206,28 @@ const settingsSlice = createSlice({
   reducers: {
     setTheme: (state, action: PayloadAction<'light' | 'dark' | 'system'>) => {
       state.theme = action.payload;
-      saveToStorage(state);
+      // 异步操作将通过 extraReducers 处理
     },
     setFontSize: (state, action: PayloadAction<number>) => {
       state.fontSize = action.payload;
-      saveToStorage(state);
     },
     setLanguage: (state, action: PayloadAction<string>) => {
       state.language = action.payload;
-      saveToStorage(state);
     },
     setSendWithEnter: (state, action: PayloadAction<boolean>) => {
       state.sendWithEnter = action.payload;
-      saveToStorage(state);
     },
     setEnableNotifications: (state, action: PayloadAction<boolean>) => {
       state.enableNotifications = action.payload;
-      saveToStorage(state);
     },
     addModel: (state, action: PayloadAction<Model>) => {
         state.models.push(action.payload);
-      saveToStorage(state);
     },
     updateModel: (state, action: PayloadAction<{ id: string; updates: Partial<Model> }>) => {
       const { id, updates } = action.payload;
       const modelIndex = state.models.findIndex(model => model.id === id);
       if (modelIndex !== -1) {
         state.models[modelIndex] = { ...state.models[modelIndex], ...updates };
-        saveToStorage(state);
       }
     },
     deleteModel: (state, action: PayloadAction<string>) => {
@@ -246,27 +260,19 @@ const settingsSlice = createSlice({
       if (state.currentModelId === modelId) {
         state.currentModelId = state.defaultModelId;
       }
-
-      saveToStorage(state);
     },
     setDefaultModel: (state, action: PayloadAction<string>) => {
         state.models.forEach(model => {
         model.isDefault = model.id === action.payload;
       });
       state.defaultModelId = action.payload;
-      saveToStorage(state);
     },
-    // 新增：设置当前选择的模型
     setCurrentModel: (state, action: PayloadAction<string>) => {
       state.currentModelId = action.payload;
-      saveToStorage(state);
     },
-    // 新增：添加供应商
     addProvider: (state, action: PayloadAction<ModelProvider>) => {
       state.providers.push(action.payload);
-      saveToStorage(state);
     },
-    // 新增：更新供应商
     updateProvider: (state, action: PayloadAction<{ id: string; updates: Partial<ModelProvider> }>) => {
       const { id, updates } = action.payload;
       const providerIndex = state.providers.findIndex(provider => provider.id === id);
@@ -281,25 +287,18 @@ const settingsSlice = createSlice({
             baseUrl: updates.baseUrl !== undefined ? updates.baseUrl : model.baseUrl
           }));
         }
-        
-        saveToStorage(state);
       }
     },
-    // 新增：删除供应商
     deleteProvider: (state, action: PayloadAction<string>) => {
       state.providers = state.providers.filter(provider => provider.id !== action.payload);
-      saveToStorage(state);
     },
-    // 新增：切换供应商启用状态
     toggleProviderEnabled: (state, action: PayloadAction<{ id: string; enabled: boolean }>) => {
       const { id, enabled } = action.payload;
       const providerIndex = state.providers.findIndex(provider => provider.id === id);
       if (providerIndex !== -1) {
         state.providers[providerIndex].isEnabled = enabled;
-        saveToStorage(state);
       }
     },
-    // 新增：添加模型到供应商
     addModelToProvider: (state, action: PayloadAction<{ providerId: string; model: Model }>) => {
       const { providerId, model } = action.payload;
       const providerIndex = state.providers.findIndex(provider => provider.id === providerId);
@@ -312,10 +311,8 @@ const settingsSlice = createSlice({
           apiKey: provider.apiKey,
           baseUrl: provider.baseUrl
         });
-        saveToStorage(state);
       }
     },
-    // 新增：设置供应商默认模型
     setProviderDefaultModel: (state, action: PayloadAction<{ providerId: string; modelId: string }>) => {
       const { providerId, modelId } = action.payload;
       const providerIndex = state.providers.findIndex(provider => provider.id === providerId);
@@ -323,10 +320,8 @@ const settingsSlice = createSlice({
         state.providers[providerIndex].models.forEach(model => {
           model.isDefault = model.id === modelId;
         });
-        saveToStorage(state);
       }
     },
-    // 新增：从供应商中删除模型
     deleteModelFromProvider: (state, action: PayloadAction<{ providerId: string; modelId: string }>) => {
       const { providerId, modelId } = action.payload;
       const providerIndex = state.providers.findIndex(provider => provider.id === providerId);
@@ -354,11 +349,8 @@ const settingsSlice = createSlice({
         if (state.currentModelId === modelId) {
           state.currentModelId = state.defaultModelId;
         }
-
-        saveToStorage(state);
       }
     },
-    // 添加保存生成图像的actions
     addGeneratedImage: (state, action: PayloadAction<GeneratedImage>) => {
       // 初始化generatedImages数组（如果不存在）
       if (!state.generatedImages) {
@@ -372,11 +364,7 @@ const settingsSlice = createSlice({
       if (state.generatedImages.length > 50) {
         state.generatedImages = state.generatedImages.slice(0, 50);
       }
-      
-      // 保存到localStorage
-      saveToStorage(state);
     },
-    // 添加删除图像的action
     deleteGeneratedImage: (state, action: PayloadAction<string>) => {
       // 如果generatedImages不存在，直接返回
       if (!state.generatedImages) {
@@ -387,39 +375,50 @@ const settingsSlice = createSlice({
       state.generatedImages = state.generatedImages.filter(
         image => image.url !== action.payload
       );
-      
-      // 保存到localStorage
-      saveToStorage(state);
     },
-    // 添加清除所有图像的action
     clearGeneratedImages: (state) => {
       state.generatedImages = [];
-      
-      // 保存到localStorage
-      saveToStorage(state);
     },
-    // 更新设置
     updateSettings: (state, action: PayloadAction<Partial<SettingsState>>) => {
       Object.assign(state, action.payload);
-      saveToStorage(state);
     },
     setModelSelectorStyle: (state, action: PayloadAction<'dialog' | 'dropdown'>) => {
       state.modelSelectorStyle = action.payload;
-      saveToStorage(state);
     },
   },
+  extraReducers: (builder) => {
+    // 处理加载设置
+    builder
+      .addCase(loadSettings.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(loadSettings.fulfilled, (state, action) => {
+        if (action.payload) {
+          // 合并加载的设置与当前状态
+          return {
+            ...action.payload,
+            isLoading: false
+          };
+        }
+        state.isLoading = false;
+      })
+      .addCase(loadSettings.rejected, (state) => {
+        state.isLoading = false;
+      })
+      // 统一的响应保存设置操作的处理
+      .addCase(saveSettings.pending, () => {
+        // 可以在这里设置保存中的状态标记，如果需要的话
+      })
+      .addCase(saveSettings.fulfilled, () => {
+        // 保存完成后的处理，如果需要的话
+      })
+      .addCase(saveSettings.rejected, () => {
+        // 保存失败的处理，如果需要的话
+      });
+  }
 });
 
-// 保存到localStorage的辅助函数
-const saveToStorage = (state: SettingsState) => {
-  try {
-    localStorage.setItem('settings', JSON.stringify(state));
-  } catch (e) {
-    console.error('Failed to save settings to localStorage', e);
-  }
-};
-
-// 导出actions
+// 导出操作
 export const {
   setTheme,
   setFontSize,
@@ -445,4 +444,36 @@ export const {
   setModelSelectorStyle,
 } = settingsSlice.actions;
 
+// 重用现有的action creators，但添加异步保存
+export const saveSettingsToStorage = (state: RootState) => (
+  async (dispatch: any) => {
+    try {
+      // 触发异步保存
+      await dispatch(saveSettings(state.settings));
+    } catch (error) {
+      console.error('保存设置时出错:', error);
+    }
+  }
+);
+
+// 中间件，用于在每次状态更改后保存
+export const settingsMiddleware = (store: any) => (next: any) => (action: any) => {
+  // 首先让reducer处理action
+  const result = next(action);
+  
+  // 如果是设置相关的action，自动保存状态
+  if (action.type.startsWith('settings/') && 
+      !action.type.includes('load') && 
+      !action.type.includes('save')) {
+    store.dispatch(saveSettings(store.getState().settings));
+  }
+  
+  return result;
+};
+
 export default settingsSlice.reducer;
+
+// 用于TypeScript的RootState类型提示
+interface RootState {
+  settings: SettingsState;
+}

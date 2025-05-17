@@ -13,6 +13,7 @@ export interface MessagesState {
   loadingByTopic: Record<string, boolean>;
   streamingByTopic: Record<string, boolean>;
   error: string | null;
+  forceUpdateCounter: number; // 添加一个计数器来触发强制更新
 }
 
 // 初始状态
@@ -23,6 +24,7 @@ const initialState: MessagesState = {
   loadingByTopic: {},
   streamingByTopic: {},
   error: null,
+  forceUpdateCounter: 0, // 初始化计数器
 };
 
 // 话题加载处理函数
@@ -163,6 +165,7 @@ const messagesSlice = createSlice({
     // 创建主题
     createTopic: (state, action: PayloadAction<ChatTopic>) => {
       const newTopic = action.payload;
+      console.log(`创建话题action: ${newTopic.id} (${newTopic.title})`);
       
       // 检查主题是否已存在
       const exists = state.topics.some(topic => topic.id === newTopic.id);
@@ -179,6 +182,10 @@ const messagesSlice = createSlice({
       
       // 设置为当前主题
       state.currentTopic = newTopic;
+      
+      // 递增强制更新计数器
+      state.forceUpdateCounter += 1;
+      console.log(`话题创建后增加forceUpdateCounter: ${state.forceUpdateCounter}`);
       
       // 保存到数据库
       saveTopicToDB(newTopic).catch(error => {
@@ -218,6 +225,17 @@ const messagesSlice = createSlice({
       if (state.currentTopic && state.currentTopic.id === topicId) {
         state.currentTopic.messages = messages.slice();
       }
+    },
+
+    // 强制更新话题列表
+    forceTopicsUpdate: (state) => {
+      // 增加计数器触发关联组件的重新渲染
+      state.forceUpdateCounter += 1;
+      console.log('强制更新话题列表，计数器:', state.forceUpdateCounter);
+      
+      // 记录更新时间
+      const timestamp = new Date().toISOString();
+      console.log(`强制更新触发时间: ${timestamp}`);
     },
     
     // 接收成功加载的话题数据
@@ -286,7 +304,8 @@ export const {
   createTopic,
   updateTopic,
   setTopicMessages,
-  loadTopicsSuccess
+  loadTopicsSuccess,
+  forceTopicsUpdate
 } = messagesSlice.actions;
 
 // 异步action creator

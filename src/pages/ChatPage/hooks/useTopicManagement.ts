@@ -7,14 +7,11 @@ import {
 } from '../../../shared/store/slices/messagesSlice';
 import type { ChatTopic } from '../../../shared/types';
 import { AssistantService } from '../../../shared/services';
-import { DataAdapter } from '../../../shared/services/DataAdapter';
 import type { Assistant } from '../../../shared/types/Assistant';
 import { TopicService } from '../../../shared/services/TopicService';
 import { getStorageItem } from '../../../shared/utils/storage';
 import { formatDateForTopicTitle } from '../../../shared/utils';
-
-// 获取DataAdapter实例
-const dataAdapter = DataAdapter.getInstance();
+import { dexieStorage } from '../../../shared/services/DexieStorageService';
 
 export function useTopicManagement(currentTopic: ChatTopic | null) {
   const dispatch = useDispatch();
@@ -31,7 +28,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
   // 当主题变化时保存到本地存储
   useEffect(() => {
     if (topics.length > 0) {
-      // 保存前对话题进行去重 - 现在由DataAdapter内部处理
+      // 保存前对话题进行去重 - 现在由dexieStorage内部处理
       // 此处保留空实现，确保不破坏现有的状态管理行为
       console.log('话题列表已更新，数量:', topics.length);
     }
@@ -42,9 +39,9 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
     try {
       console.log('开始加载话题列表');
 
-      // 使用新的DataAdapter获取话题
-      const validTopics = await dataAdapter.getAllTopics();
-      console.log('通过DataAdapter加载了话题，数量:', validTopics.length);
+      // 使用dexieStorage获取话题
+      const validTopics = await dexieStorage.getAllTopics();
+      console.log('通过dexieStorage加载了话题，数量:', validTopics.length);
 
       // 如果有主题，选择第一个
       if (validTopics.length > 0 && !currentTopic) {
@@ -56,7 +53,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
         // 加载每个话题的消息到Redux
         for (const topic of validTopics) {
           if (topic.messages && topic.messages.length > 0) {
-            // DataAdapter已经对消息进行了去重，可以直接使用
+            // dexieStorage已经对消息进行了去重，可以直接使用
             dispatch(setTopicMessages({
               topicId: topic.id,
               messages: topic.messages
@@ -67,7 +64,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
       return validTopics;
     } catch (error) {
-      console.error('通过DataAdapter加载话题失败:', error);
+      console.error('通过dexieStorage加载话题失败:', error);
 
       // 检查是否是首次使用应用
       const isFirstTimeUser = await getStorageItem<string>('first-time-user') === null;
@@ -99,12 +96,12 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
     console.log('默认话题创建成功:', defaultTopic);
 
-    // 使用DataAdapter保存话题到数据库
+    // 使用dexieStorage保存话题到数据库
     try {
-      const savedTopic = await dataAdapter.createTopic(defaultTopic);
-      console.log('通过DataAdapter创建了默认话题:', savedTopic.id);
+      await dexieStorage.saveTopic(defaultTopic);
+      console.log('通过dexieStorage创建了默认话题:', defaultTopic.id);
     } catch (error) {
-      console.error('通过DataAdapter创建默认话题失败:', error);
+      console.error('通过dexieStorage创建默认话题失败:', error);
     }
 
     // 仍然使用Redux操作，保持状态一致性
@@ -132,13 +129,6 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
           // 保存更新的助手
           await AssistantService.updateAssistant(updatedAssistant);
-
-          // 同时更新到DataAdapter
-          try {
-            await dataAdapter.saveAssistant(updatedAssistant);
-          } catch (error) {
-            console.error('保存助手到DataAdapter失败:', error);
-          }
         }
       } catch (error) {
         console.error('关联默认话题到助手时出错:', error);
@@ -158,7 +148,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
       if (newTopic) {
         console.log('useTopicManagement: 话题创建成功', newTopic.id);
         return newTopic;
-          } else {
+      } else {
         console.error('useTopicManagement: 话题创建失败');
         return null;
       }

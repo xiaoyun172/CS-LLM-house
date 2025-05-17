@@ -1,5 +1,6 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Navigate, Routes, Route } from 'react-router-dom';
+import { getStorageItem } from '../shared/utils/storage';
 // 使用懒加载导入组件
 const ChatPage = lazy(() => import('../pages/ChatPage'));
 const WelcomePage = lazy(() => import('../pages/WelcomePage'));
@@ -34,20 +35,25 @@ const LoadingFallback = () => (
   </div>
 );
 
-// 检查是否是第一次使用
-const isFirstTimeUser = () => {
-  return localStorage.getItem('first-time-user') === null;
-};
-
 // 路由提供者组件
 const AppRouter: React.FC = () => {
-  const [firstTime, setFirstTime] = useState<boolean | null>(null);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setFirstTime(isFirstTimeUser());
+    async function checkFirstTimeUser() {
+      try {
+        const firstTimeUserValue = await getStorageItem<string>('first-time-user');
+        setIsFirstTimeUser(firstTimeUserValue === null);
+      } catch (error) {
+        console.error('检查首次用户状态出错:', error);
+        setIsFirstTimeUser(false); // 出错时默认为非首次用户
+      }
+    }
+    
+    checkFirstTimeUser();
   }, []);
 
-  if (firstTime === null) {
+  if (isFirstTimeUser === null) {
     // 显示加载状态
     return <LoadingFallback />;
   }
@@ -55,7 +61,7 @@ const AppRouter: React.FC = () => {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
-        <Route path="/" element={firstTime ? <Navigate to="/welcome" replace /> : <Navigate to="/chat" replace />} />
+        <Route path="/" element={isFirstTimeUser ? <Navigate to="/welcome" replace /> : <Navigate to="/chat" replace />} />
         <Route path="/welcome" element={<WelcomePage />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />

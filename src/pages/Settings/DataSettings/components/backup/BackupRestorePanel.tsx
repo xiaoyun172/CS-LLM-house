@@ -21,7 +21,7 @@ import {
   readJSONFromFile,
   performFullRestore,
 } from '../../utils/restoreUtils';
-import { DataService } from '../../../../../shared/services/DataService';
+import { dexieStorage } from '../../../../../shared/services/DexieStorageService';
 
 /**
  * 备份恢复面板组件
@@ -327,8 +327,8 @@ const BackupRestorePanel: React.FC = () => {
     setIsLoading(true);
     
     try {
-      // 使用DataService清理所有数据
-      await DataService.getInstance().clearAllData();
+      // 使用dexieStorage清理所有数据
+      await dexieStorage.clearDatabase();
       
       // 显示成功消息
       showMessage('所有数据已彻底清除', 'success');

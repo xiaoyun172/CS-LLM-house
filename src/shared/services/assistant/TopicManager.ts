@@ -1,13 +1,10 @@
-import { DataService } from '../DataService';
 import { TopicService } from '../TopicService';
 import { TopicStatsService } from '../TopicStatsService';
 import type { ChatTopic } from '../../types';
 import { getDefaultTopic } from './types';
 import { AssistantManager } from './AssistantManager';
 import { DEFAULT_TOPIC_PROMPT } from '../../config/prompts';
-
-// 获取DataService实例
-const dataService = DataService.getInstance();
+import { dexieStorage } from '../DexieStorageService';
 
 /**
  * 话题关联管理服务 - 负责助手与话题之间的关联关系管理
@@ -26,8 +23,8 @@ export class TopicManager {
         return false;
       }
 
-      // 获取助手
-      const assistant = await dataService.getAssistant(assistantId);
+      // 获取助手 - 使用dexieStorage替代dataService
+      const assistant = await dexieStorage.getAssistant(assistantId);
       if (!assistant) {
         console.error(`助手 ${assistantId} 不存在`);
         return false;
@@ -47,7 +44,7 @@ export class TopicManager {
         // 尝试修复话题 - 添加系统提示词
         if (!topic.prompt) {
           topic.prompt = DEFAULT_TOPIC_PROMPT;
-          await dataService.saveTopic(topic);
+          await dexieStorage.saveTopic(topic);
           console.log(`已为话题 ${topicId} 添加系统提示词`);
         }
 
@@ -110,8 +107,8 @@ export class TopicManager {
     try {
       console.log(`尝试从助手 ${assistantId} 移除话题 ${topicId}`);
 
-      // 获取助手
-      const assistant = await dataService.getAssistant(assistantId);
+      // 获取助手 - 使用dexieStorage替代dataService
+      const assistant = await dexieStorage.getAssistant(assistantId);
       if (!assistant) {
         console.error(`助手 ${assistantId} 不存在`);
         return false;
@@ -153,8 +150,8 @@ export class TopicManager {
    */
   static async getAssistantTopics(assistantId: string): Promise<string[]> {
     try {
-      // 获取助手
-      const assistant = await dataService.getAssistant(assistantId);
+      // 获取助手 - 使用dexieStorage替代dataService
+      const assistant = await dexieStorage.getAssistant(assistantId);
       if (!assistant) {
         console.error(`助手 ${assistantId} 不存在`);
         return [];
@@ -175,8 +172,8 @@ export class TopicManager {
     try {
       console.log(`尝试清空助手 ${assistantId} 的话题`);
 
-      // 获取助手
-      const assistant = await dataService.getAssistant(assistantId);
+      // 获取助手 - 使用dexieStorage替代dataService
+      const assistant = await dexieStorage.getAssistant(assistantId);
       if (!assistant) {
         console.error(`助手 ${assistantId} 不存在`);
         return false;
@@ -220,15 +217,15 @@ export class TopicManager {
   }
 
   /**
-   * 确保助手有话题（不再自动创建默认话题）
-   * 修改后的方法只返回现有话题，如果没有话题则抛出异常
+   * 确保助手至少有一个话题
+   * 如果没有话题，将自动创建一个默认话题
    */
   static async ensureAssistantHasTopic(assistantId: string): Promise<ChatTopic> {
     try {
       console.log(`[TopicManager] 检查助手 ${assistantId} 的话题`);
 
-      // 获取助手
-      const assistant = await dataService.getAssistant(assistantId);
+      // 获取助手 - 使用dexieStorage替代dataService
+      const assistant = await dexieStorage.getAssistant(assistantId);
       if (!assistant) {
         console.error(`[TopicManager] 助手 ${assistantId} 不存在，无法获取话题`);
         throw new Error(`助手 ${assistantId} 不存在`);
@@ -282,7 +279,7 @@ export class TopicManager {
       try {
         // 保存话题到数据库
         console.log(`[TopicManager] 尝试保存话题到数据库: ${defaultTopic.id}`);
-        await dataService.saveTopic(defaultTopic);
+        await dexieStorage.saveTopic(defaultTopic);
         console.log(`[TopicManager] 话题 ${defaultTopic.id} 已成功保存到数据库`);
       } catch (saveError) {
         console.error(`[TopicManager] 保存话题 ${defaultTopic.id} 到数据库失败:`, saveError);
@@ -361,8 +358,8 @@ export class TopicManager {
     try {
       console.log(`[TopicManager] 验证助手 ${assistantId} 的话题引用`);
 
-      // 获取助手
-      const assistant = await dataService.getAssistant(assistantId);
+      // 获取助手 - 使用dexieStorage替代dataService
+      const assistant = await dexieStorage.getAssistant(assistantId);
       if (!assistant) {
         console.error(`[TopicManager] 助手 ${assistantId} 不存在，无法验证话题引用`);
         return { fixed: false, removedCount: 0, validCount: 0 };

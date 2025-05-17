@@ -1,12 +1,10 @@
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { FileOpener } from '@capacitor-community/file-opener';
-import { 
-  getAllTopicsFromDB, 
-  getAllAssistantsFromDB 
-} from '../../../../shared/services/storageService';
 import type { ChatTopic } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
+import { dexieStorage } from '../../../../shared/services/DexieStorageService';
+import { getStorageItem, getAllStorageKeys } from '../../../../shared/utils/storage';
 
 // 默认备份目录
 export const DEFAULT_BACKUP_DIRECTORY = 'AetherLink/backups';
@@ -17,17 +15,17 @@ export const CURRENT_BACKUP_VERSION = 5;
 /**
  * 获取备份存储类型（external或documents）
  */
-export function getBackupStorageType(): 'external' | 'documents' {
-  return localStorage.getItem('backup-storage-type') === 'external' 
-    ? 'external' 
-    : 'documents';
+export async function getBackupStorageType(): Promise<'external' | 'documents'> {
+  const storageType = await getStorageItem<string>('backup-storage-type');
+  return storageType === 'external' ? 'external' : 'documents';
 }
 
 /**
  * 获取备份位置
  */
-export function getBackupLocation(): string {
-  return localStorage.getItem('backup-location') || DEFAULT_BACKUP_DIRECTORY;
+export async function getBackupLocation(): Promise<string> {
+  const location = await getStorageItem<string>('backup-location');
+  return location || DEFAULT_BACKUP_DIRECTORY;
 }
 
 /**
@@ -35,8 +33,8 @@ export function getBackupLocation(): string {
  */
 export async function ensureBackupDirectory(): Promise<boolean> {
   try {
-    const backupLocation = getBackupLocation();
-    const backupStorageType = getBackupStorageType();
+    const backupLocation = await getBackupLocation();
+    const backupStorageType = await getBackupStorageType();
     
     try {
       await Filesystem.mkdir({
@@ -293,7 +291,35 @@ function processTopics(topics: ChatTopic[]): ChatTopic[] {
 }
 
 /**
- * 准备基本备份数据
+ * 从Dexie.js获取所有localStorage键值对
+ * @param excludeKeys 排除的键
+ * @returns 键值对对象
+ */
+export async function getLocalStorageItems(excludeKeys: string[] = []): Promise<Record<string, any>> {
+  try {
+    // 获取所有键
+    const allKeys = await getAllStorageKeys();
+    
+    // 过滤排除的键
+    const filteredKeys = allKeys.filter(key => !excludeKeys.includes(key));
+    
+    // 构建结果对象
+    const result: Record<string, any> = {};
+    
+    // 遍历键并获取值
+    for (const key of filteredKeys) {
+      result[key] = await getStorageItem(key);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('获取所有localStorage项失败:', error);
+    return {};
+  }
+}
+
+/**
+ * 准备基础备份数据
  */
 export async function prepareBasicBackupData(): Promise<{
   topics: ChatTopic[];
@@ -307,62 +333,37 @@ export async function prepareBasicBackupData(): Promise<{
   };
 }> {
   try {
-    // 获取数据
-    console.log('开始从数据库获取话题数据...');
-    const allTopics = await getAllTopicsFromDB();
-    console.log(`从数据库获取到 ${allTopics.length} 个话题`);
+    // 获取话题数据
+    console.log('开始获取话题数据...');
+    const topics = await dexieStorage.getAllTopics();
+    console.log(`获取到 ${topics.length} 个话题`);
     
-    console.log('开始从数据库获取助手数据...');
-    const allAssistants = await getAllAssistantsFromDB();
-    console.log(`从数据库获取到 ${allAssistants.length} 个助手`);
+    // 获取助手数据
+    console.log('开始获取助手数据...');
+    const assistants = await dexieStorage.getAllAssistants();
+    console.log(`获取到 ${assistants.length} 个助手`);
     
-    // 如果没有数据，检查localStorage中是否有备份
-    if (allTopics.length === 0 && allAssistants.length === 0) {
-      console.warn('数据库中没有找到数据，尝试从localStorage中获取...');
-      
-      // 从localStorage获取助手数据
-      const assistantsJson = localStorage.getItem('userAssistants');
-      const localAssistants = assistantsJson ? JSON.parse(assistantsJson) : [];
-      console.log(`从localStorage获取到 ${localAssistants.length} 个助手`);
-      
-      // 从localStorage获取话题数据
-      const topicsJson = localStorage.getItem('chatTopics');
-      const localTopics = topicsJson ? JSON.parse(topicsJson) : [];
-      console.log(`从localStorage获取到 ${localTopics.length} 个话题`);
-      
-      // 处理话题数据 - 去重和修复状态
-      const processedTopics = processTopics(localTopics);
-      
-      return {
-        topics: processedTopics,
-        assistants: localAssistants,
-        timestamp: Date.now(),
-        appInfo: {
-          version: '1.0.0',
-          name: 'AetherLink',
-          backupVersion: CURRENT_BACKUP_VERSION,
-          error: undefined
-        }
-      };
-    }
+    // 处理话题数据 - 确保数据一致性
+    const processedTopics = processTopics(topics);
+    console.log(`处理后话题数量: ${processedTopics.length}`);
     
-    // 处理话题数据 - 去重和修复状态
-    const processedTopics = processTopics(allTopics);
-    
-    return {
+    // 构建备份数据
+    const backupData = {
       topics: processedTopics,
-      assistants: allAssistants,
+      assistants,
       timestamp: Date.now(),
       appInfo: {
-        version: '1.0.0',
+        version: '1.0.0', // 暂时硬编码，后续可从配置文件中读取
         name: 'AetherLink',
-        backupVersion: CURRENT_BACKUP_VERSION,
-        error: undefined
+        backupVersion: CURRENT_BACKUP_VERSION
       }
     };
+    
+    return backupData;
   } catch (error) {
-    console.error('准备备份数据失败:', error);
-    // 返回一个包含错误信息但仍可用的备份数据
+    console.error('准备备份数据时出错:', error);
+    
+    // 即使出错也返回空的备份结构
     return {
       topics: [],
       assistants: [],
@@ -378,51 +379,6 @@ export async function prepareBasicBackupData(): Promise<{
 }
 
 /**
- * 从localStorage获取项目并解析
- */
-function getLocalStorageItems(excludeKeys: string[] = []): Record<string, any> {
-  const items: Record<string, any> = {};
-  
-  // 默认排除这些键
-  const defaultExcludeKeys = [
-    'settings', 
-    'aetherlink-migration', 
-    'idb-migration-done',
-    'backup-location',
-    'backup-storage-type'
-  ];
-  
-  // 合并排除键列表
-  const allExcludeKeys = [...defaultExcludeKeys, ...excludeKeys];
-  
-  // 遍历localStorage
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    
-    // 跳过排除的键
-    if (!key || allExcludeKeys.some(excludeKey => key === excludeKey || key.startsWith(excludeKey))) {
-      continue;
-    }
-    
-    try {
-      const value = localStorage.getItem(key);
-      if (value) {
-        // 尝试解析JSON，如果失败则存储原始字符串
-        try {
-          items[key] = JSON.parse(value);
-        } catch {
-          items[key] = value;
-        }
-      }
-    } catch (e) {
-      console.error(`读取localStorage项 "${key}" 失败:`, e);
-    }
-  }
-  
-  return items;
-}
-
-/**
  * 准备完整备份数据
  */
 export async function prepareFullBackupData(): Promise<{
@@ -434,80 +390,67 @@ export async function prepareFullBackupData(): Promise<{
   timestamp: number;
   appInfo: any;
 }> {
-  console.log('开始准备完整备份数据...');
-  
-  // 获取对话和助手数据
-  const allTopics = await getAllTopicsFromDB();
-  console.log(`从数据库获取到 ${allTopics.length} 个原始话题`);
-  
-  // 处理话题数据 - 去重和修复状态
-  const processedTopics = processTopics(allTopics);
-  console.log(`处理后得到 ${processedTopics.length} 个有效话题`);
-  
-  // 获取助手数据
-  const allAssistants = await getAllAssistantsFromDB();
-  console.log(`获取到 ${allAssistants.length} 个助手`);
-  
-  // 获取所有设置数据
-  const settingsJson = localStorage.getItem('settings');
-  const settings = settingsJson ? JSON.parse(settingsJson) : {};
-  console.log('已获取应用设置数据');
-  
-  // 标准化设置对象，确保关键字段存在
-  const normalizedSettings = {
-    ...settings,
-    providers: settings.providers || [],
-    models: settings.models || [],
-    defaultModelId: settings.defaultModelId,
-    currentModelId: settings.currentModelId,
-    theme: settings.theme || 'system',
-    fontSize: settings.fontSize || 16,
-    language: settings.language || 'zh-CN',
-    sendWithEnter: settings.sendWithEnter !== undefined ? settings.sendWithEnter : true,
-    enableNotifications: settings.enableNotifications !== undefined ? settings.enableNotifications : true,
-    generatedImages: settings.generatedImages || [],
-    contextLength: settings.contextLength || 2000,
-    contextCount: settings.contextCount || 10,
-  };
-  
-  // 获取备份设置
-  const backupSettings = {
-    location: getBackupLocation(),
-    storageType: getBackupStorageType()
-  };
-  console.log('已获取备份设置');
-  
-  // 获取所有其他localStorage项目
-  const localStorageItems = getLocalStorageItems();
-  console.log(`获取到 ${Object.keys(localStorageItems).length} 个本地存储项`);
-  
-  console.log('完整备份数据准备完成');
-  
-  return {
-    // 主要数据 - 使用处理过的话题数据
-    topics: processedTopics,
-    assistants: allAssistants,
+  try {
+    // 获取基础备份数据
+    const basicData = await prepareBasicBackupData();
     
-    // 所有设置
-    settings: normalizedSettings,
+    // 获取设置数据
+    const appSettings = await getStorageItem('settings') || {};
     
-    // 备份设置
-    backupSettings,
+    // 获取备份设置
+    const backupSettings = {
+      location: await getBackupLocation(),
+      storageType: await getBackupStorageType()
+    };
     
-    // 其他localStorage数据
-    localStorage: localStorageItems,
+    // 获取LocalStorage数据，排除一些敏感和不必要的项
+    const excludeKeys = [
+      // 排除敏感信息
+      'apiKey', 'openaiKey', 'anthropicKey', 'googleAiKey', 'siliconstudioKey',
+      'azureApiKey', 'awsAccessKey', 'awsSecretKey',
+      
+      // 排除临时性数据
+      'currentChatId', '_lastSaved', '_sessionData', 'temp_', 'debug_',
+      '_topicsLoaded',
+      
+      // 排除设置和备份设置（已单独保存）
+      'settings', 'backup-location', 'backup-storage-type'
+    ];
     
-    // 元数据
-    timestamp: Date.now(),
-    appInfo: {
-      version: '1.0.0',
-      name: 'AetherLink',
-      backupVersion: CURRENT_BACKUP_VERSION, 
-      backupType: 'full',
-      backupDate: new Date().toISOString(),
-      backupInfo: '包含自动修复的消息状态和去重的话题数据'
-    }
-  };
+    const localStorageItems = await getLocalStorageItems(excludeKeys);
+    
+    // 构建完整备份数据
+    const fullBackupData = {
+      ...basicData,
+      settings: appSettings,
+      backupSettings,
+      localStorage: localStorageItems,
+      appInfo: {
+        ...basicData.appInfo,
+        fullBackup: true
+      }
+    };
+    
+    return fullBackupData;
+  } catch (error) {
+    console.error('准备完整备份数据时出错:', error);
+    
+    // 创建基础备份数据
+    const basicData = await prepareBasicBackupData();
+    
+    // 即使出错也返回部分备份数据
+    return {
+      ...basicData,
+      settings: {},
+      backupSettings: {},
+      localStorage: {},
+      appInfo: {
+        ...basicData.appInfo,
+        fullBackup: true,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
 }
 
 /**

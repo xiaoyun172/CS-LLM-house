@@ -31,6 +31,7 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import { cleanupOldDatabases, getDatabaseStatus } from '../../../../../shared/services/storageService';
 import { TopicStatsService } from '../../../../../shared/services/TopicStatsService';
 import { AssistantService } from '../../../../../shared/services';
+import DexieStorageService from '../../../../../shared/services/DexieStorageService';
 
 interface DatabaseDiagnosticDialogProps {
   open: boolean;
@@ -166,19 +167,8 @@ const DatabaseDiagnosticDialog: React.FC<DatabaseDiagnosticDialogProps> = ({
       setError(null);
 
       // 删除当前数据库
-      const deleteRequest = indexedDB.deleteDatabase('aetherlink-db-new');
-
-      // 等待删除完成
-      await new Promise<void>((resolve, reject) => {
-        deleteRequest.onsuccess = () => {
-          console.log('数据库已删除，准备重建');
-          resolve();
-        };
-        deleteRequest.onerror = (event) => {
-          console.error('删除数据库失败:', event);
-          reject(new Error('删除数据库失败'));
-        };
-      });
+      await DexieStorageService.deleteDatabase('aetherlink-db-new');
+      console.log('数据库已删除，准备重建');
 
       // 等待300ms确保删除操作完成
       await new Promise(resolve => setTimeout(resolve, 300));

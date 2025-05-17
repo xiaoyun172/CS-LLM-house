@@ -8,10 +8,11 @@ import { AssistantManager } from './AssistantManager';
 import { TopicManager } from './TopicManager';
 import { AssistantFactory } from './Factory';
 import type { Assistant } from '../../types/Assistant';
-import { DataService } from '../DataService';
+import { dexieStorage } from '../DexieStorageService';
 
-// 获取DataService实例
-const dataService = DataService.getInstance();
+// 移除DataService引用
+// import { DataService } from '../DataService';
+// const dataService = DataService.getInstance();
 
 /**
  * 统一的助手服务类 - 提供所有助手相关的功能
@@ -73,8 +74,8 @@ export class AssistantService {
       if (createDefaultTopic) {
         await TopicManager.createDefaultTopicForAssistant(newAssistant.id);
 
-        // 获取更新后的助手（包含话题ID）
-        const updatedAssistant = await dataService.getAssistant(newAssistant.id);
+        // 获取更新后的助手（包含话题ID）- 使用dexieStorage
+        const updatedAssistant = await dexieStorage.getAssistant(newAssistant.id);
         if (updatedAssistant) {
           return updatedAssistant;
         }
@@ -91,5 +92,14 @@ export class AssistantService {
       console.error('AssistantService: 创建助手时出错', error);
       return null;
     }
+  }
+
+  /**
+   * 订阅助手事件
+   * @param eventType 事件类型
+   * @param callback 回调函数
+   */
+  static subscribeToAssistantEvents(eventType: string, callback: EventListener): () => void {
+    return AssistantManager.subscribeToAssistantEvents(eventType, callback);
   }
 }

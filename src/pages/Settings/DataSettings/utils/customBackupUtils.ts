@@ -1,7 +1,8 @@
-import { getAllTopicsFromDB, getAllAssistantsFromDB } from '../../../../shared/services/storageService';
-import { getBackupLocation, getBackupStorageType, createAndShareBackupFile } from './backupUtils';
+import { getBackupLocation, getBackupStorageType, createAndShareBackupFile, getLocalStorageItems } from './backupUtils';
 import type { ChatTopic } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
+import { dexieStorage } from '../../../../shared/services/DexieStorageService';
+import { getStorageItem } from '../../../../shared/utils/storage';
 
 export interface CustomBackupOptions {
   topics: boolean;
@@ -13,6 +14,20 @@ export interface CustomBackupOptions {
   otherData: boolean;
 }
 
+// 定义设置对象类型
+interface AppSettings {
+  providers?: any[];
+  models?: any[];
+  defaultModelId?: string;
+  currentModelId?: string;
+  theme?: string;
+  fontSize?: number;
+  language?: string;
+  sendWithEnter?: boolean;
+  enableNotifications?: boolean;
+  [key: string]: any; // 允许其他任意属性
+}
+
 /**
  * 准备自定义备份数据
  */
@@ -22,20 +37,19 @@ export async function prepareCustomBackupData(options: CustomBackupOptions): Pro
   let allAssistants: Assistant[] = [];
   
   if (options.topics) {
-    allTopics = await getAllTopicsFromDB();
+    allTopics = await dexieStorage.getAllTopics();
   }
   
   if (options.assistants) {
-    allAssistants = await getAllAssistantsFromDB();
+    allAssistants = await dexieStorage.getAllAssistants();
   }
   
   // 获取设置数据
-  let settings = {};
+  let settings: AppSettings = {};
   let localStorageItems: Record<string, any> = {};
   
   if (options.settings || options.modelSettings || options.uiSettings) {
-    const settingsJson = localStorage.getItem('settings');
-    const fullSettings = settingsJson ? JSON.parse(settingsJson) : {};
+    const fullSettings = await getStorageItem<AppSettings>('settings') || {};
     
     if (options.settings) {
       // 包含所有设置
@@ -69,35 +83,23 @@ export async function prepareCustomBackupData(options: CustomBackupOptions): Pro
   let backupSettings = {};
   if (options.backupSettings) {
     backupSettings = {
-      location: getBackupLocation(),
-      storageType: getBackupStorageType()
+      location: await getBackupLocation(),
+      storageType: await getBackupStorageType()
     };
   }
   
-  // 获取其他localStorage数据
+  // 获取其他数据
   if (options.otherData) {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && 
-          key !== 'settings' && 
-          !key.startsWith('aetherlink-migration') && 
-          key !== 'idb-migration-done' &&
-          key !== 'backup-location' && 
-          key !== 'backup-storage-type') {
-        try {
-          const value = localStorage.getItem(key);
-          if (value) {
-            try {
-              localStorageItems[key] = JSON.parse(value);
-            } catch {
-              localStorageItems[key] = value;
-            }
-          }
-        } catch (e) {
-          console.error(`读取localStorage项 "${key}" 失败:`, e);
-        }
-      }
-    }
+    // 排除一些特定键
+    const excludeKeys = [
+      'settings', 
+      'backup-location', 
+      'backup-storage-type', 
+      'apiKey', 'openaiKey', 'anthropicKey', 'googleAiKey',
+      'currentChatId', '_lastSaved', '_sessionData'
+    ];
+    
+    localStorageItems = await getLocalStorageItems(excludeKeys);
   }
   
   // 构建备份数据
@@ -160,29 +162,27 @@ export async function performCustomBackup(
     
     // 获取话题数据
     if (options.topics) {
-      const allTopics = await getAllTopicsFromDB();
+      const allTopics = await dexieStorage.getAllTopics();
       backupData.topics = allTopics;
       console.log(`已添加 ${allTopics.length} 个对话话题`);
     }
     
     // 获取助手数据
     if (options.assistants) {
-      const allAssistants = await getAllAssistantsFromDB();
+      const allAssistants = await dexieStorage.getAllAssistants();
       backupData.assistants = allAssistants;
       console.log(`已添加 ${allAssistants.length} 个助手`);
     }
     
     // 获取所有设置数据
     if (options.settings) {
-      const settingsJson = localStorage.getItem('settings');
-      const settings = settingsJson ? JSON.parse(settingsJson) : {};
+      const settings = await getStorageItem<AppSettings>('settings') || {};
       backupData.settings = settings;
       console.log('已添加所有设置数据');
     } else {
       // 获取特定设置类别
-      const settingsJson = localStorage.getItem('settings');
-      const allSettings = settingsJson ? JSON.parse(settingsJson) : {};
-      const settings: any = {};
+      const allSettings = await getStorageItem<AppSettings>('settings') || {};
+      const settings: AppSettings = {};
       
       // 获取模型设置
       if (options.modelSettings) {
@@ -212,62 +212,31 @@ export async function performCustomBackup(
     // 获取备份设置
     if (options.backupSettings) {
       backupData.backupSettings = {
-        location: localStorage.getItem('backup-location'),
-        storageType: localStorage.getItem('backup-storage-type')
+        location: await getStorageItem('backup-location'),
+        storageType: await getStorageItem('backup-storage-type')
       };
       console.log('已添加备份设置');
     }
     
-    // 获取其他localStorage数据
+    // 获取其他数据
     if (options.otherData) {
       // 排除这些键
       const excludeKeys = [
         'settings', 
         'backup-location', 
-        'backup-storage-type', 
-        'aetherlink-migration', 
-        'idb-migration-done',
-        'chatTopics', // 现在使用IndexedDB存储，避免重复恢复
-        'userAssistants' // 现在使用IndexedDB存储，避免重复恢复
+        'backup-storage-type',
+        'apiKey', 'openaiKey', 'anthropicKey', 'googleAiKey',
+        'currentChatId', '_lastSaved', '_sessionData', 'temp_', 'debug_'
       ];
       
-      const localStorage_items: Record<string, any> = {};
-      let itemCount = 0;
-      
-      // 遍历localStorage
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        
-        // 跳过排除的键
-        if (!key || excludeKeys.includes(key) || excludeKeys.some(excludeKey => key.startsWith(excludeKey))) {
-          continue;
-        }
-        
-        try {
-          const value = localStorage.getItem(key);
-          if (value) {
-            // 尝试解析JSON，如果失败则存储原始字符串
-            try {
-              localStorage_items[key] = JSON.parse(value);
-            } catch {
-              localStorage_items[key] = value;
-            }
-            itemCount++;
-          }
-        } catch (e) {
-          console.error(`读取localStorage项 "${key}" 失败:`, e);
-        }
-      }
-      
-      if (itemCount > 0) {
-        backupData.localStorage = localStorage_items;
-        console.log(`已添加 ${itemCount} 个其他localStorage项目`);
-      }
+      const otherData = await getLocalStorageItems(excludeKeys);
+      backupData.localStorage = otherData;
+      console.log(`已添加 ${Object.keys(otherData).length} 个其他数据项`);
     }
     
     // 创建文件名
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `AetherLink_Backup_Custom_${timestamp}.json`;
+    const fileName = `AetherLink_CustomBackup_${timestamp}.json`;
     
     // 创建并共享备份文件
     await createAndShareBackupFile(
@@ -278,7 +247,7 @@ export async function performCustomBackup(
       onBackupComplete
     );
   } catch (error) {
-    console.error('创建自定义备份失败:', error);
+    console.error('执行自定义备份时出错:', error);
     onError(error instanceof Error ? error : new Error(String(error)));
   }
 } 

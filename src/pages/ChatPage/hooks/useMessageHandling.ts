@@ -11,7 +11,7 @@ import {
 } from '../../../shared/store/messagesSlice';
 import { createMessage } from '../../../shared/utils';
 import { sendChatRequest } from '../../../shared/api';
-import type { ChatTopic, Message, Model, SiliconFlowImageFormat, WebSearchResult } from '../../../shared/types';
+import type { ChatTopic, Model, SiliconFlowImageFormat, WebSearchResult } from '../../../shared/types';
 import { isThinkingSupported } from '../../../shared/services/ThinkingService';
 import { TopicNamingService } from '../../../shared/services/TopicNamingService';
 
@@ -405,9 +405,6 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
           messageId: assistantMessage.id,
           updates: updates
         }));
-
-        // 保存消息到本地缓存
-        updateTopicInLocalStorage(currentTopic.id, assistantMessage.id, response.content);
       }
     } catch (error) {
       console.error('发送消息失败:', error);
@@ -751,8 +748,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
           }
         }));
 
-        // 保存消息到本地缓存
-        updateTopicInLocalStorage(currentTopic.id, newAssistantMessage.id, response.content);
+        // 消息已通过Redux和Dexie.js保存，无需再使用本地存储
       }
     } catch (error) {
       console.error('重新生成消息失败:', error);
@@ -815,67 +811,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
       }
     });
 
-    // 确保版本切换成功后的本地存储更新
-    try {
-      const savedTopicsJson = localStorage.getItem('chatTopics');
-      if (savedTopicsJson) {
-        const savedTopics = JSON.parse(savedTopicsJson);
-        const topicIndex = savedTopics.findIndex((topic: ChatTopic) => topic.id === topicId);
-
-        if (topicIndex !== -1) {
-          // 获取Redux中最新的消息列表
-          const state = (store.getState() as any).messages;
-          const updatedMessages = state.messagesByTopic[topicId] || [];
-
-          // 更新本地存储
-          savedTopics[topicIndex].messages = updatedMessages;
-          localStorage.setItem('chatTopics', JSON.stringify(savedTopics));
-        }
-      }
-    } catch (error) {
-      console.error('版本切换后更新本地存储失败:', error);
-    }
-  };
-
-  // 辅助函数：更新本地存储中的主题
-  const updateTopicInLocalStorage = (topicId: string, messageId: string, content: string) => {
-    try {
-      const savedTopicsJson = localStorage.getItem('chatTopics');
-      if (!savedTopicsJson) return;
-
-      const savedTopics = JSON.parse(savedTopicsJson);
-      const updatedTopics = savedTopics.map((topic: ChatTopic) => {
-        if (topic.id === topicId) {
-          // 查找并更新消息
-          const updatedMessages = (topic.messages || []).map((msg: Message) => {
-            if (msg.id === messageId) {
-              return { ...msg, content, status: 'complete' as const };
-            }
-            return msg;
-          });
-
-          // 如果没有找到消息，添加到最后
-          const hasMessage = updatedMessages.some((msg: Message) => msg.id === messageId);
-          if (!hasMessage) {
-            const newMessage: Message = {
-              id: messageId,
-              content,
-              role: 'assistant',
-              status: 'complete',
-              timestamp: new Date().toISOString()
-            };
-            updatedMessages.push(newMessage);
-          }
-
-          return { ...topic, messages: updatedMessages };
-        }
-        return topic;
-      });
-
-      localStorage.setItem('chatTopics', JSON.stringify(updatedTopics));
-    } catch (error) {
-      console.error('更新本地存储中的主题失败:', error);
-    }
+    // 消息版本切换后会通过Redux和Dexie.js自动保存，不需要额外的本地存储操作
   };
 
   // 生成唯一ID

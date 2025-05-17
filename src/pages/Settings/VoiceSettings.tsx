@@ -27,6 +27,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { useNavigate } from 'react-router-dom';
 import { TTSService } from '../../shared/services/TTSService';
+import { getStorageItem, setStorageItem } from '../../shared/utils/storage';
 
 // 硅基流动TTS模型
 const TTS_MODELS = [
@@ -102,51 +103,60 @@ const VoiceSettings: React.FC = () => {
   
   // 从localStorage加载设置
   useEffect(() => {
-    const storedApiKey = localStorage.getItem('siliconflow_api_key') || '';
-    const storedModel = localStorage.getItem('tts_model') || 'FunAudioLLM/CosyVoice2-0.5B';
-    const storedVoice = localStorage.getItem('tts_voice') || 'alex';
-    const storedEnableTTS = localStorage.getItem('enable_tts') !== 'false'; // 默认启用
-    
-    // 加载OpenAI设置
-    const storedOpenaiApiKey = localStorage.getItem('openai_tts_api_key') || '';
-    const storedOpenaiModel = localStorage.getItem('openai_tts_model') || 'tts-1';
-    const storedOpenaiVoice = localStorage.getItem('openai_tts_voice') || 'alloy';
-    const storedOpenaiFormat = localStorage.getItem('openai_tts_format') || 'mp3';
-    const storedOpenaiSpeed = Number(localStorage.getItem('openai_tts_speed') || '1.0');
-    const storedUseOpenaiStream = localStorage.getItem('openai_tts_stream') === 'true';
-    const storedUseOpenai = localStorage.getItem('use_openai_tts') === 'true';
-    
-    setApiKey(storedApiKey);
-    setSelectedModel(storedModel);
-    setSelectedVoice(storedVoice);
-    setEnableTTS(storedEnableTTS);
-    
-    setOpenaiApiKey(storedOpenaiApiKey);
-    setSelectedOpenaiModel(storedOpenaiModel);
-    setSelectedOpenaiVoice(storedOpenaiVoice);
-    setSelectedOpenaiFormat(storedOpenaiFormat);
-    setOpenaiSpeed(storedOpenaiSpeed);
-    setUseOpenaiStream(storedUseOpenaiStream);
-    setUseOpenai(storedUseOpenai);
-    
-    // 设置TTSService
-    ttsService.setApiKey(storedApiKey);
-    ttsService.setOpenAIApiKey(storedOpenaiApiKey);
-    ttsService.setOpenAIModel(storedOpenaiModel);
-    ttsService.setOpenAIVoice(storedOpenaiVoice);
-    ttsService.setOpenAIResponseFormat(storedOpenaiFormat);
-    ttsService.setOpenAISpeed(storedOpenaiSpeed);
-    ttsService.setUseOpenAIStream(storedUseOpenaiStream);
-    ttsService.setUseOpenAI(storedUseOpenai);
-    
-    if (storedModel && storedVoice) {
-      ttsService.setDefaultVoice(storedModel, `${storedModel}:${storedVoice}`);
+    async function loadSettings() {
+      try {
+        // 加载基础设置
+        const storedApiKey = await getStorageItem<string>('siliconflow_api_key') || '';
+        const storedModel = await getStorageItem<string>('tts_model') || 'FunAudioLLM/CosyVoice2-0.5B';
+        const storedVoice = await getStorageItem<string>('tts_voice') || 'alex';
+        const storedEnableTTS = (await getStorageItem<string>('enable_tts')) !== 'false'; // 默认启用
+        
+        // 加载OpenAI设置
+        const storedOpenaiApiKey = await getStorageItem<string>('openai_tts_api_key') || '';
+        const storedOpenaiModel = await getStorageItem<string>('openai_tts_model') || 'tts-1';
+        const storedOpenaiVoice = await getStorageItem<string>('openai_tts_voice') || 'alloy';
+        const storedOpenaiFormat = await getStorageItem<string>('openai_tts_format') || 'mp3';
+        const storedOpenaiSpeed = Number(await getStorageItem<string>('openai_tts_speed') || '1.0');
+        const storedUseOpenaiStream = (await getStorageItem<string>('openai_tts_stream')) === 'true';
+        const storedUseOpenai = (await getStorageItem<string>('use_openai_tts')) === 'true';
+        
+        setApiKey(storedApiKey);
+        setSelectedModel(storedModel);
+        setSelectedVoice(storedVoice);
+        setEnableTTS(storedEnableTTS);
+        
+        setOpenaiApiKey(storedOpenaiApiKey);
+        setSelectedOpenaiModel(storedOpenaiModel);
+        setSelectedOpenaiVoice(storedOpenaiVoice);
+        setSelectedOpenaiFormat(storedOpenaiFormat);
+        setOpenaiSpeed(storedOpenaiSpeed);
+        setUseOpenaiStream(storedUseOpenaiStream);
+        setUseOpenai(storedUseOpenai);
+        
+        // 设置TTSService
+        ttsService.setApiKey(storedApiKey);
+        ttsService.setOpenAIApiKey(storedOpenaiApiKey);
+        ttsService.setOpenAIModel(storedOpenaiModel);
+        ttsService.setOpenAIVoice(storedOpenaiVoice);
+        ttsService.setOpenAIResponseFormat(storedOpenaiFormat);
+        ttsService.setOpenAISpeed(storedOpenaiSpeed);
+        ttsService.setUseOpenAIStream(storedUseOpenaiStream);
+        ttsService.setUseOpenAI(storedUseOpenai);
+        
+        if (storedModel && storedVoice) {
+          ttsService.setDefaultVoice(storedModel, `${storedModel}:${storedVoice}`);
+        }
+        
+        // 设置初始标签
+        if (storedUseOpenai) {
+          setTabValue(1);
+        }
+      } catch (error) {
+        console.error('加载语音设置失败:', error);
+      }
     }
     
-    // 设置初始标签
-    if (storedUseOpenai) {
-      setTabValue(1);
-    }
+    loadSettings();
   }, [ttsService]);
   
   // 返回上一页
@@ -155,22 +165,22 @@ const VoiceSettings: React.FC = () => {
   };
   
   // 保存设置
-  const handleSave = () => {
+  const handleSave = async () => {
     try {
-      // 保存到localStorage
-      localStorage.setItem('siliconflow_api_key', apiKey);
-      localStorage.setItem('tts_model', selectedModel);
-      localStorage.setItem('tts_voice', selectedVoice);
-      localStorage.setItem('enable_tts', enableTTS.toString());
+      // 保存到异步存储
+      await setStorageItem('siliconflow_api_key', apiKey);
+      await setStorageItem('tts_model', selectedModel);
+      await setStorageItem('tts_voice', selectedVoice);
+      await setStorageItem('enable_tts', enableTTS.toString());
       
       // 保存OpenAI设置
-      localStorage.setItem('openai_tts_api_key', openaiApiKey);
-      localStorage.setItem('openai_tts_model', selectedOpenaiModel);
-      localStorage.setItem('openai_tts_voice', selectedOpenaiVoice);
-      localStorage.setItem('openai_tts_format', selectedOpenaiFormat);
-      localStorage.setItem('openai_tts_speed', openaiSpeed.toString());
-      localStorage.setItem('openai_tts_stream', useOpenaiStream.toString());
-      localStorage.setItem('use_openai_tts', useOpenai.toString());
+      await setStorageItem('openai_tts_api_key', openaiApiKey);
+      await setStorageItem('openai_tts_model', selectedOpenaiModel);
+      await setStorageItem('openai_tts_voice', selectedOpenaiVoice);
+      await setStorageItem('openai_tts_format', selectedOpenaiFormat);
+      await setStorageItem('openai_tts_speed', openaiSpeed.toString());
+      await setStorageItem('openai_tts_stream', useOpenaiStream.toString());
+      await setStorageItem('use_openai_tts', useOpenai.toString());
       
       // 更新TTSService
       ttsService.setApiKey(apiKey);

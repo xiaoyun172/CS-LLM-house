@@ -6,783 +6,600 @@ import { DB_CONFIG } from '../types/DatabaseSchema';
 
 /**
  * 基于Dexie.js的统一存储服务
- * 用于替代现有的IndexedDB直接操作，提高存储可靠性
+ * 简化版本
  */
 class DexieStorageService extends Dexie {
-  // 定义表格
   assistants!: Dexie.Table<Assistant, string>;
-  topics!: Dexie.Table<ChatTopic, string>;
+  topics!: Dexie.Table<ChatTopic & { _lastMessageTimeNum?: number }, string>;
   settings!: Dexie.Table<any, string>;
   images!: Dexie.Table<Blob, string>;
   imageMetadata!: Dexie.Table<any, string>;
   metadata!: Dexie.Table<any, string>;
 
-  // 单例实例
   private static instance: DexieStorageService;
 
-  // 创建事件目标，用于数据变更通知
-  private static eventTarget = new EventTarget();
-
-  // 数据变更事件类型
-  public static readonly EVENT_TYPES = {
-    ASSISTANT_ADDED: 'assistantAdded',
-    ASSISTANT_UPDATED: 'assistantUpdated',
-    ASSISTANT_DELETED: 'assistantDeleted',
-    TOPIC_ADDED: 'topicAdded',
-    TOPIC_UPDATED: 'topicUpdated',
-    TOPIC_DELETED: 'topicDeleted',
-    MESSAGE_ADDED: 'messageAdded',
-    MESSAGE_UPDATED: 'messageUpdated',
-    MESSAGE_DELETED: 'messageDeleted',
-    SETTING_CHANGED: 'settingChanged',
-    IMAGE_ADDED: 'imageAdded',
-    IMAGE_DELETED: 'imageDeleted',
-    METADATA_CHANGED: 'metadataChanged'
-  };
-
   constructor() {
-    // 初始化数据库
     super(DB_CONFIG.NAME);
-    
-    // 定义数据库架构
+
     this.version(DB_CONFIG.VERSION).stores({
       [DB_CONFIG.STORES.ASSISTANTS]: 'id',
-      [DB_CONFIG.STORES.TOPICS]: 'id, lastMessageTime', // 添加lastMessageTime索引以便排序
-      [DB_CONFIG.STORES.SETTINGS]: '',
+      [DB_CONFIG.STORES.TOPICS]: 'id, _lastMessageTimeNum', // lastMessageTime can be derived or stored directly if preferred
+      [DB_CONFIG.STORES.SETTINGS]: 'id',
       [DB_CONFIG.STORES.IMAGES]: 'id',
       [DB_CONFIG.STORES.IMAGE_METADATA]: 'id, topicId, created',
-      [DB_CONFIG.STORES.METADATA]: ''
+      [DB_CONFIG.STORES.METADATA]: 'id',
+    });
+
+    this.version(DB_CONFIG.VERSION).upgrade(tx => {
+      console.log(`DexieStorageService: Upgrading database to version ${DB_CONFIG.VERSION}`);
+      // Clear settings and metadata if schema changed in a way that requires it.
+      // This was originally for adding primary keys, adjust if other breaking changes occur.
+      tx.table(DB_CONFIG.STORES.SETTINGS).clear();
+      tx.table(DB_CONFIG.STORES.METADATA).clear();
+      console.log('DexieStorageService: Settings and metadata tables potentially cleared during upgrade.');
+    });
+
+    this.on('ready', async () => {
+      console.log('DexieStorageService: Database ready.');
+      try {
+        await this._ensureDatabaseInitialized();
+      } catch (err) {
+        console.error('DexieStorageService: Database initialization failed.', err);
+      }
+    });
+    this.on('blocked', () => console.warn('DexieStorageService: Database operation blocked.'));
+    this.on('versionchange', () => this.onVersionChange());
+
+    // Global error handling for unhandled Dexie rejections (simplified)
+    window.addEventListener('unhandledrejection', (event) => {
+      if (event.reason && typeof event.reason === 'object' && 'name' in event.reason) {
+        const error = event.reason as import('dexie').DexieError;
+        if (error.name && error.name.startsWith('Dexie')) {
+          console.error('DexieStorageService: Unhandled Dexie error:', error);
+        }
+      }
     });
   }
 
-  /**
-   * 获取单例实例
-   */
+  private onVersionChange() {
+    console.warn('DexieStorageService: Database version change detected. Closing current connection and recommending app reload.');
+    this.close();
+    DexieStorageService.instance = null as any;
+  }
+
   public static getInstance(): DexieStorageService {
     if (!DexieStorageService.instance) {
       DexieStorageService.instance = new DexieStorageService();
-      console.log('DexieStorageService: 实例已创建');
     }
     return DexieStorageService.instance;
   }
 
-  /**
-   * 订阅数据变更事件
-   * @param eventType 事件类型
-   * @param callback 回调函数
-   */
-  public static subscribe(eventType: string, callback: EventListener): () => void {
-    DexieStorageService.eventTarget.addEventListener(eventType, callback);
-    return () => {
-      DexieStorageService.eventTarget.removeEventListener(eventType, callback);
-    };
-  }
-
-  /**
-   * 发布事件
-   * @param eventType 事件类型
-   * @param detail 事件详情
-   */
-  private static publish(eventType: string, detail?: any): void {
-    const event = new CustomEvent(eventType, { detail });
-    DexieStorageService.eventTarget.dispatchEvent(event);
-    console.log(`DexieStorageService: 事件 ${eventType} 已发布`, detail);
-  }
-
-  /**
-   * 清理对象，移除函数和复杂对象，确保可存储性
-   * @param obj 原始对象
-   * @returns 清理后的对象
-   */
-  private cleanObject<T>(obj: T): T {
-    const jsonString = JSON.stringify(obj);
-    return JSON.parse(jsonString);
-  }
-
   // ============= 助手相关操作 =============
-
-  /**
-   * 获取所有助手
-   */
   async getAllAssistants(): Promise<Assistant[]> {
     try {
-      const assistants = await this.assistants.toArray();
-      return assistants;
+      return await this.assistants.toArray();
     } catch (error) {
-      console.error('DexieStorageService: 获取所有助手失败', error);
+      console.error('DexieStorageService: Failed to get all assistants.', error);
       return [];
     }
   }
 
-  /**
-   * 获取系统助手
-   */
   async getSystemAssistants(): Promise<Assistant[]> {
     try {
-      const assistants = await this.assistants
-        .where('isSystem')
-        .equals(1)
-        .toArray();
-      return assistants;
+      return await this.assistants.where('isSystem').equals(1).toArray();
     } catch (error) {
-      console.error('DexieStorageService: 获取系统助手失败', error);
+      console.error('DexieStorageService: Failed to get system assistants.', error);
       return [];
     }
   }
 
-  /**
-   * 获取用户创建的助手
-   */
   async getUserAssistants(): Promise<Assistant[]> {
     try {
-      const assistants = await this.assistants
-        .filter(assistant => !assistant.isSystem)
-        .toArray();
-      return assistants;
+      return await this.assistants.filter(assistant => !assistant.isSystem).toArray();
     } catch (error) {
-      console.error('DexieStorageService: 获取用户助手失败', error);
+      console.error('DexieStorageService: Failed to get user assistants.', error);
       return [];
     }
   }
 
-  /**
-   * 获取助手
-   * @param id 助手ID
-   */
   async getAssistant(id: string): Promise<Assistant | null> {
     try {
       const assistant = await this.assistants.get(id);
       return assistant || null;
     } catch (error) {
-      console.error(`DexieStorageService: 获取助手 ${id} 失败`, error);
+      console.error(`DexieStorageService: Failed to get assistant ${id}.`, error);
       return null;
     }
   }
 
-  /**
-   * 保存助手
-   * @param assistant 助手数据
-   */
   async saveAssistant(assistant: Assistant): Promise<boolean> {
     try {
-      // 确保有ID
       if (!assistant.id) {
         assistant.id = uuid();
       }
-
-      // 清理对象
-      const cleanAssistant = this.cleanObject(assistant);
-      
-      // 检查是更新还是创建
-      const isUpdate = await this.assistants.get(cleanAssistant.id) !== undefined;
-
-      // 保存到数据库
-      await this.assistants.put(cleanAssistant);
-      
-      // 发布事件
-      if (isUpdate) {
-        DexieStorageService.publish(DexieStorageService.EVENT_TYPES.ASSISTANT_UPDATED, { assistantId: cleanAssistant.id });
-      } else {
-        DexieStorageService.publish(DexieStorageService.EVENT_TYPES.ASSISTANT_ADDED, { assistantId: cleanAssistant.id });
-      }
-      
+      await this.assistants.put(assistant);
       return true;
     } catch (error) {
-      console.error('DexieStorageService: 保存助手失败', error);
+      console.error('DexieStorageService: Failed to save assistant.', error);
       return false;
     }
   }
 
-  /**
-   * 删除助手
-   * @param id 助手ID
-   */
   async deleteAssistant(id: string): Promise<boolean> {
     try {
-      // 获取助手关联的话题
       const assistant = await this.getAssistant(id);
       if (assistant && assistant.topicIds && assistant.topicIds.length > 0) {
-        // 删除关联的话题
         for (const topicId of assistant.topicIds) {
-          await this.deleteTopic(topicId);
+          await this.deleteTopic(topicId); // This will also remove associated messages if handled by deleteTopic
         }
       }
-
-      // 删除助手
       await this.assistants.delete(id);
-      
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.ASSISTANT_DELETED, { assistantId: id });
-      
       return true;
     } catch (error) {
-      console.error(`DexieStorageService: 删除助手 ${id} 失败`, error);
+      console.error(`DexieStorageService: Failed to delete assistant ${id}.`, error);
       return false;
     }
   }
 
   // ============= 话题相关操作 =============
-
-  /**
-   * 获取所有话题
-   */
   async getAllTopics(): Promise<ChatTopic[]> {
     try {
-      const topics = await this.topics.toArray();
-      return topics;
+      const topicsFromDb = await this.topics.toArray();
+      return topicsFromDb.map(t => { const { _lastMessageTimeNum, ...topic } = t; return topic as ChatTopic; });
     } catch (error) {
-      console.error('DexieStorageService: 获取所有话题失败', error);
+      console.error('DexieStorageService: Failed to get all topics.', error);
       return [];
     }
   }
 
-  /**
-   * 获取单个话题
-   * @param id 话题ID
-   */
   async getTopic(id: string): Promise<ChatTopic | null> {
     try {
       const topic = await this.topics.get(id);
-      return topic || null;
+      if (!topic) return null;
+      const { _lastMessageTimeNum, ...restOfTopic } = topic;
+      return restOfTopic as ChatTopic;
     } catch (error) {
-      console.error(`DexieStorageService: 获取话题 ${id} 失败`, error);
+      console.error(`DexieStorageService: Failed to get topic ${id}.`, error);
       return null;
     }
   }
 
-  /**
-   * 保存话题
-   * @param topic 话题数据
-   */
   async saveTopic(topic: ChatTopic): Promise<boolean> {
     try {
-      // 确保有ID
       if (!topic.id) {
         topic.id = uuid();
       }
-
-      // 清理对象
-      const cleanTopic = this.cleanObject(topic);
-      
-      // 检查是更新还是创建
-      const isUpdate = await this.topics.get(cleanTopic.id) !== undefined;
-
-      // 保存到数据库
-      await this.topics.put(cleanTopic);
-      
-      // 发布事件
-      if (isUpdate) {
-        DexieStorageService.publish(DexieStorageService.EVENT_TYPES.TOPIC_UPDATED, { topicId: cleanTopic.id });
-      } else {
-        DexieStorageService.publish(DexieStorageService.EVENT_TYPES.TOPIC_ADDED, { topicId: cleanTopic.id });
-      }
-      
+      const topicToStore = {
+        ...topic,
+        _lastMessageTimeNum: new Date(topic.lastMessageTime).getTime()
+      };
+      await this.topics.put(topicToStore);
       return true;
     } catch (error) {
-      console.error('DexieStorageService: 保存话题失败', error);
+      console.error(`DexieStorageService: Failed to save topic ${topic.id}.`, error);
       return false;
     }
   }
 
-  /**
-   * 删除话题
-   * @param id 话题ID
-   */
   async deleteTopic(id: string): Promise<boolean> {
     try {
-      // 删除话题
       await this.topics.delete(id);
-      
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.TOPIC_DELETED, { topicId: id });
-      
       return true;
     } catch (error) {
-      console.error(`DexieStorageService: 删除话题 ${id} 失败`, error);
+      console.error(`DexieStorageService: Failed to delete topic ${id}.`, error);
       return false;
     }
   }
 
-  /**
-   * 获取最近的话题
-   * @param limit 限制数量
-   */
   async getRecentTopics(limit: number = 10): Promise<ChatTopic[]> {
     try {
-      const topics = await this.topics
-        .orderBy('lastMessageTime')
+      const topicsFromDb = await this.topics
+        .orderBy('_lastMessageTimeNum')
         .reverse()
         .limit(limit)
         .toArray();
-      return topics;
+      return topicsFromDb.map(t => { const { _lastMessageTimeNum, ...topic } = t; return topic as ChatTopic; });
     } catch (error) {
-      console.error('DexieStorageService: 获取最近话题失败', error);
+      console.error(`DexieStorageService: Failed to get recent topics.`, error);
       return [];
     }
   }
 
-  /**
-   * 按助手ID获取话题
-   * @param assistantId 助手ID
-   */
   async getTopicsByAssistantId(assistantId: string): Promise<ChatTopic[]> {
     try {
-      const topics = await this.topics
+      const topicsFromDb = await this.topics
         .filter(topic => topic.assistantId === assistantId)
         .toArray();
-      return topics;
+      return topicsFromDb.map(t => { const { _lastMessageTimeNum, ...topic } = t; return topic as ChatTopic; });
     } catch (error) {
-      console.error(`DexieStorageService: 获取助手 ${assistantId} 的话题失败`, error);
+      console.error(`DexieStorageService: Failed to get topics for assistant ${assistantId}.`, error);
       return [];
     }
   }
 
-  /**
-   * 更新话题中的消息
-   * @param topicId 话题ID
-   * @param messageId 消息ID
-   * @param updatedMessage 更新后的消息
-   */
   async updateMessageInTopic(topicId: string, messageId: string, updatedMessage: Message): Promise<boolean> {
     try {
-      // 获取话题
-      const topic = await this.getTopic(topicId);
+      const topic = await this.getTopic(topicId); // Gets the cleaned topic
       if (!topic) return false;
-
-      // 找到消息
       const messageIndex = topic.messages.findIndex(m => m.id === messageId);
       if (messageIndex === -1) return false;
-
-      // 更新消息
       topic.messages[messageIndex] = updatedMessage;
-
-      // 保存话题
-      await this.saveTopic(topic);
-
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.MESSAGE_UPDATED, { 
-        topicId,
-        messageId 
-      });
-
-      return true;
+      return await this.saveTopic(topic); // saveTopic handles _lastMessageTimeNum
     } catch (error) {
-      console.error(`DexieStorageService: 更新话题 ${topicId} 中的消息 ${messageId} 失败`, error);
+      console.error(`DexieStorageService: Failed to update message ${messageId} in topic ${topicId}.`, error);
       return false;
     }
   }
 
-  /**
-   * 从话题中删除消息
-   * @param topicId 话题ID
-   * @param messageId 消息ID
-   */
   async deleteMessageFromTopic(topicId: string, messageId: string): Promise<boolean> {
     try {
-      // 获取话题
       const topic = await this.getTopic(topicId);
       if (!topic) return false;
-
-      // 过滤掉要删除的消息
       topic.messages = topic.messages.filter(m => m.id !== messageId);
-
-      // 更新最后消息时间
       if (topic.messages.length > 0) {
-        const lastMessage = topic.messages[topic.messages.length - 1];
-        topic.lastMessageTime = lastMessage.timestamp;
+        topic.lastMessageTime = topic.messages[topic.messages.length - 1].timestamp;
+      } else {
+        // Handle case where all messages are deleted, perhaps set to now or creation time
+        topic.lastMessageTime = new Date().toISOString();
       }
-
-      // 保存话题
-      await this.saveTopic(topic);
-
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.MESSAGE_DELETED, { 
-        topicId,
-        messageId 
-      });
-
-      return true;
+      return await this.saveTopic(topic);
     } catch (error) {
-      console.error(`DexieStorageService: 从话题 ${topicId} 中删除消息 ${messageId} 失败`, error);
+      console.error(`DexieStorageService: Failed to delete message ${messageId} from topic ${topicId}.`, error);
+      return false;
+    }
+  }
+  
+  async addMessageToTopic(topicId: string, message: Message): Promise<boolean> {
+    try {
+      const topic = await this.getTopic(topicId);
+      if (!topic) {
+        console.error(`DexieStorageService: Topic ${topicId} not found, cannot add message.`);
+        return false;
+      }
+      if (!topic.messages) {
+        topic.messages = [];
+      }
+      const messageIndex = topic.messages.findIndex(m => m.id === message.id);
+      if (messageIndex !== -1) {
+        topic.messages[messageIndex] = message; // Update existing
+      } else {
+        topic.messages.push(message); // Add new
+      }
+      topic.lastMessageTime = message.timestamp;
+      return await this.saveTopic(topic);
+    } catch (error) {
+      console.error(`DexieStorageService: Failed to add message to topic ${topicId}.`, error);
       return false;
     }
   }
 
   // ============= 设置相关操作 =============
-
-  /**
-   * 保存设置
-   * @param key 设置键
-   * @param value 设置值
-   */
   async saveSetting(key: string, value: any): Promise<boolean> {
     try {
-      // 清理对象
-      const cleanValue = this.cleanObject(value);
-      
-      // 保存设置
-      await this.settings.put(cleanValue, key);
-      
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.SETTING_CHANGED, { settingKey: key });
-      
+      const settingObject = typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? { ...value, id: key } 
+        : { id: key, value: value };
+      await this.settings.put(settingObject);
       return true;
     } catch (error) {
-      console.error(`DexieStorageService: 保存设置 ${key} 失败`, error);
+      console.error(`DexieStorageService: Failed to save setting ${key}.`, error);
       return false;
     }
   }
 
-  /**
-   * 获取设置
-   * @param key 设置键
-   */
   async getSetting(key: string): Promise<any> {
     try {
-      const value = await this.settings.get(key);
-      return value;
+      const setting = await this.settings.get(key);
+      if (setting && setting.hasOwnProperty('value') && Object.keys(setting).length === 2 && setting.id === key) {
+        return setting.value;
+      }
+      return setting; // Returns the whole object if it's not a simple key/value or null/undefined
     } catch (error) {
-      console.error(`DexieStorageService: 获取设置 ${key} 失败`, error);
+      console.error(`DexieStorageService: Failed to get setting ${key}.`, error);
       return null;
     }
   }
 
-  /**
-   * 删除设置
-   * @param key 设置键
-   */
   async deleteSetting(key: string): Promise<boolean> {
     try {
       await this.settings.delete(key);
-      
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.SETTING_CHANGED, { settingKey: key });
-      
       return true;
     } catch (error) {
-      console.error(`DexieStorageService: 删除设置 ${key} 失败`, error);
+      console.error(`DexieStorageService: Failed to delete setting ${key}.`, error);
       return false;
     }
   }
 
-  // ============= 图片相关操作 =============
-
-  /**
-   * 保存图片
-   * @param blob 图片数据
-   * @param metadata 元数据
-   */
+  // ============= 图片相关操作 (If kept) =============
   async saveImage(blob: Blob, metadata: any): Promise<string> {
     try {
-      // 生成ID
       const imageId = uuid();
-      
-      // 保存图片数据
       await this.images.put(blob, imageId);
-      
-      // 保存元数据
-      const imageMetadata = {
-        id: imageId,
-        ...metadata,
-        created: Date.now()
-      };
+      const imageMetadata = { id: imageId, ...metadata, created: Date.now() };
       await this.imageMetadata.put(imageMetadata);
-      
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.IMAGE_ADDED, { 
-        imageId,
-        topicId: metadata.topicId 
-      });
-      
       return imageId;
     } catch (error) {
-      console.error('DexieStorageService: 保存图片失败', error);
+      console.error('DexieStorageService: Failed to save image.', error);
       throw error;
     }
   }
 
-  /**
-   * 获取图片数据
-   * @param id 图片ID
-   */
   async getImageBlob(id: string): Promise<Blob | undefined> {
     try {
-      const blob = await this.images.get(id);
-      return blob;
+      return await this.images.get(id);
     } catch (error) {
-      console.error(`DexieStorageService: 获取图片 ${id} 数据失败`, error);
+      console.error(`DexieStorageService: Failed to get image blob ${id}.`, error);
       return undefined;
     }
   }
 
-  /**
-   * 获取图片元数据
-   * @param id 图片ID
-   */
   async getImageMetadata(id: string): Promise<any> {
     try {
-      const metadata = await this.imageMetadata.get(id);
-      return metadata;
+      return await this.imageMetadata.get(id);
     } catch (error) {
-      console.error(`DexieStorageService: 获取图片 ${id} 元数据失败`, error);
+      console.error(`DexieStorageService: Failed to get image metadata ${id}.`, error);
       return undefined;
     }
   }
 
-  /**
-   * 获取话题相关的图片元数据
-   * @param topicId 话题ID
-   */
   async getImageMetadataByTopicId(topicId: string): Promise<any[]> {
     try {
-      // 使用索引查询
-      const metadata = await this.imageMetadata
-        .where('topicId')
-        .equals(topicId)
-        .toArray();
-      return metadata;
+      return await this.imageMetadata.where('topicId').equals(topicId).toArray();
     } catch (error) {
-      console.error(`DexieStorageService: 获取话题 ${topicId} 的图片元数据失败`, error);
+      console.error(`DexieStorageService: Failed to get image metadata for topic ${topicId}.`, error);
       return [];
     }
   }
-
-  /**
-   * 获取最近添加的图片元数据
-   * @param limit 限制数量
-   */
+  
   async getRecentImageMetadata(limit: number = 20): Promise<any[]> {
     try {
-      // 使用索引查询并限制数量
-      const metadata = await this.imageMetadata
-        .orderBy('created')
-        .reverse()
-        .limit(limit)
-        .toArray();
-      return metadata;
+      return await this.imageMetadata.orderBy('created').reverse().limit(limit).toArray();
     } catch (error) {
-      console.error(`DexieStorageService: 获取最近图片元数据失败`, error);
+      console.error('DexieStorageService: Failed to get recent image metadata.', error);
       return [];
     }
   }
 
-  /**
-   * 添加消息到话题
-   * @param topicId 话题ID
-   * @param message 消息
-   */
-  async addMessageToTopic(topicId: string, message: Message): Promise<boolean> {
-    try {
-      // 获取话题
-      const topic = await this.getTopic(topicId);
-      if (!topic) {
-        console.error(`DexieStorageService: 话题 ${topicId} 不存在，无法添加消息`);
-        return false;
-      }
-
-      // 确保消息数组存在
-      if (!topic.messages) {
-        topic.messages = [];
-      }
-      
-      // 检查是否已存在该消息
-      const messageIndex = topic.messages.findIndex(m => m.id === message.id);
-      if (messageIndex !== -1) {
-        // 更新已有消息
-        topic.messages[messageIndex] = message;
-        DexieStorageService.publish(DexieStorageService.EVENT_TYPES.MESSAGE_UPDATED, { 
-          topicId, 
-          messageId: message.id 
-        });
-      } else {
-        // 添加新消息
-        topic.messages.push(message);
-        DexieStorageService.publish(DexieStorageService.EVENT_TYPES.MESSAGE_ADDED, { 
-          topicId, 
-          messageId: message.id 
-        });
-      }
-
-      // 更新最后消息时间
-      topic.lastMessageTime = message.timestamp;
-
-      // 保存话题
-      return await this.saveTopic(topic);
-    } catch (error) {
-      console.error(`DexieStorageService: 添加消息到话题 ${topicId} 失败`, error);
-      return false;
-    }
-  }
-
-  /**
-   * 删除图片
-   * @param id 图片ID
-   */
   async deleteImage(id: string): Promise<boolean> {
     try {
-      // 先删除元数据
       await this.imageMetadata.delete(id);
-      
-      // 再删除图片内容
       await this.images.delete(id);
-      
-      // 发布事件
-      DexieStorageService.publish(DexieStorageService.EVENT_TYPES.IMAGE_DELETED, { imageId: id });
-      
       return true;
     } catch (error) {
-      console.error(`DexieStorageService: 删除图片 ${id} 失败`, error);
+      console.error(`DexieStorageService: Failed to delete image ${id}.`, error);
       return false;
     }
   }
 
-  // ============= 数据库管理操作 =============
+  async saveBase64Image(base64Data: string, metadata: any = {}): Promise<string> {
+    try {
+      const parts = base64Data.split(';base64,');
+      const mimeType = parts.length > 1 ? parts[0].split('data:')[1] : (metadata.mimeType || 'image/png');
+      const base64Content = parts.length > 1 ? parts[1] : parts[0];
+      
+      const byteCharacters = atob(base64Content);
+      const byteArrays = [];
+      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+        const slice = byteCharacters.slice(offset, offset + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+      }
+      const blob = new Blob(byteArrays, { type: mimeType });
+      
+      return await this.saveImage(blob, { ...metadata, mimeType, type: 'base64', size: blob.size });
+    } catch (error) {
+      console.error('DexieStorageService: Failed to save Base64 image.', error);
+      throw error;
+    }
+  }
 
-  /**
-   * 清空数据库
-   * 谨慎使用，会删除所有数据
-   */
+  // ============= 数据库管理操作 (Simplified) =============
   async clearDatabase(): Promise<boolean> {
     try {
-      // 清空所有表
-      await this.assistants.clear();
-      await this.topics.clear();
-      await this.settings.clear();
-      await this.images.clear();
-      await this.imageMetadata.clear();
-      await this.metadata.clear();
-      
-      console.log('DexieStorageService: 数据库已清空');
+      await Promise.all([
+        this.assistants.clear(),
+        this.topics.clear(),
+        this.settings.clear(),
+        this.images.clear(),
+        this.imageMetadata.clear(),
+        this.metadata.clear(),
+      ]);
+      console.log('DexieStorageService: Database cleared.');
       return true;
     } catch (error) {
-      console.error('DexieStorageService: 清空数据库失败', error);
+      console.error('DexieStorageService: Failed to clear database.', error);
       return false;
     }
   }
 
-  /**
-   * 获取数据库状态
-   */
-  async getDatabaseStatus(): Promise<{
-    version: number;
-    tables: string[];
-    assistantsCount: number;
-    topicsCount: number;
-    imagesCount: number;
-    settingsCount: number;
-  }> {
+  async saveMetadata(key: string, value: any): Promise<boolean> {
     try {
-      // 获取各表的数据量
-      const assistantsCount = await this.assistants.count();
-      const topicsCount = await this.topics.count();
-      const imagesCount = await this.images.count();
-      const settingsCount = await this.settings.count();
+      const metadataObject = typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? { ...value, id: key }
+        : { id: key, value: value };
+      await this.metadata.put(metadataObject);
+      return true;
+    } catch (error) {
+      console.error(`DexieStorageService: Failed to save metadata ${key}.`, error);
+      return false;
+    }
+  }
 
+  async getMetadata(key: string): Promise<any> {
+    try {
+      const meta = await this.metadata.get(key);
+      if (meta && meta.hasOwnProperty('value') && Object.keys(meta).length === 2 && meta.id === key) {
+        return meta.value;
+      }
+      return meta;
+    } catch (error) {
+      console.error(`DexieStorageService: Failed to get metadata ${key}.`, error);
+      return null;
+    }
+  }
+
+  async deleteMetadata(key: string): Promise<boolean> {
+    try {
+      await this.metadata.delete(key);
+      return true;
+    } catch (error) {
+      console.error(`DexieStorageService: Failed to delete metadata ${key}.`, error);
+      return false;
+    }
+  }
+  
+  async getDatabaseStatus(): Promise<any> {
+    try {
+      const [assistantsCount, topicsCount, imagesCount, settingsCount, metadataCount] = await Promise.all([
+        this.assistants.count(),
+        this.topics.count(),
+        this.images.count(),
+        this.settings.count(),
+        this.metadata.count(),
+      ]);
       return {
         version: this.verno,
         tables: this.tables.map(t => t.name),
-        assistantsCount,
-        topicsCount,
-        imagesCount,
-        settingsCount
+        assistantsCount, topicsCount, imagesCount, settingsCount, metadataCount,
+        isOpen: this.isOpen()
       };
     } catch (error) {
-      console.error('DexieStorageService: 获取数据库状态失败', error);
+      console.error('DexieStorageService: Failed to get database status.', error);
       throw error;
     }
   }
 
-  /**
-   * 导出数据库内容
-   */
-  async exportData(): Promise<{
-    assistants: Assistant[];
-    topics: ChatTopic[];
-    settings: Record<string, any>;
-    version: number;
-    exportDate: string;
-  }> {
+  async exportData(): Promise<any> {
     try {
-      // 导出所有数据
-      const assistants = await this.assistants.toArray();
-      const topics = await this.topics.toArray();
-      
-      // 获取所有设置
-      const settingsData = await this.settings.toArray();
+      const [assistants, topicsData, settingsData, metadataData, imageMetadata] = await Promise.all([
+        this.assistants.toArray(),
+        this.topics.toArray(), // _lastMessageTimeNum will be included, can be stripped by consumer if needed
+        this.settings.toArray(),
+        this.metadata.toArray(),
+        this.imageMetadata.toArray()
+      ]);
+
       const settings: Record<string, any> = {};
-      for (const item of settingsData) {
-        settings[item.id] = item.value;
-      }
+      settingsData.forEach(item => {
+        settings[item.id] = item.hasOwnProperty('value') && Object.keys(item).length === 2 ? item.value : item;
+      });
+      const metadata: Record<string, any> = {};
+      metadataData.forEach(item => {
+        metadata[item.id] = item.hasOwnProperty('value') && Object.keys(item).length === 2 ? item.value : item;
+      });
+      
+      // Strip _lastMessageTimeNum from topics for export
+      const topics = topicsData.map(t => { const { _lastMessageTimeNum, ...topic } = t; return topic as ChatTopic; });
+
 
       return {
-        assistants,
-        topics,
-        settings,
         version: this.verno,
-        exportDate: new Date().toISOString()
+        exportDate: new Date().toISOString(),
+        assistants, topics, settings, metadata, imageMetadata
       };
     } catch (error) {
-      console.error('DexieStorageService: 导出数据失败', error);
+      console.error('DexieStorageService: Failed to export data.', error);
       throw error;
     }
   }
 
-  /**
-   * 导入数据
-   * @param data 要导入的数据
-   */
-  async importData(data: {
-    assistants: Assistant[];
-    topics: ChatTopic[];
-    settings: Record<string, any>;
-    version?: number;
-  }): Promise<boolean> {
+  async importData(data: any): Promise<boolean> {
     try {
-      // 开始事务
-      return await this.transaction('rw', 
-        [this.assistants, this.topics, this.settings], 
+      await this.transaction('rw',
+        [this.assistants, this.topics, this.settings, this.metadata, this.imageMetadata],
         async () => {
-          // 导入助手
-          if (data.assistants && Array.isArray(data.assistants)) {
-            // 清空现有数据
-            await this.assistants.clear();
-            // 批量添加新数据
-            await this.assistants.bulkPut(data.assistants);
-          }
-
-          // 导入话题
-          if (data.topics && Array.isArray(data.topics)) {
-            // 清空现有数据
+          if (data.assistants) await this.assistants.clear().then(() => this.assistants.bulkPut(data.assistants));
+          if (data.topics) {
             await this.topics.clear();
-            // 批量添加新数据
-            await this.topics.bulkPut(data.topics);
+            const topicsToImport = data.topics.map((t: ChatTopic) => ({
+              ...t,
+              _lastMessageTimeNum: new Date(t.lastMessageTime).getTime()
+            }));
+            await this.topics.bulkPut(topicsToImport);
           }
-
-          // 导入设置
-          if (data.settings && typeof data.settings === 'object') {
-            // 清空现有数据
+          if (data.settings) {
             await this.settings.clear();
-            
-            // 转换设置格式并导入
             const settingsArray = Object.entries(data.settings).map(
-              ([key, value]) => ({ id: key, value })
+              ([key, value]) => (typeof value === 'object' && value !== null && !Array.isArray(value) && !value.hasOwnProperty('id') ? {...value, id: key} : { id: key, value })
             );
             await this.settings.bulkPut(settingsArray);
           }
-
-          console.log('DexieStorageService: 数据导入成功');
-          return true;
+          if (data.metadata) {
+             await this.metadata.clear();
+            const metadataArray = Object.entries(data.metadata).map(
+              ([key, value]) => (typeof value === 'object' && value !== null && !Array.isArray(value) && !value.hasOwnProperty('id') ? {...value, id: key} : { id: key, value })
+            );
+            await this.metadata.bulkPut(metadataArray);
+          }
+          if (data.imageMetadata) await this.imageMetadata.clear().then(() => this.imageMetadata.bulkPut(data.imageMetadata));
         }
       );
+      console.log('DexieStorageService: Data imported successfully.');
+      return true;
     } catch (error) {
-      console.error('DexieStorageService: 导入数据失败', error);
+      console.error('DexieStorageService: Failed to import data.', error);
       return false;
+    }
+  }
+
+  static async getAllDatabases(): Promise<string[]> {
+    return await Dexie.getDatabaseNames();
+  }
+
+  static async deleteDatabase(dbName: string): Promise<void> {
+    await Dexie.delete(dbName);
+    console.log(`DexieStorageService: Deleted database ${dbName}`);
+  }
+
+  public async initialize(): Promise<void> {
+    try {
+      if (!this.isOpen()) {
+        await this.open(); // This will trigger 'ready' and thus _ensureDatabaseInitialized
+      } else {
+        // If already open, ensure initialization logic has run (or re-run if idempotent)
+        await this._ensureDatabaseInitialized();
+      }
+      console.log('DexieStorageService: Explicitly initialized (or initialization confirmed).');
+    } catch (error) {
+      console.error(`DexieStorageService: Database explicit initialization/confirmation failed.`, error);
+      throw error;
+    }
+  }
+
+  private async _ensureDatabaseInitialized(): Promise<void> {
+    try {
+      if (!this.isOpen()) {
+        // This should ideally not happen if called from 'ready', but as a safeguard:
+        await this.open(); 
+      }
+      
+      const initSetting = await this.settings.get('db-initialized');
+      if (initSetting && initSetting.value === true) {
+        return; // Already initialized
+      }
+      
+      console.log('DexieStorageService: Marking database as initialized and setting version.');
+      
+      await this.transaction('rw', this.settings, this.metadata, async () => {
+        await this.settings.put({ id: 'db-initialized', value: true });
+        await this.metadata.put({
+          id: 'db-version',
+          version: this.verno,
+          created: new Date().toISOString(),
+          lastUpdated: new Date().toISOString()
+        });
+      });
+      console.log('DexieStorageService: Database marked as initialized.');
+    } catch (error) {
+      console.error('DexieStorageService: Failed to ensure database initialization.', error);
+      throw error; 
     }
   }
 }
 
-// 创建并导出单例实例
 export const dexieStorage = DexieStorageService.getInstance();
-
-// 默认导出类以便可以继承和扩展
-export default DexieStorageService; 
+export default DexieStorageService;

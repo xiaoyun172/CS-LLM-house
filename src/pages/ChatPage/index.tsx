@@ -14,7 +14,7 @@ import { useModelSelection } from './hooks/useModelSelection';
 import { useTopicManagement } from './hooks/useTopicManagement';
 import { useMessageHandling } from './hooks/useMessageHandling';
 import type { SiliconFlowImageFormat } from '../../shared/types';
-import { addMessage, updateMessage } from '../../shared/store/messagesSlice';
+import { addMessage, updateMessage, setTopicStreaming } from '../../shared/store/messagesSlice';
 import { generateId, createMessage } from '../../shared/utils';
 import WebSearchService from '../../shared/services/WebSearchService';
 import FirecrawlService from '../../shared/services/FirecrawlService';
@@ -31,6 +31,7 @@ const ChatPage: React.FC = () => {
   const currentTopic = useSelector((state: RootState) => state.messages.currentTopic);
   const messagesByTopic = useSelector((state: RootState) => state.messages.messagesByTopic);
   const loadingByTopic = useSelector((state: RootState) => state.messages.loadingByTopic);
+  const streamingByTopic = useSelector((state: RootState) => state.messages.streamingByTopic);
   const dispatch = useDispatch();
 
   // 使用自定义钩子
@@ -81,6 +82,11 @@ const ChatPage: React.FC = () => {
   // 获取当前主题的加载状态
   const isLoading = currentTopic
     ? loadingByTopic[currentTopic.id] || false
+    : false;
+
+  // 获取当前主题的流式响应状态
+  const isStreaming = currentTopic
+    ? streamingByTopic[currentTopic.id] || false
     : false;
 
   // 处理消息版本切换
@@ -333,6 +339,28 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  // 处理停止响应
+  const handleStopResponseClick = () => {
+    if (!currentTopic) return;
+
+    // 停止流式响应
+    dispatch(setTopicStreaming({ topicId: currentTopic.id, streaming: false }));
+
+    // 更新最后一条助手消息的状态为完成
+    const messages = messagesByTopic[currentTopic.id] || [];
+    const lastAssistantMessage = [...messages].reverse().find(msg => msg.role === 'assistant' && msg.status === 'pending');
+
+    if (lastAssistantMessage) {
+      dispatch(updateMessage({
+        topicId: currentTopic.id,
+        messageId: lastAssistantMessage.id,
+        updates: {
+          status: 'complete'
+        }
+      }));
+    }
+  };
+
   // 处理消息发送
   const handleMessageSend = async (content: string, images?: SiliconFlowImageFormat[]) => {
     // 如果处于图像生成模式，则调用图像生成处理函数
@@ -499,6 +527,8 @@ const ChatPage: React.FC = () => {
                   onSendImagePrompt={handleImagePrompt}
                   webSearchActive={webSearchActive}
                   onDetectUrl={handleUrlScraping}
+                  onStopResponse={handleStopResponseClick}
+                  isStreaming={isStreaming}
                 />
               </Box>
             </>
@@ -582,6 +612,8 @@ const ChatPage: React.FC = () => {
                   onSendImagePrompt={handleImagePrompt}
                   webSearchActive={webSearchActive}
                   onDetectUrl={handleUrlScraping}
+                  onStopResponse={handleStopResponseClick}
+                  isStreaming={isStreaming}
                 />
               </Box>
             </>

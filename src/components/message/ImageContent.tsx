@@ -4,10 +4,7 @@ import ZoomOutMapIcon from '@mui/icons-material/ZoomOutMap';
 import CloseIcon from '@mui/icons-material/Close';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import type { ImageContent as ImageContentType } from '../../shared/types';
-import { DataService } from '../../shared/services/DataService';
-
-// 获取DataService实例
-const dataService = DataService.getInstance();
+import { dexieStorage } from '../../shared/services/DexieStorageService';
 
 interface ImageContentProps {
   image: ImageContentType;
@@ -91,13 +88,13 @@ const ImageContent: React.FC<ImageContentProps> = ({ image, index }) => {
       }
       
       // 获取图片Blob
-      const blob = await dataService.getImageBlob(id);
+      const blob = await dexieStorage.getImageBlob(id);
       if (!blob) {
         throw new Error('图片不存在');
       }
       
       // 获取图片元数据
-      const metadata = await dataService.getImageMetadata(id);
+      const metadata = await dexieStorage.getImageMetadata(id);
       console.debug('Image metadata loaded:', metadata);
       
       // 创建Blob URL

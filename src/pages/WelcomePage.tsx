@@ -29,6 +29,7 @@ import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import ChatIcon from '@mui/icons-material/Chat';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import type { Model } from '../shared/types';
+import { setStorageItem } from '../shared/utils/storage';
 
 const WelcomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -89,7 +90,7 @@ const WelcomePage: React.FC = () => {
         dispatch(setDefaultModel(model.id));
         
         // 设置first-time-user标记，防止再次显示欢迎页面
-        localStorage.setItem('first-time-user', 'false');
+        await setStorageItem('first-time-user', 'false');
         
         // 模拟API测试延迟
         await new Promise(resolve => setTimeout(resolve, 1500));
@@ -110,10 +111,16 @@ const WelcomePage: React.FC = () => {
   };
   
   // 处理跳过
-  const handleSkip = () => {
-    // 设置first-time-user标记，防止再次显示欢迎页面
-    localStorage.setItem('first-time-user', 'false');
-    navigate('/chat');
+  const handleSkip = async () => {
+    try {
+      // 设置first-time-user标记，防止再次显示欢迎页面
+      await setStorageItem('first-time-user', 'false');
+      navigate('/chat');
+    } catch (error) {
+      console.error('保存用户状态失败:', error);
+      // 无论如何都导航到主页
+      navigate('/chat');
+    }
   };
   
   // 获取当前选择的模型

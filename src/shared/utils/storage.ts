@@ -1,69 +1,57 @@
 /**
- * IndexedDB 存储工具类
- * 提供对 IndexedDB 的统一封装，完全替代 localStorage
+ * Dexie.js 存储工具类
+ * 提供对应用存储的统一封装，完全替代 localStorage 和直接的 IndexedDB 操作
  */
-import { openDB } from 'idb';
-import { DB_CONFIG } from '../types/DatabaseSchema';
-
-// 获取数据库配置
-const { NAME: DB_NAME, VERSION: DB_VERSION, STORES } = DB_CONFIG;
-
-// 统一使用SETTINGS存储所有键值对数据
-const SETTINGS_STORE = STORES.SETTINGS;
+import { dexieStorage } from '../services/DexieStorageService';
 
 /**
- * 从 IndexedDB 获取数据
+ * 从数据库获取数据
  * @param key 键名
  * @returns 解析后的数据，如果键不存在则返回 null
  */
 export async function getStorageItem<T>(key: string): Promise<T | null> {
   try {
-    const db = await openDB(DB_NAME, DB_VERSION);
-    const result = await db.get(SETTINGS_STORE, key);
-    return result ? result.value : null;
+    const value = await dexieStorage.getSetting(key);
+    return value ?? null;
   } catch (error) {
-    console.error(`Error getting item "${key}" from IndexedDB:`, error);
+    console.error(`Error getting item "${key}" from database:`, error);
     return null;
   }
 }
 
 /**
- * 向 IndexedDB 保存数据
+ * 向数据库保存数据
  * @param key 键名
  * @param value 要保存的值
  */
 export async function setStorageItem<T>(key: string, value: T): Promise<void> {
   try {
-    const db = await openDB(DB_NAME, DB_VERSION);
-    await db.put(SETTINGS_STORE, { id: key, value });
+    await dexieStorage.saveSetting(key, value);
   } catch (error) {
-    console.error(`Error setting item "${key}" to IndexedDB:`, error);
+    console.error(`Error setting item "${key}" to database:`, error);
   }
 }
 
 /**
- * 从 IndexedDB 移除数据
+ * 从数据库移除数据
  * @param key 键名
  */
 export async function removeStorageItem(key: string): Promise<void> {
   try {
-    const db = await openDB(DB_NAME, DB_VERSION);
-    await db.delete(SETTINGS_STORE, key);
+    await dexieStorage.deleteSetting(key);
   } catch (error) {
-    console.error(`Error removing item "${key}" from IndexedDB:`, error);
+    console.error(`Error removing item "${key}" from database:`, error);
   }
 }
 
 /**
- * 清空 IndexedDB 中的所有设置数据
- * 注意：此操作会移除设置存储中的所有数据，请谨慎使用
+ * 清空数据库中的所有设置数据
+ * 注意：此操作会移除设置表中的所有数据，请谨慎使用
  */
 export async function clearStorage(): Promise<void> {
   try {
-    const db = await openDB(DB_NAME, DB_VERSION);
-    const tx = db.transaction(SETTINGS_STORE, 'readwrite');
-    await tx.objectStore(SETTINGS_STORE).clear();
-    await tx.done;
+    // 使用Dexie提供的clear方法清空设置表
+    await dexieStorage.settings.clear();
     console.log('Settings store has been cleared.');
   } catch (error) {
     console.error('Error clearing settings store:', error);
@@ -71,16 +59,17 @@ export async function clearStorage(): Promise<void> {
 }
 
 /**
- * 获取 IndexedDB 中所有键名
+ * 获取数据库中所有键名
  * @returns 键名数组
  */
 export async function getAllStorageKeys(): Promise<string[]> {
   try {
-    const db = await openDB(DB_NAME, DB_VERSION);
-    const allKeys = await db.getAllKeys(SETTINGS_STORE);
-    return allKeys.map(key => String(key));
+    // 获取所有设置对象
+    const settings = await dexieStorage.settings.toArray();
+    // 返回所有id作为键名
+    return settings.map(setting => String(setting.id));
   } catch (error) {
-    console.error('Error getting all keys from IndexedDB:', error);
+    console.error('Error getting all keys from database:', error);
     return [];
   }
 }
@@ -91,17 +80,14 @@ export async function getAllStorageKeys(): Promise<string[]> {
  */
 export async function setStorageItems(items: Record<string, any>): Promise<void> {
   try {
-    const db = await openDB(DB_NAME, DB_VERSION);
-    const tx = db.transaction(SETTINGS_STORE, 'readwrite');
-    const store = tx.objectStore(SETTINGS_STORE);
-    
-    for (const [key, value] of Object.entries(items)) {
-      await store.put({ id: key, value });
-    }
-    
-    await tx.done;
+    // 使用Dexie事务批量保存设置
+    await dexieStorage.transaction('rw', dexieStorage.settings, async () => {
+      for (const [key, value] of Object.entries(items)) {
+        await dexieStorage.saveSetting(key, value);
+      }
+    });
   } catch (error) {
-    console.error('Error setting multiple items to IndexedDB:', error);
+    console.error('Error setting multiple items to database:', error);
   }
 }
 

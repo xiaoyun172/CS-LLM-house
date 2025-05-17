@@ -5,6 +5,7 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import KeyboardVoiceIcon from '@mui/icons-material/KeyboardVoice';
 import CancelIcon from '@mui/icons-material/Cancel';
 import LinkIcon from '@mui/icons-material/Link';
+import StopIcon from '@mui/icons-material/Stop';
 import { ImageUploadService } from '../shared/services/ImageUploadService';
 import { FileUploadService } from '../shared/services/FileUploadService';
 import type { ImageContent, SiliconFlowImageFormat, FileContent } from '../shared/types';
@@ -15,7 +16,7 @@ import UrlScraperStatus from './UrlScraperStatus';
 import FilePreview from './FilePreview';
 import UploadMenu from './UploadMenu';
 import type { ScraperStatus } from './UrlScraperStatus';
-import { dataService } from '../shared/services/DataService';
+import { dexieStorage } from '../shared/services/DexieStorageService';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../shared/store';
 import { useTheme } from '@mui/material/styles';
@@ -29,16 +30,20 @@ interface ChatInputProps {
   onSendImagePrompt?: (prompt: string) => void; // 发送图像生成提示词的回调
   webSearchActive?: boolean; // 是否处于网络搜索模式
   onDetectUrl?: (url: string) => Promise<string>; // 用于检测并解析URL的回调
+  onStopResponse?: () => void; // 停止AI回复的回调
+  isStreaming?: boolean; // 是否正在流式响应中
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ 
-  onSendMessage, 
+const ChatInput: React.FC<ChatInputProps> = ({
+  onSendMessage,
   isLoading = false,
   allowConsecutiveMessages = true, // 默认允许连续发送
   imageGenerationMode = false, // 默认不是图像生成模式
   onSendImagePrompt,
   webSearchActive = false, // 默认不是网络搜索模式
-  onDetectUrl
+  onDetectUrl,
+  onStopResponse,
+  isStreaming = false
 }) => {
   const [message, setMessage] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -53,10 +58,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [parsedContent, setParsedContent] = useState<string>('');
   const [urlScraperStatus, setUrlScraperStatus] = useState<ScraperStatus>('idle');
   const [scraperError, setScraperError] = useState<string>('');
-  
+
   // 获取当前话题状态 - 移到组件顶层
   const currentTopicState = useSelector((state: RootState) => state.messages.currentTopic);
-  
+
   // 获取主题相关颜色
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
@@ -76,11 +81,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    
+
     if ((!message.trim() && images.length === 0 && files.length === 0 && !parsedContent) || isLoading) return;
-    
+
     let processedMessage = message.trim();
-    
+
     // 如果有解析的内容，添加到消息中
     if (parsedContent && urlScraperStatus === 'success') {
       // 将网页内容和用户消息合并
@@ -90,14 +95,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
       setParsedContent('');
       setUrlScraperStatus('idle');
     }
-    
+
     // 如果是图像生成模式，则调用生成图像的回调
     if (imageGenerationMode && onSendImagePrompt) {
       onSendImagePrompt(processedMessage);
       setMessage('');
       return;
     }
-    
+
     // 创建正确的图片格式
     const formattedImages: SiliconFlowImageFormat[] = [...images, ...files.filter(f => f.mimeType.startsWith('image/'))].map(img => ({
       type: 'image_url',
@@ -105,15 +110,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
         url: img.base64Data || img.url
       }
     }));
-    
+
     // 如果有非图片文件，添加到消息中
     const nonImageFiles = files.filter(f => !f.mimeType.startsWith('image/'));
     if (nonImageFiles.length > 0) {
       // 为每个文件添加描述
-      const fileDescriptions = nonImageFiles.map(file => 
+      const fileDescriptions = nonImageFiles.map(file =>
         `[文件: ${file.name} (${FileUploadService.formatFileSize(file.size)})]`
       ).join('\n');
-      
+
       // 将文件描述添加到消息中
       if (processedMessage) {
         processedMessage += '\n\n' + fileDescriptions;
@@ -121,13 +126,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
         processedMessage = fileDescriptions;
       }
     }
-    
+
     // 重置状态
     setMessage('');
     setImages([]);
     setFiles([]);
     setUploadingMedia(false);
-    
+
     // 添加到消息列表
     onSendMessage(processedMessage, formattedImages);
   };
@@ -135,10 +140,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newMessage = e.target.value;
     setMessage(newMessage);
-    
+
     // 如果URL已经被检测到，不再重复检测
     if (detectedUrl || urlScraperStatus !== 'idle') return;
-    
+
     // 如果消息包含URL并且我们有处理函数，尝试检测URL
     if (onDetectUrl) {
       // 使用正则表达式寻找可能的URL
@@ -157,7 +162,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // 处理URL抓取
   const handleUrlScraping = async (url: string) => {
     if (!onDetectUrl) return;
-    
+
     try {
       setUrlScraperStatus('parsing');
       const content = await onDetectUrl(url);
@@ -195,21 +200,21 @@ const ChatInput: React.FC<ChatInputProps> = ({
         textareaRef.current.blur();
       }
     }, 300);
-    
+
     // 添加键盘显示检测
     const handleFocus = () => {
       setIsKeyboardVisible(true);
     };
-    
+
     const handleBlur = () => {
       setIsKeyboardVisible(false);
     };
-    
+
     if (textareaRef.current) {
       textareaRef.current.addEventListener('focus', handleFocus);
       textareaRef.current.addEventListener('blur', handleBlur);
     }
-    
+
     return () => {
       clearTimeout(timer);
       if (textareaRef.current) {
@@ -232,25 +237,25 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const handleImageUpload = async (source: 'camera' | 'photos' = 'photos') => {
     try {
       setUploadingMedia(true);
-      
+
       // 选择图片
       const selectedImages = await ImageUploadService.selectImages(source);
       if (selectedImages.length === 0) {
         setUploadingMedia(false);
         return;
       }
-      
+
       // 压缩图片并存储进度
       const totalImages = selectedImages.length;
       let completedImages = 0;
-      
+
       // 创建一个进度更新函数
       const updateProgress = (increment: number = 1) => {
         completedImages += increment;
         // 这里可以添加进度百分比显示的逻辑，比如设置状态或显示进度条
         console.log(`处理图片进度: ${completedImages}/${totalImages}`);
       };
-      
+
       // 处理图片
       const processedImages = await Promise.all(
         selectedImages.map(async (img, index) => {
@@ -258,11 +263,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
             // 1. 压缩图片
             const compressedImage = await ImageUploadService.compressImage(img, 1024); // 限制1MB
             updateProgress(0.5); // 算作半个完成单位
-            
-            // 2. 尝试保存到DataService
+
+            // 2. 尝试保存到DexieStorageService
             if (currentTopicState) {
               try {
-                const imageRef = await dataService.saveBase64Image(
+                const imageRef = await dexieStorage.saveBase64Image(
                   compressedImage.base64Data || '',
                   {
                     mimeType: compressedImage.mimeType,
@@ -272,22 +277,22 @@ const ChatInput: React.FC<ChatInputProps> = ({
                     topicId: currentTopicState.id
                   }
                 );
-                
+
                 updateProgress(0.5);
-                
+
                 // 成功保存，返回图片引用
                 return {
-                  url: `[图片:${imageRef.id}]`,
+                  url: `[图片:${imageRef}]`, // 注意：这里imageRef直接是字符串ID
                   mimeType: compressedImage.mimeType,
                   width: compressedImage.width,
                   height: compressedImage.height
                 } as ImageContent;
-                
+
               } catch (storageError) {
                 // 数据库存储失败，直接使用压缩后的图片
                 console.warn('数据库存储图片失败，使用内存中的图片:', storageError);
                 updateProgress(0.5);
-                
+
                 // 返回压缩后的图片，而不是引用
                 return compressedImage;
               }
@@ -304,10 +309,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
           }
         })
       );
-      
+
       // 过滤掉错误的图片（null值）
       const validImages = processedImages.filter(img => img !== null) as ImageContent[];
-      
+
       // 更新状态
       setImages(prev => [...prev, ...validImages]);
       setUploadingMedia(false);
@@ -322,14 +327,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const handleFileUpload = async () => {
     try {
       setUploadingMedia(true);
-      
+
       // 选择文件
       const selectedFiles = await FileUploadService.selectFiles();
       if (selectedFiles.length === 0) {
         setUploadingMedia(false);
         return;
       }
-      
+
       // 处理文件，不需要特殊处理，直接添加到files状态
       setFiles(prev => [...prev, ...selectedFiles]);
       setUploadingMedia(false);
@@ -376,7 +381,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           onClose={resetUrlScraper}
         />
       )}
-    
+
       {/* 已选择的媒体预览区域 */}
       {(images.length > 0 || files.length > 0) && (
         <Box sx={{
@@ -438,7 +443,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               ))}
             </Box>
           )}
-          
+
           {/* 文件预览 */}
           {files.length > 0 && (
             <Box sx={{
@@ -458,7 +463,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           )}
         </Box>
       )}
-      
+
       <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -482,7 +487,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           >
           <KeyboardVoiceIcon />
           </IconButton>
-        
+
         {/* 文本输入区域 */}
         <div style={{
           flexGrow: 1,
@@ -514,7 +519,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             rows={1}
           />
         </div>
-        
+
         {/* 添加按钮，打开上传菜单 */}
         <Tooltip title="添加图片或文件">
           <IconButton
@@ -536,18 +541,22 @@ const ChatInput: React.FC<ChatInputProps> = ({
             )}
           </IconButton>
         </Tooltip>
-          
-        {/* 发送按钮 */}
+
+        {/* 发送按钮或停止按钮 */}
         <IconButton
-          onClick={handleSubmit}
-          disabled={!canSendMessage() || isLoading && !allowConsecutiveMessages}
+          onClick={isStreaming && onStopResponse ? onStopResponse : handleSubmit}
+          disabled={!isStreaming && (!canSendMessage() || (isLoading && !allowConsecutiveMessages))}
           size="medium"
           style={{
-            color: !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? disabledColor : imageGenerationMode ? '#9C27B0' : webSearchActive ? '#3b82f6' : urlScraperStatus === 'success' ? '#26C6DA' : isDarkMode ? '#4CAF50' : '#09bb07',
+            color: isStreaming ? '#ff4d4f' : !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? disabledColor : imageGenerationMode ? '#9C27B0' : webSearchActive ? '#3b82f6' : urlScraperStatus === 'success' ? '#26C6DA' : isDarkMode ? '#4CAF50' : '#09bb07',
             padding: '8px'
           }}
         >
-          {showLoadingIndicator ? (
+          {isStreaming ? (
+            <Tooltip title="停止生成">
+              <StopIcon />
+            </Tooltip>
+          ) : showLoadingIndicator ? (
             <CircularProgress size={24} color="inherit" />
           ) : imageGenerationMode ? (
             <Tooltip title="生成图像">
@@ -566,7 +575,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           )}
         </IconButton>
       </div>
-      
+
       {/* 上传选择菜单 */}
       <UploadMenu
         anchorEl={uploadMenuAnchorEl}
