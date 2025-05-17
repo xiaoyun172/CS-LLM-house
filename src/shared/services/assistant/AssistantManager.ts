@@ -4,9 +4,22 @@ import {
   deserializeAssistant,
   serializeAssistant
 } from './types';
+import Dexie from 'dexie';
+import { DB_CONFIG } from '../../types/DatabaseSchema';
 
 // 获取DataService实例
 const dataService = DataService.getInstance();
+
+// 创建 Dexie 数据库实例
+const dexieDb = new Dexie(DB_CONFIG.NAME);
+dexieDb.version(DB_CONFIG.VERSION).stores({
+  [DB_CONFIG.STORES.ASSISTANTS]: 'id',
+  [DB_CONFIG.STORES.TOPICS]: 'id, assistantId, lastUpdateTime',
+  [DB_CONFIG.STORES.SETTINGS]: '',
+  [DB_CONFIG.STORES.IMAGES]: 'id',
+  [DB_CONFIG.STORES.IMAGE_METADATA]: 'id, topicId, created',
+  [DB_CONFIG.STORES.METADATA]: ''
+});
 
 /**
  * 核心助手管理服务 - 负责助手的基本CRUD操作
@@ -88,6 +101,29 @@ export class AssistantManager {
   }
 
   /**
+   * 直接使用Dexie.js保存助手，绕过DataService
+   * 这是一个更可靠的备选方案，替代原有的直接IndexedDB操作
+   */
+  private static async saveAssistantDirectly(assistant: any): Promise<boolean> {
+    try {
+      console.log(`[Dexie直接保存] 尝试直接保存助手 ${assistant.id} 到数据库`);
+
+      // 确保对象是纯JSON，移除所有函数和复杂对象
+      const jsonString = JSON.stringify(assistant);
+      const cleanAssistant = JSON.parse(jsonString);
+
+      // 使用Dexie.js直接保存
+      await dexieDb.table(DB_CONFIG.STORES.ASSISTANTS).put(cleanAssistant);
+
+      console.log(`[Dexie直接保存] 助手 ${assistant.id} 直接保存成功`);
+      return true;
+    } catch (error) {
+      console.error(`[Dexie直接保存] 直接保存助手 ${assistant.id} 失败:`, error);
+      return false;
+    }
+  }
+
+  /**
    * 添加助手
    */
   static async addAssistant(assistant: Assistant): Promise<boolean> {
@@ -107,14 +143,39 @@ export class AssistantManager {
         return await this.updateAssistant(assistant);
       }
 
-      // 序列化助手以去除图标等非可序列化属性
-      const serializableAssistant = serializeAssistant(assistant);
+      // 不再需要序列化助手，直接创建安全对象
 
-      // 保存到DataService
-      await dataService.saveAssistant(serializableAssistant);
+      // 创建一个最小化的安全对象
+      const safeAssistant = {
+        id: assistant.id,
+        name: assistant.name,
+        description: assistant.description || '',
+        icon: null,
+        isSystem: !!assistant.isSystem,
+        topicIds: Array.isArray(assistant.topicIds) ? [...assistant.topicIds] : [],
+        systemPrompt: assistant.systemPrompt || ''
+      };
 
-      console.log(`助手 ${assistant.id} 添加成功`);
-      return true;
+      // 尝试使用DataService保存
+      try {
+        await dataService.saveAssistant(safeAssistant);
+        console.log(`助手 ${assistant.id} 通过DataService保存成功`);
+        return true;
+      } catch (dataServiceError) {
+        console.error(`通过DataService保存助手 ${assistant.id} 失败:`, dataServiceError);
+
+        // 如果DataService失败，尝试直接使用Dexie.js
+        console.log(`尝试使用Dexie.js方法保存助手 ${assistant.id}`);
+        const success = await this.saveAssistantDirectly(safeAssistant);
+
+        if (success) {
+          console.log(`助手 ${assistant.id} 通过Dexie.js方法保存成功`);
+          return true;
+        } else {
+          console.error(`所有保存方法都失败，无法保存助手 ${assistant.id}`);
+          return false;
+        }
+      }
     } catch (error) {
       console.error(`添加助手 ${assistant.id} 失败:`, error);
       return false;
@@ -128,14 +189,37 @@ export class AssistantManager {
     try {
       console.log(`更新助手: ${assistant.id} (${assistant.name})`);
 
-      // 序列化助手以去除图标等非可序列化属性
-      const serializableAssistant = serializeAssistant(assistant);
+      // 创建一个最小化的安全对象
+      const safeAssistant = {
+        id: assistant.id,
+        name: assistant.name,
+        description: assistant.description || '',
+        icon: null,
+        isSystem: !!assistant.isSystem,
+        topicIds: Array.isArray(assistant.topicIds) ? [...assistant.topicIds] : [],
+        systemPrompt: assistant.systemPrompt || ''
+      };
 
-      // 保存到DataService
-      await dataService.saveAssistant(serializableAssistant);
+      // 尝试使用DataService保存
+      try {
+        await dataService.saveAssistant(safeAssistant);
+        console.log(`助手 ${assistant.id} 通过DataService更新成功`);
+        return true;
+      } catch (dataServiceError) {
+        console.error(`通过DataService更新助手 ${assistant.id} 失败:`, dataServiceError);
 
-      console.log(`助手 ${assistant.id} 更新成功`);
-      return true;
+        // 如果DataService失败，尝试直接使用Dexie.js
+        console.log(`尝试使用Dexie.js方法更新助手 ${assistant.id}`);
+        const success = await this.saveAssistantDirectly(safeAssistant);
+
+        if (success) {
+          console.log(`助手 ${assistant.id} 通过Dexie.js方法更新成功`);
+          return true;
+        } else {
+          console.error(`所有更新方法都失败，无法更新助手 ${assistant.id}`);
+          return false;
+        }
+      }
     } catch (error) {
       console.error(`更新助手 ${assistant.id} 失败:`, error);
       return false;

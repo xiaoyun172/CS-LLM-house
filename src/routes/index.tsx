@@ -14,8 +14,7 @@ const AddProviderPage = lazy(() => import('../pages/Settings/AddProviderPage'));
 const AboutPage = lazy(() => import('../pages/Settings/AboutPage'));
 const VoiceSettings = lazy(() => import('../pages/Settings/VoiceSettings'));
 const WebSearchSettings = lazy(() => import('../pages/Settings/WebSearchSettings'));
-const SystemPromptSettings = lazy(() => import('../pages/Settings/SystemPromptSettings'));
-const SystemPromptManagement = lazy(() => import('../pages/Settings/SystemPrompt'));
+const SystemPromptSettings = lazy(() => import('../pages/Settings/SystemPrompt'));
 const DevToolsPage = lazy(() => import('../pages/DevToolsPage'));
 const VueDemoPage = lazy(() => import('../pages/VueDemo'));
 import DataSettingsPage from '../pages/Settings/DataSettings';
@@ -66,7 +65,6 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/default-model" element={<DefaultModelSettings />} />
         <Route path="/settings/default-model-settings" element={<DefaultModelSettingsPage />} />
         <Route path="/settings/system-prompts" element={<SystemPromptSettings />} />
-        <Route path="/settings/system-prompt" element={<SystemPromptManagement />} />
         <Route path="/settings/model-provider/:providerId" element={<ModelProviderSettings />} />
         <Route path="/settings/add-provider" element={<AddProviderPage />} />
         <Route path="/settings/about" element={<AboutPage />} />

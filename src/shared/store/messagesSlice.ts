@@ -17,8 +17,8 @@ export {
   createTopic,
   updateTopic,
   setTopicMessages,
-  addAlternateVersion,
-  switchToVersion
+  loadTopicsSuccess,
+  initializeTopics
 } from './slices/messagesSlice';
 
 // 导出 Types

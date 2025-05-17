@@ -4,6 +4,7 @@ import { TopicStatsService } from '../TopicStatsService';
 import type { ChatTopic } from '../../types';
 import { getDefaultTopic } from './types';
 import { AssistantManager } from './AssistantManager';
+import { DEFAULT_TOPIC_PROMPT } from '../../config/prompts';
 
 // 获取DataService实例
 const dataService = DataService.getInstance();
@@ -45,7 +46,7 @@ export class TopicManager {
 
         // 尝试修复话题 - 添加系统提示词
         if (!topic.prompt) {
-          topic.prompt = '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。请告诉我您需要什么帮助？';
+          topic.prompt = DEFAULT_TOPIC_PROMPT;
           await dataService.saveTopic(topic);
           console.log(`已为话题 ${topicId} 添加系统提示词`);
         }

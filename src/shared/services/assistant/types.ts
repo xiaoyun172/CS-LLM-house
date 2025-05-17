@@ -3,7 +3,8 @@ import type { ChatTopic } from '../../types';
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import React from 'react';
-import { uuid } from '../../utils';
+import { uuid, formatDateForTopicTitle } from '../../utils';
+import { DEFAULT_TOPIC_PROMPT } from '../../config/prompts';
 
 // 定义常量
 export const ASSISTANTS_STORAGE_KEY = 'userAssistants';
@@ -37,18 +38,39 @@ export function deserializeAssistant(assistant: SerializableAssistant): Assistan
 }
 
 /**
- * 创建默认话题对象
- * 确保创建的话题符合有效话题的标准
+ * 创建默认话题
+ * @param assistantId 助手ID
+ * @returns 默认话题对象
  */
 export function getDefaultTopic(_assistantId: string): ChatTopic {
-  const currentTime = new Date().toISOString();
+  const now = new Date();
+  const currentTime = now.toISOString();
+  const formattedDate = formatDateForTopicTitle(now);
+  
   return {
     id: uuid(),
-    title: '新的对话',
+    title: `新的对话 ${formattedDate}`,
     lastMessageTime: currentTime,
-    // 添加系统提示词而不是系统消息
-    prompt: '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。请告诉我您需要什么帮助？',
-    messages: []
+    messages: [],
+    prompt: DEFAULT_TOPIC_PROMPT
+  };
+}
+
+/**
+ * 生成默认话题模板
+ * 用于创建新话题的模板对象
+ * @param assistantId 助手ID
+ */
+export function defaultTopicTemplate(_assistantId: string): Omit<ChatTopic, 'id'> {
+  const now = new Date();
+  const currentTime = now.toISOString();
+  const formattedDate = formatDateForTopicTitle(now);
+  
+  return {
+    title: `新的对话 ${formattedDate}`,
+    lastMessageTime: currentTime,
+    messages: [],
+    prompt: DEFAULT_TOPIC_PROMPT
   };
 }
 

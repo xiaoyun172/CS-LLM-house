@@ -4,6 +4,8 @@ import { DataService } from './DataService';
 import { AssistantService } from './index';
 import store from '../store';
 import { createTopic, setCurrentTopic } from '../store/messagesSlice';
+import { formatDateForTopicTitle } from '../utils';
+import { DEFAULT_TOPIC_PROMPT } from '../config/prompts';
 
 // 获取DataService实例
 const dataService = DataService.getInstance();
@@ -47,24 +49,26 @@ export class TopicService {
   static async createNewTopic(): Promise<ChatTopic | null> {
     try {
       console.log('[话题创建监控] 开始创建新话题');
-      
+
       // 1. 获取当前助手ID
       const currentAssistantId = await this.getCurrentAssistantId();
       if (!currentAssistantId) {
         console.error('[话题创建监控] 无法创建话题，未找到当前助手ID');
         return null;
       }
-      
+
       console.log(`[话题创建监控] 为助手 ${currentAssistantId} 创建新话题`);
 
       // 2. 创建话题对象
       const topicId = uuid();
+      const now = new Date();
+      const formattedDate = formatDateForTopicTitle(now);
       const newTopic: ChatTopic = {
         id: topicId,
-        title: '新的对话',
-        lastMessageTime: new Date().toISOString(),
-        // 添加系统提示词确保话题有效性
-        prompt: '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。请告诉我您需要什么帮助？',
+        title: `新的对话 ${formattedDate}`,
+        lastMessageTime: now.toISOString(),
+        // 使用配置文件中的默认话题提示词
+        prompt: DEFAULT_TOPIC_PROMPT,
         messages: []
       };
 
@@ -138,10 +142,14 @@ export class TopicService {
       console.warn('TopicService: 从AssistantService获取当前助手失败');
     }
 
-    // 尝试从localStorage获取
-    const storedId = localStorage.getItem('currentAssistant');
-    if (storedId) {
-      return storedId;
+    // 尝试从IndexedDB获取
+    try {
+      const storedId = await dataService.getSetting('currentAssistant');
+      if (storedId) {
+        return storedId;
+      }
+    } catch (error) {
+      console.warn('TopicService: 从IndexedDB获取当前助手ID失败', error);
     }
 
     // 最后尝试获取第一个可用助手
@@ -151,7 +159,8 @@ export class TopicService {
         const firstAssistant = assistants[0];
         // 更新当前助手
         await AssistantService.setCurrentAssistant(firstAssistant.id);
-        localStorage.setItem('currentAssistant', firstAssistant.id);
+        // 保存到IndexedDB
+        await dataService.saveSetting('currentAssistant', firstAssistant.id);
         return firstAssistant.id;
       }
     } catch (error) {
@@ -166,7 +175,7 @@ export class TopicService {
    */
   private static notifyTopicCreated(topic: ChatTopic, assistantId: string): void {
     console.log(`[话题创建监控] notifyTopicCreated: 开始派发事件, 话题ID=${topic.id}, 助手ID=${assistantId}`);
-    
+
     try {
       const event = new CustomEvent('topicCreated', {
         detail: {
@@ -238,12 +247,14 @@ export class TopicService {
       console.log(`TopicService: 生成话题ID: ${topicId}`);
 
     // 创建新话题
+    const now = new Date();
+    const formattedDate = formatDateForTopicTitle(now);
     const newTopic: ChatTopic = {
         id: topicId,
-      title: title || '新的对话',
+      title: title || `新的对话 ${formattedDate}`,
       lastMessageTime: currentTime,
-      // 添加系统提示词确保话题有效性
-      prompt: '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。请告诉我您需要什么帮助？',
+      // 使用配置文件中的默认话题提示词
+      prompt: DEFAULT_TOPIC_PROMPT,
       messages
     };
 

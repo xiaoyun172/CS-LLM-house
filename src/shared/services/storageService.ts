@@ -1,10 +1,11 @@
 import { openDB } from 'idb';
 import type { IDBPDatabase } from 'idb';
-import type { ChatTopic } from '../types';
+import type { ChatTopic, Message } from '../types';
 import type { Assistant } from '../types/Assistant';
 import { Preferences } from '@capacitor/preferences';
 import type { AetherLinkDB } from '../types/DatabaseSchema';
 import { DB_CONFIG } from '../types/DatabaseSchema';
+import { dexieStorage } from './DexieStorageService';
 
 // 使用统一的数据库配置
 const { NAME: DB_NAME, VERSION: DB_VERSION, STORES } = DB_CONFIG;
@@ -217,6 +218,18 @@ export async function initStorageService(): Promise<void> {
 
     // 初始化数据库
     await initDB();
+    
+    // 初始化StorageService单例实例
+    if (storageService) {
+      // 启用Dexie优先
+      storageService.setUseDexiePriority(true);
+      
+      // 初始化话题同步
+      storageService.initTopicSync();
+      
+      console.log('启用Dexie优先存储和自动同步');
+    }
+    
     console.log('存储服务初始化成功');
   } catch (error) {
     console.error('存储服务初始化失败:', error);
@@ -327,183 +340,428 @@ export async function getDatabaseStatus(): Promise<{
 }
 
 /**
- * 统一数据服务接口
- * 提供对数据库的统一访问
+ * 统一存储服务类，优先使用Dexie存储，备用使用idb直接操作
  */
-export const storageService = {
+class StorageService {
+  // 是否优先使用Dexie存储
+  private useDexiePriority = true;
+
+  /**
+   * 设置是否优先使用Dexie存储
+   * @param enable 是否启用
+   */
+  setUseDexiePriority(enable: boolean): void {
+    this.useDexiePriority = enable;
+    console.log(`StorageService: ${enable ? '优先使用Dexie存储' : '优先使用idb直接存储'}`);
+  }
+
   /**
    * 保存助手
    * @param assistant 助手对象
    */
-  async saveAssistant(assistant: Assistant): Promise<void> {
+  async saveAssistant(assistant: Assistant): Promise<boolean> {
+    try {
+      if (this.useDexiePriority) {
+        const result = await dexieStorage.saveAssistant(assistant);
+        if (result) return true;
+      }
+      
+      // 备用存储方式
+      await saveAssistantToDB(assistant);
+      return true;
+    } catch (error) {
+      console.error('StorageService: 保存助手失败', error);
+      
+      // 尝试使用备用方式
+      try {
     await saveAssistantToDB(assistant);
-  },
+        return true;
+      } catch (backupError) {
+        console.error('StorageService: 备用方式保存助手也失败', backupError);
+        return false;
+      }
+    }
+  }
+
+  /**
+   * 获取助手
+   * @param id 助手ID
+   */
+  async getAssistant(id: string): Promise<Assistant | null> {
+    try {
+      if (this.useDexiePriority) {
+        const assistant = await dexieStorage.getAssistant(id);
+        if (assistant) return assistant;
+      }
+      
+      // 备用获取方式
+      const assistant = await getAssistantFromDB(id);
+      return assistant || null;
+    } catch (error) {
+      console.error(`StorageService: 获取助手 ${id} 失败`, error);
+      
+      // 尝试使用备用方式
+      try {
+        const assistant = await getAssistantFromDB(id);
+        return assistant || null;
+      } catch (backupError) {
+        console.error(`StorageService: 备用方式获取助手 ${id} 也失败`, backupError);
+        return null;
+      }
+    }
+  }
 
   /**
    * 获取所有助手
-   * @returns 助手数组
    */
   async getAllAssistants(): Promise<Assistant[]> {
-    return getAllAssistantsFromDB();
-  },
-
-  /**
-   * 获取单个助手
-   * @param id 助手ID
-   * @returns 助手对象或undefined
-   */
-  async getAssistant(id: string): Promise<Assistant | undefined> {
-    return getAssistantFromDB(id);
-  },
+    try {
+      if (this.useDexiePriority) {
+        const assistants = await dexieStorage.getAllAssistants();
+        if (assistants.length > 0) return assistants;
+      }
+      
+      // 备用获取方式
+      return await getAllAssistantsFromDB();
+    } catch (error) {
+      console.error('StorageService: 获取所有助手失败', error);
+      
+      // 尝试使用备用方式
+      try {
+        return await getAllAssistantsFromDB();
+      } catch (backupError) {
+        console.error('StorageService: 备用方式获取所有助手也失败', backupError);
+        return [];
+      }
+    }
+  }
 
   /**
    * 删除助手
    * @param id 助手ID
    */
-  async deleteAssistant(id: string): Promise<void> {
+  async deleteAssistant(id: string): Promise<boolean> {
+    try {
+      if (this.useDexiePriority) {
+        const result = await dexieStorage.deleteAssistant(id);
+        if (result) return true;
+      }
+      
+      // 备用删除方式
     await deleteAssistantFromDB(id);
-  },
+      return true;
+    } catch (error) {
+      console.error(`StorageService: 删除助手 ${id} 失败`, error);
+      
+      // 尝试使用备用方式
+      try {
+        await deleteAssistantFromDB(id);
+        return true;
+      } catch (backupError) {
+        console.error(`StorageService: 备用方式删除助手 ${id} 也失败`, backupError);
+        return false;
+      }
+    }
+  }
 
   /**
    * 保存话题
    * @param topic 话题对象
    */
-  async saveTopic(topic: ChatTopic): Promise<void> {
+  async saveTopic(topic: ChatTopic): Promise<boolean> {
+    try {
+      if (this.useDexiePriority) {
+        const result = await dexieStorage.saveTopic(topic);
+        if (result) return true;
+      }
+      
+      // 备用存储方式
+      await saveTopicToDB(topic);
+      return true;
+    } catch (error) {
+      console.error('StorageService: 保存话题失败', error);
+      
+      // 尝试使用备用方式
+      try {
     await saveTopicToDB(topic);
-  },
+        return true;
+      } catch (backupError) {
+        console.error('StorageService: 备用方式保存话题也失败', backupError);
+        return false;
+      }
+    }
+  }
+
+  /**
+   * 获取话题
+   * @param id 话题ID
+   */
+  async getTopic(id: string): Promise<ChatTopic | null> {
+    try {
+      if (this.useDexiePriority) {
+        const topic = await dexieStorage.getTopic(id);
+        if (topic) return topic;
+      }
+      
+      // 备用获取方式
+      const topic = await getTopicFromDB(id);
+      return topic || null;
+    } catch (error) {
+      console.error(`StorageService: 获取话题 ${id} 失败`, error);
+      
+      // 尝试使用备用方式
+      try {
+        const topic = await getTopicFromDB(id);
+        return topic || null;
+      } catch (backupError) {
+        console.error(`StorageService: 备用方式获取话题 ${id} 也失败`, backupError);
+        return null;
+      }
+    }
+  }
 
   /**
    * 获取所有话题
-   * @returns 话题数组
    */
   async getAllTopics(): Promise<ChatTopic[]> {
-    return getAllTopicsFromDB();
-  },
-
-  /**
-   * 获取单个话题
-   * @param id 话题ID
-   * @returns 话题对象或undefined
-   */
-  async getTopic(id: string): Promise<ChatTopic | undefined> {
-    return getTopicFromDB(id);
-  },
+    try {
+      if (this.useDexiePriority) {
+        const topics = await dexieStorage.getAllTopics();
+        if (topics.length > 0) return topics;
+      }
+      
+      // 备用获取方式
+      return await getAllTopicsFromDB();
+    } catch (error) {
+      console.error('StorageService: 获取所有话题失败', error);
+      
+      // 尝试使用备用方式
+      try {
+        return await getAllTopicsFromDB();
+      } catch (backupError) {
+        console.error('StorageService: 备用方式获取所有话题也失败', backupError);
+        return [];
+      }
+    }
+  }
 
   /**
    * 删除话题
    * @param id 话题ID
    */
-  async deleteTopic(id: string): Promise<void> {
-    await deleteTopicFromDB(id);
-  },
-
-  /**
-   * 按助手ID获取话题
-   * @param assistantId 助手ID
-   * @returns 话题数组
-   */
-  async getTopicsByAssistant(assistantId: string): Promise<ChatTopic[]> {
-    return getTopicsByAssistantId(assistantId);
-  },
-
-  /**
-   * 获取最近的话题
-   * @param limit 限制数量
-   * @returns 话题数组
-   */
-  async getRecentTopics(limit: number = 10): Promise<ChatTopic[]> {
-    return getRecentTopics(limit);
-  },
-
-  /**
-   * 保存设置
-   * @param id 设置ID
-   * @param value 设置值
-   */
-  async saveSetting(id: string, value: any): Promise<void> {
-    await saveSettingToDB(id, value);
-  },
-
-  /**
-   * 获取设置
-   * @param id 设置ID
-   * @returns 设置值或undefined
-   */
-  async getSetting(id: string): Promise<any> {
-    return getSettingFromDB(id);
-  },
-
-  /**
-   * 保存图片数据
-   * @param id 图片ID
-   * @param blob 图片Blob数据
-   * @param metadata 图片元数据
-   */
-  async saveImage(id: string, blob: Blob, metadata: any): Promise<void> {
-    const db = await initDB();
-    await db.put(STORES.IMAGES, blob, id);
-    await db.put(STORES.IMAGE_METADATA, { id, ...metadata });
-  },
-
-  /**
-   * 获取图片数据
-   * @param id 图片ID
-   * @returns 图片Blob数据
-   */
-  async getImage(id: string): Promise<Blob | undefined> {
-    const db = await initDB();
-    return db.get(STORES.IMAGES, id);
-  },
-
-  /**
-   * 获取图片元数据
-   * @param id 图片ID
-   * @returns 图片元数据
-   */
-  async getImageMetadata(id: string): Promise<any> {
-    const db = await initDB();
-    return db.get(STORES.IMAGE_METADATA, id);
-  },
-
-  /**
-   * 保存Base64图片
-   * @param base64Data Base64编码的图片数据
-   * @param metadata 图片元数据
-   * @returns 图片引用
-   */
-  async saveBase64Image(base64Data: string, metadata: any): Promise<{ id: string }> {
+  async deleteTopic(id: string): Promise<boolean> {
     try {
-      // 生成唯一ID
-      const id = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-      // 转换Base64为Blob
-      const response = await fetch(base64Data);
-      const blob = await response.blob();
-
-      // 保存图片和元数据
-      const db = await initDB();
-      await db.put(STORES.IMAGES, blob, id);
-
-      // 准备元数据
-      const imageMetadata = {
-        id,
-        mimeType: metadata.mimeType || 'image/png',
-        created: Date.now(),
-        ...metadata
-      };
-
-      await db.put(STORES.IMAGE_METADATA, imageMetadata);
-
-      return { id };
+      if (this.useDexiePriority) {
+        const result = await dexieStorage.deleteTopic(id);
+        if (result) return true;
+      }
+      
+      // 备用删除方式
+    await deleteTopicFromDB(id);
+      return true;
     } catch (error) {
-      console.error('保存Base64图片失败:', error);
+      console.error(`StorageService: 删除话题 ${id} 失败`, error);
+      
+      // 尝试使用备用方式
+      try {
+        await deleteTopicFromDB(id);
+        return true;
+      } catch (backupError) {
+        console.error(`StorageService: 备用方式删除话题 ${id} 也失败`, backupError);
+        return false;
+      }
+    }
+  }
+
+  /**
+   * 添加消息到话题
+   * @param topicId 话题ID
+   * @param message 消息对象
+   */
+  async addMessageToTopic(topicId: string, message: Message): Promise<boolean> {
+    try {
+      // 强制使用Dexie存储，不再使用备用方式
+      const result = await dexieStorage.addMessageToTopic(topicId, message);
+      
+      // 如果Dexie存储失败，记录错误但不尝试备用方式
+      if (!result) {
+        console.error(`StorageService: Dexie添加消息到话题 ${topicId} 失败`);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error(`StorageService: 添加消息到话题 ${topicId} 失败`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 更新话题中的消息
+   * @param topicId 话题ID
+   * @param messageId 消息ID
+   * @param updatedMessage 更新后的消息
+   */
+  async updateMessageInTopic(topicId: string, messageId: string, updatedMessage: Message): Promise<boolean> {
+    try {
+      // 强制使用Dexie存储
+      return await dexieStorage.updateMessageInTopic(topicId, messageId, updatedMessage);
+    } catch (error) {
+      console.error(`StorageService: 更新话题 ${topicId} 中的消息 ${messageId} 失败`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 从话题中删除消息
+   * @param topicId 话题ID
+   * @param messageId 消息ID
+   */
+  async deleteMessageFromTopic(topicId: string, messageId: string): Promise<boolean> {
+    try {
+      // 强制使用Dexie存储
+      return await dexieStorage.deleteMessageFromTopic(topicId, messageId);
+    } catch (error) {
+      console.error(`StorageService: 删除话题 ${topicId} 中的消息 ${messageId} 失败`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 初始化话题自动同步
+   * 将会监听DexieStorageService的事件，自动同步数据变更
+   */
+  initTopicSync(): void {
+    try {
+      // 引入静态EVENT_TYPES和subscribe方法
+      const { EVENT_TYPES, subscribe } = dexieStorage.constructor as typeof import('./DexieStorageService').default;
+      
+      // 话题更新事件
+      const unsubscribeTopic = subscribe(
+        EVENT_TYPES.TOPIC_UPDATED, 
+        ((e: Event) => {
+          const customEvent = e as CustomEvent<{topicId: string}>;
+          const { topicId } = customEvent.detail;
+          console.log(`StorageService: 监听到话题 ${topicId} 更新事件，准备同步`);
+          
+          // 可以在这里执行额外的同步逻辑
+        }) as EventListener
+      );
+      
+      // 消息添加/更新/删除事件
+      const unsubscribeMessage = subscribe(
+        [
+          EVENT_TYPES.MESSAGE_ADDED,
+          EVENT_TYPES.MESSAGE_UPDATED,
+          EVENT_TYPES.MESSAGE_DELETED
+        ].join(' '), 
+        ((e: Event) => {
+          const customEvent = e as CustomEvent<{topicId: string; messageId: string}>;
+          const { topicId, messageId } = customEvent.detail;
+          console.log(`StorageService: 监听到消息事件，话题: ${topicId}, 消息: ${messageId}`);
+          
+          // 可以在这里执行额外的同步逻辑
+        }) as EventListener
+      );
+      
+      console.log('StorageService: 话题同步初始化完成');
+      
+      // 存储取消订阅函数以便需要时使用
+      this._unsubscribeFunctions = [
+        unsubscribeTopic,
+        unsubscribeMessage
+      ];
+      
+    } catch (error) {
+      console.error('StorageService: 初始化话题同步失败', error);
+    }
+  }
+  
+  // 存储取消订阅函数
+  private _unsubscribeFunctions: (() => void)[] = [];
+  
+  // 取消所有订阅
+  dispose(): void {
+    this._unsubscribeFunctions.forEach(fn => fn());
+    this._unsubscribeFunctions = [];
+  }
+
+  /**
+   * 保存话题到数据库 - 兼容API方法
+   * @param topic 话题对象
+   */
+  async saveTopicToDB(topic: ChatTopic): Promise<void> {
+    try {
+      await saveTopicToDB(topic);
+    } catch (error) {
+      console.error('StorageService: 保存话题到数据库失败', error);
       throw error;
     }
   }
-};
 
-// 初始化存储服务
-initStorageService().catch(console.error);
+  /**
+   * 保存设置
+   * @param key 设置键
+   * @param value 设置值
+   */
+  async setSetting(key: string, value: any): Promise<boolean> {
+    try {
+      if (this.useDexiePriority) {
+        const result = await dexieStorage.saveSetting(key, value);
+        if (result) return true;
+      }
+      
+      // 备用方式
+      await saveSettingToDB(key, value);
+      return true;
+    } catch (error) {
+      console.error(`StorageService: 保存设置 ${key} 失败`, error);
+      
+      // 尝试使用备用方式
+      try {
+        await saveSettingToDB(key, value);
+        return true;
+      } catch (backupError) {
+        console.error(`StorageService: 备用方式保存设置 ${key} 也失败`, backupError);
+        return false;
+      }
+    }
+  }
+
+  /**
+   * 获取设置
+   * @param key 设置键
+   */
+  async getSetting(key: string): Promise<any> {
+    try {
+      if (this.useDexiePriority) {
+        const value = await dexieStorage.getSetting(key);
+        if (value !== undefined) return value;
+      }
+      
+      // 备用方式
+      return await getSettingFromDB(key);
+    } catch (error) {
+      console.error(`StorageService: 获取设置 ${key} 失败`, error);
+      
+      // 尝试使用备用方式
+      try {
+        return await getSettingFromDB(key);
+      } catch (backupError) {
+        console.error(`StorageService: 备用方式获取设置 ${key} 也失败`, backupError);
+        return null;
+      }
+    }
+  }
+}
+
+// 创建并导出单例实例
+export const storageService = new StorageService();
+
+// 重命名以下函数以避免重名问题
+export const saveTopicToDatabase = saveTopicToDB;
+
+export default StorageService;
 
 /**
  * Capacitor存储服务

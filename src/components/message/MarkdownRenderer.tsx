@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Typography, Box, useTheme } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -12,10 +12,70 @@ interface MarkdownRendererProps {
   content: string;
 }
 
+// 预处理公式的正则表达式
+const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
+const BLOCK_LATEX_REGEX = /\\\[([\s\S]+?)\\\]/g;
+
+/**
+ * 预处理Markdown内容，统一数学公式格式
+ * - 将 \( ... \) 转换为 $ ... $（行内公式）
+ * - 将 \[ ... \] 转换为 $$ ... $$（块级公式）
+ */
+const preProcessMarkdown = (content: string): string => {
+  // 添加测试样例（仅开发模式下启用）
+  if (content.includes('#testmath')) {
+    return `${content}
+
+### 数学公式测试
+
+行内公式测试:
+- 使用美元符: $E=mc^2$
+- 使用括号: \\(E=mc^2\\)
+
+块级公式测试:
+- 使用双美元符:
+
+$$
+\\frac{d}{dx}\\left( \\int_{0}^{x} f(u)\\,du\\right)=f(x)
+$$
+
+- 使用方括号:
+
+\\[
+\\frac{\\partial f}{\\partial t} + \\nabla \\cdot \\vec{v} = 0
+\\]
+
+复杂公式测试:
+
+$$
+\\begin{pmatrix}
+a & b \\\\
+c & d
+\\end{pmatrix}
+$$
+`;
+  }
+
+  // 替换行内公式 \( ... \) 到 $ ... $
+  let result = content.replace(INLINE_LATEX_REGEX, (_, formula) => {
+    return `$${formula}$`;
+  });
+
+  // 替换块级公式 \[ ... \] 到 $$ ... $$
+  result = result.replace(BLOCK_LATEX_REGEX, (_, formula) => {
+    return `$$${formula}$$`;
+  });
+
+  return result;
+};
+
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   const theme = useTheme();
   const renderRef = useRef<number>(0);
   const [renderKey, setRenderKey] = useState<number>(0);
+
+  // 预处理Markdown内容，支持更多的数学公式格式
+  const processedContent = useMemo(() => preProcessMarkdown(content), [content]);
 
   // 从localStorage加载渲染器设置
   useEffect(() => {
@@ -32,7 +92,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   useEffect(() => {
     renderRef.current += 1;
     setRenderKey(renderRef.current);
-  }, [content]);
+  }, [processedContent]);
 
   // 自定义Markdown样式
   const markdownStyles = {
@@ -142,11 +202,42 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         padding: '8px',
         overflowX: 'auto',
         margin: '8px 0',
+      },
+      '& .katex': {
+        color: theme.palette.mode === 'dark' ? '#e0e0e0' : 'inherit',
+        fontSize: '1.1em',
+      },
+      '& .katex-display': {
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        padding: '8px 0',
+        margin: '8px 0',
+        '&::-webkit-scrollbar': {
+          height: '4px',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)',
+          borderRadius: '2px',
+        }
+      },
+      '& .katex-html': {
+        maxWidth: '100%',
       }
     }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[
+          [rehypeKatex, {
+            // KaTeX配置，增强对各种公式格式的支持
+            throwOnError: false, // 遇到错误时不抛出异常，继续渲染
+            strict: false,       // 宽松模式，更容易处理各种格式
+            output: 'html',      // 输出为HTML
+            trust: true,         // 允许所有命令（谨慎使用）
+            macros: {            // 自定义宏，可根据需要添加
+              // 示例: "\\RR": "\\mathbb{R}"
+            }
+          }]
+        ]}
         components={{
           code({className, children, ...props}) {
             const match = /language-(\w+)/.exec(className || '')
@@ -277,7 +368,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
           )
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </Box>
   );

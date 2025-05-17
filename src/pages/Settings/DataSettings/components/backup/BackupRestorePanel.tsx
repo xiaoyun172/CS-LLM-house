@@ -20,9 +20,8 @@ import type { CustomBackupOptions } from '../../utils/customBackupUtils';
 import {
   readJSONFromFile,
   performFullRestore,
-  clearTopics,
-  clearAssistants
 } from '../../utils/restoreUtils';
+import { DataService } from '../../../../../shared/services/DataService';
 
 /**
  * 备份恢复面板组件
@@ -322,52 +321,23 @@ const BackupRestorePanel: React.FC = () => {
     setClearConfirmOpen(true);
   };
 
-  // 确认清理所有数据
+  // 确认彻底清理所有数据
   const confirmClearAll = async () => {
+    setClearConfirmOpen(false);
+    setIsLoading(true);
+    
     try {
-      setIsLoading(true);
-      setClearConfirmOpen(false);
-
-      // 显示进度
-      setRestoreProgress({
-        active: true,
-        stage: '正在清理话题数据...',
-        progress: 0.3
-      });
-
-      // 清理话题数据
-      await clearTopics();
-
-      setRestoreProgress({
-        active: true,
-        stage: '正在清理助手数据...',
-        progress: 0.7
-      });
-
-      // 清理助手数据
-      await clearAssistants();
-
-      setRestoreProgress({
-        active: true,
-        stage: '清理完成',
-        progress: 1.0
-      });
-
+      // 使用DataService清理所有数据
+      await DataService.getInstance().clearAllData();
+      
       // 显示成功消息
-      showMessage('已清理所有话题和助手数据。请重启应用以确保更改生效。', 'success');
+      showMessage('所有数据已彻底清除', 'success');
+      refreshBackupFilesList(); // 刷新备份文件列表
     } catch (error) {
-      console.error('清理数据失败:', error);
-      showMessage('清理数据失败: ' + (error instanceof Error ? error.message : '未知错误'), 'error');
+      console.error('确认清理所有数据时出错:', error);
+      showMessage('清理数据时发生错误: ' + (error instanceof Error ? error.message : String(error)), 'error');
     } finally {
       setIsLoading(false);
-      // 清理完成后重置进度条
-      setTimeout(() => {
-        setRestoreProgress({
-          active: false,
-          stage: '',
-          progress: 0
-        });
-      }, 1000);
     }
   };
 
@@ -474,12 +444,20 @@ const BackupRestorePanel: React.FC = () => {
         aria-labelledby="clear-dialog-title"
         aria-describedby="clear-dialog-description"
       >
-        <DialogTitle id="clear-dialog-title">
-          确认清理所有数据
+        <DialogTitle id="clear-dialog-title" color="error">
+          确认彻底清理所有应用数据
         </DialogTitle>
         <DialogContent>
           <DialogContentText id="clear-dialog-description">
-            此操作将永久删除所有话题和助手数据，无法恢复。建议在清理前进行备份。是否确认继续？
+            <strong>警告：这是一个彻底清理操作！</strong><br/><br/>
+            此操作将永久删除以下所有数据：<br/>
+            • 所有对话话题及其消息<br/>
+            • 所有助手及其配置<br/>
+            • 助手与话题的关联关系<br/>
+            • 相关缓存和暂存数据<br/><br/>
+            清理后数据无法恢复，强烈建议在清理前进行完整备份。<br/><br/>
+            清理完成后，应用将恢复到初始状态，请重启应用以确保更改生效。<br/><br/>
+            是否确认继续？
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -487,7 +465,7 @@ const BackupRestorePanel: React.FC = () => {
             取消
           </Button>
           <Button onClick={confirmClearAll} color="error" variant="contained">
-            确认清理
+            确认彻底清理
           </Button>
         </DialogActions>
       </Dialog>

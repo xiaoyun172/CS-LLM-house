@@ -44,6 +44,20 @@ export function formatDate(date: Date): string {
 }
 
 /**
+ * 格式化日期时间为对话标题格式
+ * @param date 日期对象
+ * @returns 格式化后的日期时间字符串，如"05-20 15:30"
+ */
+export function formatDateForTopicTitle(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${month}-${day} ${hours}:${minutes}`;
+}
+
+/**
  * 创建一个新的消息对象
  * @param options 消息选项
  * @returns 新的消息对象
@@ -76,7 +90,7 @@ export function createMessage(options: {
     reasoningTime,
     images
   } = options;
-  
+
   return {
     id,
     content,
@@ -96,10 +110,13 @@ export function createMessage(options: {
 
 // 创建新主题
 export function createTopic(title: string): any {
+  const now = new Date();
+  // 如果没有提供标题，使用带时间的默认标题
+  const topicTitle = title || `新的对话 ${formatDateForTopicTitle(now)}`;
   return {
     id: uuid(),
-    title,
-    lastMessageTime: formatDate(new Date()),
+    title: topicTitle,
+    lastMessageTime: formatDate(now),
     messages: [],
   };
 }
@@ -111,27 +128,27 @@ export function createTopic(title: string): any {
  */
 export function getApiModelId(model: any): string {
   if (!model) return '';
-  
+
   // 首先尝试使用预设模型ID
   if (model.presetModelId) {
     return model.presetModelId;
   }
-  
+
   // 然后尝试使用name
-  if (model.name && model.name.includes('gpt-') || 
-      model.name.includes('claude-') || 
+  if (model.name && model.name.includes('gpt-') ||
+      model.name.includes('claude-') ||
       model.name.includes('gemini-')) {
     return model.name;
   }
-  
+
   // 最后尝试使用id，但仅当它看起来像有效的API模型名称
   if (model.id && (
-      model.id.includes('gpt-') || 
-      model.id.includes('claude-') || 
+      model.id.includes('gpt-') ||
+      model.id.includes('claude-') ||
       model.id.includes('gemini-'))) {
     return model.id;
   }
-  
+
   // 默认回退
   return model.name || model.id || '';
 }

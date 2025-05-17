@@ -1,5 +1,7 @@
 import type { Message, ChatTopic, Model } from '../../types';
 import { sendChatRequest } from '../../api';
+import { getStorageItem } from '../../utils/storage';
+import { saveTopicToDB, getAllTopicsFromDB } from '../storageService';
 
 /**
  * 应用上下文限制到消息列表
@@ -24,14 +26,13 @@ export function applyContextLimits(messages: Message[], contextLength: number, c
 /**
  * 获取上下文设置
  */
-export function getContextSettings(): { contextLength: number; contextCount: number } {
+export async function getContextSettings(): Promise<{ contextLength: number; contextCount: number }> {
   let contextLength = 2000; // 默认上下文长度
   let contextCount = 10;    // 默认上下文数量
   
   try {
-    const appSettingsJSON = localStorage.getItem('appSettings');
-    if (appSettingsJSON) {
-      const appSettings = JSON.parse(appSettingsJSON);
+    const appSettings = await getStorageItem<any>('appSettings');
+    if (appSettings) {
       if (appSettings.contextLength) contextLength = appSettings.contextLength;
       if (appSettings.contextCount) contextCount = appSettings.contextCount;
     }
@@ -54,7 +55,7 @@ export async function handleChatRequest({
   model: Model;
   onChunk: (chunk: string) => void;
 }) {
-  const { contextLength, contextCount } = getContextSettings();
+  const { contextLength, contextCount } = await getContextSettings();
   
   // 应用上下文限制
   const limitedMessages = applyContextLimits(messages, contextLength, contextCount);
@@ -73,9 +74,9 @@ export async function handleChatRequest({
 }
 
 /**
- * 保存话题到本地存储
+ * 保存话题到数据库
  */
-export function saveTopicsToLocalStorage(topics: ChatTopic[]) {
+export async function saveTopics(topics: ChatTopic[]): Promise<ChatTopic[]> {
   try {
     // 使用Map按照ID去重
     const uniqueTopicsMap = new Map();
@@ -88,45 +89,32 @@ export function saveTopicsToLocalStorage(topics: ChatTopic[]) {
     // 转换回数组
     const uniqueTopics = Array.from(uniqueTopicsMap.values());
     
-    // 保存到localStorage
-    localStorage.setItem('chatTopics', JSON.stringify(uniqueTopics));
+    // 将每个话题保存到IndexedDB
+    for (const topic of uniqueTopics) {
+      await saveTopicToDB(topic);
+    }
     
     return uniqueTopics;
   } catch (error) {
-    console.error('保存话题到localStorage失败:', error);
+    console.error('保存话题到数据库失败:', error);
     return topics;
   }
 }
 
 /**
- * 从本地存储加载话题
+ * 从数据库加载话题
  */
-export function loadTopicsFromLocalStorage(): ChatTopic[] {
+export async function loadTopics(): Promise<ChatTopic[]> {
   try {
-    const topicsJson = localStorage.getItem('chatTopics');
-    if (topicsJson) {
-      // 进行话题去重处理
-      const parsedTopics = JSON.parse(topicsJson);
-      
-      // 使用Map按照ID去重
-      const uniqueTopicsMap = new Map();
-      parsedTopics.forEach((topic: ChatTopic) => {
-        if (!uniqueTopicsMap.has(topic.id)) {
-          uniqueTopicsMap.set(topic.id, topic);
-        }
-      });
-      
-      // 转换回数组
-      const uniqueTopics = Array.from(uniqueTopicsMap.values());
-      
-      // 去重后保存回localStorage
-      localStorage.setItem('chatTopics', JSON.stringify(uniqueTopics));
-      
-      return uniqueTopics;
-    }
-    return [];
+    // 直接从数据库获取所有话题
+    const topics = await getAllTopicsFromDB();
+    return topics;
   } catch (error) {
-    console.error('从localStorage加载话题失败:', error);
+    console.error('从数据库加载话题失败:', error);
     return [];
   }
-} 
+}
+
+// 为向后兼容保留，但功能已迁移到IndexedDB
+export const saveTopicsToLocalStorage = saveTopics;
+export const loadTopicsFromLocalStorage = loadTopics; 

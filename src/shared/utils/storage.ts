@@ -1,65 +1,126 @@
 /**
- * 本地存储工具函数
- * 提供对localStorage的简易封装，支持JSON序列化和反序列化
+ * IndexedDB 存储工具类
+ * 提供对 IndexedDB 的统一封装，完全替代 localStorage
  */
+import { openDB } from 'idb';
+import { DB_CONFIG } from '../types/DatabaseSchema';
 
-// 获取存储项
-export function getItem(key: string): string | null {
+// 获取数据库配置
+const { NAME: DB_NAME, VERSION: DB_VERSION, STORES } = DB_CONFIG;
+
+// 统一使用SETTINGS存储所有键值对数据
+const SETTINGS_STORE = STORES.SETTINGS;
+
+/**
+ * 从 IndexedDB 获取数据
+ * @param key 键名
+ * @returns 解析后的数据，如果键不存在则返回 null
+ */
+export async function getStorageItem<T>(key: string): Promise<T | null> {
   try {
-    return localStorage.getItem(key);
+    const db = await openDB(DB_NAME, DB_VERSION);
+    const result = await db.get(SETTINGS_STORE, key);
+    return result ? result.value : null;
   } catch (error) {
-    console.error('从localStorage获取数据失败:', error);
+    console.error(`Error getting item "${key}" from IndexedDB:`, error);
     return null;
   }
 }
 
-// 设置存储项
-export function setItem(key: string, value: string): void {
+/**
+ * 向 IndexedDB 保存数据
+ * @param key 键名
+ * @param value 要保存的值
+ */
+export async function setStorageItem<T>(key: string, value: T): Promise<void> {
   try {
-    localStorage.setItem(key, value);
+    const db = await openDB(DB_NAME, DB_VERSION);
+    await db.put(SETTINGS_STORE, { id: key, value });
   } catch (error) {
-    console.error('向localStorage写入数据失败:', error);
+    console.error(`Error setting item "${key}" to IndexedDB:`, error);
   }
 }
 
-// 移除存储项
-export function removeItem(key: string): void {
+/**
+ * 从 IndexedDB 移除数据
+ * @param key 键名
+ */
+export async function removeStorageItem(key: string): Promise<void> {
   try {
-    localStorage.removeItem(key);
+    const db = await openDB(DB_NAME, DB_VERSION);
+    await db.delete(SETTINGS_STORE, key);
   } catch (error) {
-    console.error('从localStorage移除数据失败:', error);
+    console.error(`Error removing item "${key}" from IndexedDB:`, error);
   }
 }
 
-// 获取对象（自动解析JSON）
-export function getObject<T>(key: string): T | null {
-  const value = getItem(key);
-  if (value) {
-    try {
-      return JSON.parse(value) as T;
-    } catch (error) {
-      console.error('解析JSON数据失败:', error);
-      return null;
+/**
+ * 清空 IndexedDB 中的所有设置数据
+ * 注意：此操作会移除设置存储中的所有数据，请谨慎使用
+ */
+export async function clearStorage(): Promise<void> {
+  try {
+    const db = await openDB(DB_NAME, DB_VERSION);
+    const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+    await tx.objectStore(SETTINGS_STORE).clear();
+    await tx.done;
+    console.log('Settings store has been cleared.');
+  } catch (error) {
+    console.error('Error clearing settings store:', error);
+  }
+}
+
+/**
+ * 获取 IndexedDB 中所有键名
+ * @returns 键名数组
+ */
+export async function getAllStorageKeys(): Promise<string[]> {
+  try {
+    const db = await openDB(DB_NAME, DB_VERSION);
+    const allKeys = await db.getAllKeys(SETTINGS_STORE);
+    return allKeys.map(key => String(key));
+  } catch (error) {
+    console.error('Error getting all keys from IndexedDB:', error);
+    return [];
+  }
+}
+
+/**
+ * 批量设置多个键值对
+ * @param items 键值对对象
+ */
+export async function setStorageItems(items: Record<string, any>): Promise<void> {
+  try {
+    const db = await openDB(DB_NAME, DB_VERSION);
+    const tx = db.transaction(SETTINGS_STORE, 'readwrite');
+    const store = tx.objectStore(SETTINGS_STORE);
+    
+    for (const [key, value] of Object.entries(items)) {
+      await store.put({ id: key, value });
     }
-  }
-  return null;
-}
-
-// 设置对象（自动序列化为JSON）
-export function setObject<T>(key: string, value: T): void {
-  try {
-    const jsonValue = JSON.stringify(value);
-    setItem(key, jsonValue);
+    
+    await tx.done;
   } catch (error) {
-    console.error('序列化对象失败:', error);
+    console.error('Error setting multiple items to IndexedDB:', error);
   }
 }
 
-// 清除所有存储
-export function clear(): void {
+// 提供与旧版localStorage接口兼容的方法，以便平稳迁移
+export const getLocalStorageItem = getStorageItem;
+export const setLocalStorageItem = setStorageItem;
+export const removeLocalStorageItem = removeStorageItem;
+export const clearLocalStorage = clearStorage;
+export const getAllLocalStorageKeys = getAllStorageKeys;
+
+// 获取所有localStorage的键
+// v1.0.1 - Minor change to force re-evaluation
+/*
+export function getAllKeys(): string[] {
   try {
-    localStorage.clear();
+    return Object.keys(localStorage);
   } catch (error) {
-    console.error('清除localStorage失败:', error);
+    console.error('从localStorage获取所有键失败:', error);
+    return [];
   }
 } 
+*/ 

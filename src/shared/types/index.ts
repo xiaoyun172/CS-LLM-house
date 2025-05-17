@@ -151,6 +151,7 @@ export interface ChatTopic {
   messages: Message[];
   modelId?: string; // 默认使用的模型ID
   prompt?: string; // 话题特定提示词，会覆盖助手的系统提示词
+  assistantId?: string; // 关联的助手ID
 }
 
 // 模型类型

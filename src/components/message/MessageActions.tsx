@@ -5,10 +5,9 @@ import HistoryIcon from '@mui/icons-material/History';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import ForkRightIcon from '@mui/icons-material/ForkRight';
-import { useDispatch, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import type { Message } from '../../shared/types';
 import type { RootState } from '../../shared/store';
-import { switchToVersion } from '../../shared/store/messagesSlice';
 import MessageEditor from '../../components/message/MessageEditor';
 import { TTSService } from '../../shared/services/TTSService';
 import { useTheme } from '@mui/material/styles';
@@ -29,7 +28,6 @@ const MessageActions: React.FC<MessageActionsProps> = ({
   onDelete, 
   onSwitchVersion
 }) => {
-  const dispatch = useDispatch();
   const isUser = message.role === 'user';
   const alternateVersions = !isUser && message.alternateVersions ? message.alternateVersions : [];
   const hasAlternateVersions = alternateVersions.length > 0;
@@ -243,15 +241,9 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     
     console.log(`切换到消息版本: ${messageId}`);
     
-    // 优先使用父组件传递的版本切换函数
+    // 只使用父组件传递的版本切换函数，不再使用Redux dispatch
     if (onSwitchVersion) {
       onSwitchVersion(messageId);
-    } else {
-      // 直接调用Redux action来切换版本
-      dispatch(switchToVersion({ 
-        topicId, 
-        messageId 
-      }));
     }
     
     // 关闭弹窗

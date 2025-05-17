@@ -1,7 +1,7 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { Group } from '../../types';
 import { nanoid } from '../../utils';
-import * as storage from '../../utils/storage';
+import { getStorageItem, setStorageItem } from '../../utils/storage';
 
 interface GroupsState {
   groups: Group[];
@@ -15,27 +15,40 @@ const initialState: GroupsState = {
   topicGroupMap: {}
 };
 
-// 从localStorage加载初始状态
-const savedGroups = storage.getItem('groups');
-const savedAssistantGroupMap = storage.getItem('assistantGroupMap');
-const savedTopicGroupMap = storage.getItem('topicGroupMap');
-
-if (savedGroups) {
-  initialState.groups = JSON.parse(savedGroups);
-}
-
-if (savedAssistantGroupMap) {
-  initialState.assistantGroupMap = JSON.parse(savedAssistantGroupMap);
-}
-
-if (savedTopicGroupMap) {
-  initialState.topicGroupMap = JSON.parse(savedTopicGroupMap);
-}
+// 初始化函数，从IndexedDB加载数据
+const initializeGroups = async (dispatch: any) => {
+  try {
+    const savedGroups = await getStorageItem<Group[]>('groups');
+    const savedAssistantGroupMap = await getStorageItem<Record<string, string>>('assistantGroupMap');
+    const savedTopicGroupMap = await getStorageItem<Record<string, string>>('topicGroupMap');
+    
+    const payload = {
+      groups: savedGroups || [],
+      assistantGroupMap: savedAssistantGroupMap || {},
+      topicGroupMap: savedTopicGroupMap || {}
+    };
+    
+    dispatch(loadGroupsSuccess(payload));
+  } catch (error) {
+    console.error('加载分组数据失败:', error);
+  }
+};
 
 const groupsSlice = createSlice({
   name: 'groups',
   initialState,
   reducers: {
+    // 加载分组数据成功
+    loadGroupsSuccess: (state, action: PayloadAction<{
+      groups: Group[];
+      assistantGroupMap: Record<string, string>;
+      topicGroupMap: Record<string, string>;
+    }>) => {
+      state.groups = action.payload.groups;
+      state.assistantGroupMap = action.payload.assistantGroupMap;
+      state.topicGroupMap = action.payload.topicGroupMap;
+    },
+    
     // 创建新分组
     createGroup: (state, action: PayloadAction<{ name: string; type: 'assistant' | 'topic' }>) => {
       const { name, type } = action.payload;
@@ -48,7 +61,11 @@ const groupsSlice = createSlice({
         expanded: true
       };
       state.groups.push(newGroup);
-      storage.setItem('groups', JSON.stringify(state.groups));
+      
+      // 保存更改
+      setStorageItem('groups', state.groups).catch(err => 
+        console.error('保存分组失败:', err)
+      );
     },
     
     // 更新分组
@@ -57,7 +74,11 @@ const groupsSlice = createSlice({
       const group = state.groups.find(g => g.id === id);
       if (group) {
         Object.assign(group, changes);
-        storage.setItem('groups', JSON.stringify(state.groups));
+        
+        // 保存更改
+        setStorageItem('groups', state.groups).catch(err => 
+          console.error('保存分组失败:', err)
+        );
       }
     },
     
@@ -90,9 +111,15 @@ const groupsSlice = createSlice({
           });
           
         // 保存更改
-        storage.setItem('groups', JSON.stringify(state.groups));
-        storage.setItem('assistantGroupMap', JSON.stringify(state.assistantGroupMap));
-        storage.setItem('topicGroupMap', JSON.stringify(state.topicGroupMap));
+        setStorageItem('groups', state.groups).catch(err => 
+          console.error('保存分组失败:', err)
+        );
+        setStorageItem('assistantGroupMap', state.assistantGroupMap).catch(err => 
+          console.error('保存助手分组映射失败:', err)
+        );
+        setStorageItem('topicGroupMap', state.topicGroupMap).catch(err => 
+          console.error('保存话题分组映射失败:', err)
+        );
       }
     },
     
@@ -114,10 +141,15 @@ const groupsSlice = createSlice({
           }
           
           // 保存更改
-          storage.setItem('groups', JSON.stringify(state.groups));
-          storage.setItem(
-            group.type === 'assistant' ? 'assistantGroupMap' : 'topicGroupMap', 
-            JSON.stringify(group.type === 'assistant' ? state.assistantGroupMap : state.topicGroupMap)
+          setStorageItem('groups', state.groups).catch(err => 
+            console.error('保存分组失败:', err)
+          );
+          
+          const mapKey = group.type === 'assistant' ? 'assistantGroupMap' : 'topicGroupMap';
+          const mapValue = group.type === 'assistant' ? state.assistantGroupMap : state.topicGroupMap;
+          
+          setStorageItem(mapKey, mapValue).catch(err => 
+            console.error(`保存${group.type}分组映射失败:`, err)
           );
         }
       }
@@ -138,10 +170,13 @@ const groupsSlice = createSlice({
           delete mapToUse[itemId];
           
           // 保存更改
-          storage.setItem('groups', JSON.stringify(state.groups));
-          storage.setItem(
-            type === 'assistant' ? 'assistantGroupMap' : 'topicGroupMap', 
-            JSON.stringify(mapToUse)
+          setStorageItem('groups', state.groups).catch(err => 
+            console.error('保存分组失败:', err)
+          );
+          
+          const mapKey = type === 'assistant' ? 'assistantGroupMap' : 'topicGroupMap';
+          setStorageItem(mapKey, mapToUse).catch(err => 
+            console.error(`保存${type}分组映射失败:`, err)
           );
         }
       }
@@ -162,7 +197,9 @@ const groupsSlice = createSlice({
         });
         
       // 保存更改
-      storage.setItem('groups', JSON.stringify(state.groups));
+      setStorageItem('groups', state.groups).catch(err => 
+        console.error('保存分组排序失败:', err)
+      );
     },
     
     // 重新排序分组内的项目
@@ -172,7 +209,9 @@ const groupsSlice = createSlice({
       
       if (group) {
         group.items = newOrder;
-        storage.setItem('groups', JSON.stringify(state.groups));
+        setStorageItem('groups', state.groups).catch(err => 
+          console.error('保存分组项目排序失败:', err)
+        );
       }
     },
     
@@ -183,13 +222,16 @@ const groupsSlice = createSlice({
       
       if (group) {
         group.expanded = !group.expanded;
-        storage.setItem('groups', JSON.stringify(state.groups));
+        setStorageItem('groups', state.groups).catch(err => 
+          console.error('保存分组展开状态失败:', err)
+        );
       }
     }
   }
 });
 
 export const { 
+  loadGroupsSuccess,
   createGroup, 
   updateGroup, 
   deleteGroup, 
@@ -199,5 +241,10 @@ export const {
   reorderItemsInGroup,
   toggleGroupExpanded
 } = groupsSlice.actions;
+
+// 异步初始化action
+export const initGroups = () => async (dispatch: any) => {
+  await initializeGroups(dispatch);
+};
 
 export default groupsSlice.reducer; 

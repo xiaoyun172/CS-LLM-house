@@ -11,7 +11,8 @@ import BackButtonHandler from './components/BackButtonHandler';
 import UpdateNoticeDialog from './components/UpdateNoticeDialog';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { loadTopics } from './shared/store/messagesSlice';
+import { initializeTopics } from './shared/store/slices/messagesSlice';
+import { initGroups } from './shared/store/slices/groupsSlice';
 import { useSelector } from 'react-redux';
 import { DataManager } from './shared/services';
 
@@ -213,7 +214,11 @@ function App() {
       sessionStorage.setItem('_topicsLoaded', 'true');
 
       console.log('[App] 初始化时加载话题数据');
-      store.dispatch(loadTopics());
+      // 使用新的异步加载方法
+      store.dispatch(initializeTopics());
+      
+      // 加载分组数据
+      store.dispatch(initGroups());
 
       // 修复重复话题
       DataManager.fixDuplicateTopics()
@@ -221,7 +226,7 @@ function App() {
           if (result.fixed > 0) {
             console.log(`[App] 已修复 ${result.fixed} 个重复话题，共 ${result.total} 个话题`);
             // 重新加载话题
-            store.dispatch(loadTopics());
+            store.dispatch(initializeTopics());
           } else {
             console.log('[App] 未发现重复话题');
           }

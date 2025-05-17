@@ -8,8 +8,6 @@ import {
   updateMessage,
   setTopicStreaming,
   setTopicMessages,
-  addAlternateVersion,
-  switchToVersion,
 } from '../../../shared/store/messagesSlice';
 import { createMessage } from '../../../shared/utils';
 import { sendChatRequest } from '../../../shared/api';
@@ -81,14 +79,14 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
     if (shouldAutoName) {
       // 获取最新的主题信息
       const updatedTopic = store.getState().messages.topics.find(t => t.id === currentTopic.id);
-      
+
       console.log('自动命名触发检查:', {
         topicId: currentTopic.id,
         shouldAutoName,
         hasUpdatedTopic: !!updatedTopic,
         messageCount: updatedTopic?.messages?.length || 0
       });
-      
+
       if (updatedTopic && TopicNamingService.shouldNameTopic(updatedTopic)) {
         console.log('已达到自动命名条件，将生成主题名称');
         // 获取指定的话题命名模型ID
@@ -129,7 +127,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
 
       // 获取到目前为止的所有历史消息 - 不包括刚刚添加的待处理消息和其他正在处理的消息
       const allMessages = messagesByTopic[currentTopic.id] || [];
-      
+
       // 过滤消息，只保留每组版本中的当前版本和用户消息
       // 避免API请求中包含所有历史版本
       const filteredMessages = allMessages.filter(msg => {
@@ -137,53 +135,53 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         if (msg.status === 'pending' || msg.id === assistantMessage.id) {
           return false;
         }
-        
+
         // 始终包含用户消息
         if (msg.role === 'user') {
           return true;
         }
-        
+
         // 对于助手消息，只包含当前版本
         // 如果消息没有明确标记为非当前版本，则包含它
         if (msg.alternateVersions === undefined) {
           return msg.isCurrentVersion !== false;
         }
-        
+
         // 如果消息有alternateVersions并且被明确标记为当前版本，则包含它
         if (msg.alternateVersions && msg.isCurrentVersion === true) {
           return true;
         }
-        
+
         // 如果消息被其他消息引用（作为替代版本），且不是当前版本，则排除
         const isReferencedByOthers = allMessages.some(
-          otherMsg => otherMsg.id !== msg.id && 
-                     otherMsg.alternateVersions && 
+          otherMsg => otherMsg.id !== msg.id &&
+                     otherMsg.alternateVersions &&
                      otherMsg.alternateVersions.includes(msg.id)
         );
-        
+
         if (isReferencedByOthers && msg.isCurrentVersion !== true) {
           return false;
         }
-        
+
         // 默认包含其他所有消息
         return true;
       });
-      
+
       // 记录过滤后的消息情况，以便调试
       console.log(`API请求消息过滤: 原始消息数=${allMessages.length}, 过滤后消息数=${filteredMessages.length}`);
-      
+
       const messages = [...filteredMessages, userMessage];
-      
+
       // 检查是否有网络搜索结果需要纳入上下文
       const webSearchSettings = store.getState().webSearch;
       const shouldIncludeWebSearchResults = webSearchSettings?.includeInContext || false;
-      
+
       let processedMessages = [...messages];
-      
+
       if (shouldIncludeWebSearchResults) {
         // 寻找最近的网络搜索结果
         const searchResults: WebSearchResult[] = [];
-        
+
         // 从近到远遍历消息，寻找带有搜索结果的消息
         for (let i = filteredMessages.length - 1; i >= 0; i--) {
           const msg = filteredMessages[i];
@@ -192,21 +190,21 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
             break; // 只使用最近一次的搜索结果
           }
         }
-        
+
         // 如果找到搜索结果，将其添加到上下文
         if (searchResults.length > 0) {
           console.log(`找到${searchResults.length}条网络搜索结果，纳入上下文`);
-          
+
           // 创建一个系统消息，包含搜索结果的摘要
           const searchResultsInfo = {
             role: 'system' as const,
             content: `以下是用户最近搜索的相关信息，请在回复中考虑这些内容:\n\n${
-              searchResults.map((result, index) => 
+              searchResults.map((result, index) =>
                 `[${index + 1}] 标题: ${result.title}\n来源: ${result.url}\n摘要: ${result.snippet}\n`
               ).join('\n')
             }`
           };
-          
+
           // 将搜索结果系统消息添加到消息列表中
           processedMessages = [searchResultsInfo as any, ...processedMessages];
         }
@@ -271,7 +269,9 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
 
       // 3. 确保始终有一个系统提示词，即使是默认的
       if (!systemPrompt) {
-        systemPrompt = '你是一个友好、专业、乐于助人的AI助手。你会以客观、准确的态度回答用户的问题，并在不确定的情况下坦诚表明。你可以协助用户完成各种任务，提供信息，或进行有意义的对话。';
+        // 导入默认系统提示词
+        const { DEFAULT_SYSTEM_PROMPT } = await import('../../../shared/config/prompts');
+        systemPrompt = DEFAULT_SYSTEM_PROMPT;
         console.log('未找到任何系统提示词，使用默认提示词');
       }
 
@@ -317,17 +317,17 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
               const content = chunkData.content;
               const reasoning = chunkData.reasoning;
               const reasoningTime = chunkData.reasoningTime;
-              
+
                   // 构建更新对象，包含内容和思考过程
               const updates: any = {};
-              
+
               // 更新内容（如果有）
               if (content) {
                 updates.content = content;
                 updates.status = 'complete';
                 updates.modelId = selectedModel?.id || currentModelId;
               }
-                  
+
               // 更新思考过程（如果有）- 始终更新思考过程，无论长度变化
                   if (reasoning) {
                     console.log('收到思考过程，长度:', reasoning.length, '思考时间:', reasoningTime);
@@ -336,7 +336,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
                       updates.reasoningTime = reasoningTime;
                     }
                   }
-                  
+
               // 只有当有更新内容时才分发更新
               if (Object.keys(updates).length > 0) {
                   // 更新消息
@@ -354,7 +354,7 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
                 : (assistantMessage.content as any)?.text || '';
               const currentLength = currentContent.length;
               const newLength = chunk.length;
-              
+
               if (newLength - currentLength >= 5 || newLength < currentLength) {
                 dispatch(updateMessage({
                   topicId: currentTopic.id,
@@ -386,20 +386,20 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
         // 检查当前消息是否已经有思考过程，如果没有才添加
         const currentMessages = messagesByTopic[currentTopic.id] || [];
         const currentMessage = currentMessages.find(msg => msg.id === assistantMessage.id);
-        
+
         const updates: any = {
           content: response.content,
           status: 'complete',
           modelId: selectedModel?.id || currentModelId // 确保更新后保留模型ID
         };
-        
+
         // 如果还没有思考过程，且API返回了思考过程，则添加
         if (reasoning && (!currentMessage?.reasoning || currentMessage.reasoning.length === 0)) {
           console.log('收到最最终思考过程，长度:', reasoning.length);
           updates.reasoning = reasoning;
           updates.reasoningTime = reasoningTime;
         }
-        
+
         dispatch(updateMessage({
           topicId: currentTopic.id,
           messageId: assistantMessage.id,
@@ -583,7 +583,9 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
 
       // 3. 确保始终有一个系统提示词，即使是默认的
       if (!systemPrompt) {
-        systemPrompt = '你是一个友好、专业、乐于助人的AI助手。你会以客观、准确的态度回答用户的问题，并在不确定的情况下坦诚表明。你可以协助用户完成各种任务，提供信息，或进行有意义的对话。';
+        // 导入默认系统提示词
+        const { DEFAULT_SYSTEM_PROMPT } = await import('../../../shared/config/prompts');
+        systemPrompt = DEFAULT_SYSTEM_PROMPT;
         console.log('重新生成消息：未找到任何系统提示词，使用默认提示词');
       }
 
@@ -592,54 +594,54 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
       const allMessages = messages.filter((msg, idx) => {
         // 包含所有用户消息
         if (msg.role === 'user') return true;
-        
+
         // 只包含在当前要重生成的消息之前的助手消息
         return msg.role === 'assistant' && idx < messageIndex;
       });
-      
+
       // 过滤消息，只保留每组版本中的当前版本和用户消息
       const filteredMessages = allMessages.filter(msg => {
         // 始终包含用户消息
         if (msg.role === 'user') {
           return true;
         }
-        
+
         // 对于助手消息，只包含当前版本
         // 如果消息没有明确标记为非当前版本，则包含它
         if (msg.alternateVersions === undefined) {
           return msg.isCurrentVersion !== false;
         }
-        
+
         // 如果消息有alternateVersions并且被明确标记为当前版本，则包含它
         if (msg.alternateVersions && msg.isCurrentVersion === true) {
           return true;
         }
-        
+
         // 如果消息被其他消息引用（作为替代版本），且不是当前版本，则排除
         const isReferencedByOthers = allMessages.some(
-          otherMsg => otherMsg.id !== msg.id && 
-                     otherMsg.alternateVersions && 
+          otherMsg => otherMsg.id !== msg.id &&
+                     otherMsg.alternateVersions &&
                      otherMsg.alternateVersions.includes(msg.id)
         );
-        
+
         if (isReferencedByOthers && msg.isCurrentVersion !== true) {
           return false;
         }
-        
+
         // 默认包含其他所有消息
         return true;
       });
-      
+
       // 检查是否有网络搜索结果需要纳入上下文
       const webSearchSettings = store.getState().webSearch;
       const shouldIncludeWebSearchResults = webSearchSettings?.includeInContext || false;
-      
+
       let processedMessages = [...filteredMessages];
-      
+
       if (shouldIncludeWebSearchResults) {
         // 寻找最近的网络搜索结果
         const searchResults: WebSearchResult[] = [];
-        
+
         // 从近到远遍历消息，寻找带有搜索结果的消息
         for (let i = filteredMessages.length - 1; i >= 0; i--) {
           const msg = filteredMessages[i];
@@ -648,26 +650,26 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
             break; // 只使用最近一次的搜索结果
           }
         }
-        
+
         // 如果找到搜索结果，将其添加到上下文
         if (searchResults.length > 0) {
           console.log(`重生成消息：找到${searchResults.length}条网络搜索结果，纳入上下文`);
-          
+
           // 创建一个系统消息，包含搜索结果的摘要
           const searchResultsInfo = {
             role: 'system' as const,
             content: `以下是用户最近搜索的相关信息，请在回复中考虑这些内容:\n\n${
-              searchResults.map((result, index) => 
+              searchResults.map((result, index) =>
                 `[${index + 1}] 标题: ${result.title}\n来源: ${result.url}\n摘要: ${result.snippet}\n`
               ).join('\n')
             }`
           };
-          
+
           // 创建可用于提交的请求消息数组
           processedMessages = [searchResultsInfo as any, ...processedMessages];
         }
       }
-      
+
       // 记录过滤后的消息情况，以便调试
       console.log(`重新生成消息的API请求消息过滤: 原始消息数=${allMessages.length}, 过滤后消息数=${processedMessages.length}`);
 
@@ -686,12 +688,15 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
           : '[复杂内容，包含图片]'
       })));
 
-      // 使用addAlternateVersion action添加新的消息版本占位符
-      dispatch(addAlternateVersion({
-        topicId: currentTopic.id,
-        originalMessageId: messageId,
-        newMessage: newAssistantMessage
-      }));
+      // 使用自定义action对象替代
+      dispatch({
+        type: 'messages/ADD_ALTERNATE_VERSION',
+        payload: {
+          topicId: currentTopic.id,
+          originalMessageId: messageId,
+          newMessage: newAssistantMessage
+        }
+      });
 
       // 发送请求
       const response = await sendChatRequest({
@@ -701,12 +706,12 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
           if (chunk) {
             // 优化流式输出性能 - 减少更新频率
             // 只有当内容至少增加了5个字符或是最后一个chunk时才更新UI
-            const currentContent = typeof newAssistantMessage.content === 'string' 
-              ? newAssistantMessage.content 
+            const currentContent = typeof newAssistantMessage.content === 'string'
+              ? newAssistantMessage.content
               : (newAssistantMessage.content as any)?.text || '';
             const currentLength = currentContent.length;
             const newLength = chunk.length;
-            
+
             // 增加防抖动机制，避免频繁更新导致卡顿
             if (newLength - currentLength >= 5 || newLength < currentLength) {
               dispatch(updateMessage({
@@ -800,25 +805,28 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
   const handleSwitchMessageVersion = (topicId: string, messageId: string) => {
     // 这个函数确保我们可以切换到任何版本，包括版本1
     console.log(`切换到消息版本: ${messageId}`);
-    
-    // 直接调用Redux action来切换版本
-    dispatch(switchToVersion({
-      topicId,
-      messageId
-    }));
-    
+
+    // 使用自定义action对象替代
+    dispatch({
+      type: 'messages/SWITCH_TO_VERSION',
+      payload: {
+        topicId,
+        messageId
+      }
+    });
+
     // 确保版本切换成功后的本地存储更新
     try {
       const savedTopicsJson = localStorage.getItem('chatTopics');
       if (savedTopicsJson) {
         const savedTopics = JSON.parse(savedTopicsJson);
         const topicIndex = savedTopics.findIndex((topic: ChatTopic) => topic.id === topicId);
-        
+
         if (topicIndex !== -1) {
           // 获取Redux中最新的消息列表
           const state = (store.getState() as any).messages;
           const updatedMessages = state.messagesByTopic[topicId] || [];
-          
+
           // 更新本地存储
           savedTopics[topicIndex].messages = updatedMessages;
           localStorage.setItem('chatTopics', JSON.stringify(savedTopics));
@@ -881,4 +889,4 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
     handleRegenerateMessage,
     handleSwitchMessageVersion
   };
-} 
+}

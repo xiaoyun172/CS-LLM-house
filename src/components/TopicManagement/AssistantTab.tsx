@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   List,
@@ -16,7 +16,12 @@ import {
   MenuItem,
   IconButton,
   Tooltip,
-  TextField
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  FormControlLabel,
+  Checkbox
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -45,6 +50,8 @@ import { deleteTopic } from '../../shared/store/messagesSlice';
 import { CreateGroupButton, DraggableGroup, DraggableItem } from './GroupComponents';
 import GroupDialog from './GroupDialog';
 import { TopicService } from '../../shared/services/TopicService';
+import { SystemPromptService } from '../../shared/services/SystemPromptService';
+import type { SystemPromptTemplate } from '../../shared/services/SystemPromptService';
 
 // 预设助手数据 - 应该移动到服务中
 const predefinedAssistants: Assistant[] = [
@@ -164,6 +171,21 @@ export default function AssistantTab({
   const ungroupedAssistants = useMemo(() => {
     return userAssistants.filter(assistant => !assistantGroupMap[assistant.id]);
   }, [userAssistants, assistantGroupMap]);
+
+  // 初始化模板数据
+  const [templates, setTemplates] = useState<SystemPromptTemplate[]>([]);
+  const [useTemplate, setUseTemplate] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+
+  // 初始化模板数据
+  useEffect(() => {
+    const loadTemplates = async () => {
+      const promptService = SystemPromptService.getInstance();
+      await promptService.initialize();
+      setTemplates(promptService.getTemplates());
+    };
+    loadTemplates();
+  }, []);
 
   // 打开助手选择对话框
   const handleOpenAssistantDialog = () => {
@@ -433,6 +455,19 @@ export default function AssistantTab({
 
         onUpdateAssistant(updatedAssistant);
       handleCloseEditDialog();
+    }
+  };
+
+  // 选择模板时更新编辑提示词
+  const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const templateId = e.target.value;
+    setSelectedTemplateId(templateId);
+    
+    if (templateId) {
+      const template = templates.find(t => t.id === templateId);
+      if (template) {
+        setEditPrompt(template.content);
+      }
     }
   };
 
@@ -779,6 +814,34 @@ export default function AssistantTab({
             <DialogContentText sx={{ mb: 1 }}>
               系统提示词（定义助手的行为和风格）
             </DialogContentText>
+            
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={useTemplate}
+                  onChange={(e) => setUseTemplate(e.target.checked)}
+                />
+              }
+              label="使用提示词模板"
+            />
+            
+            {useTemplate && (
+              <FormControl fullWidth margin="dense" sx={{ mb: 2 }}>
+                <InputLabel>选择提示词模板</InputLabel>
+                <Select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleTemplateChange(e as any)}
+                  label="选择提示词模板"
+                >
+                  {templates.map(template => (
+                    <MenuItem key={template.id} value={template.id}>
+                      {template.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            
             <TextField
               margin="dense"
               label="系统提示词"

@@ -1,16 +1,20 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { WebSearchSettings, WebSearchCustomProvider, WebSearchProvider } from '../../types';
+import { getStorageItem, setStorageItem } from '../../utils/storage';
 
-// 从localStorage加载初始状态
-const loadFromStorage = (): WebSearchSettings => {
+// 存储键名
+const STORAGE_KEY = 'webSearchSettings';
+
+// 从IndexedDB加载初始状态
+const loadFromStorage = async (): Promise<WebSearchSettings> => {
   try {
-    const savedSettings = localStorage.getItem('webSearchSettings');
+    const savedSettings = await getStorageItem<WebSearchSettings>(STORAGE_KEY);
     if (savedSettings) {
-      return JSON.parse(savedSettings);
+      return savedSettings;
     }
   } catch (error) {
-    console.error('Failed to load webSearchSettings from localStorage', error);
+    console.error('Failed to load webSearchSettings from IndexedDB', error);
   }
   
   // 默认初始状态
@@ -27,16 +31,39 @@ const loadFromStorage = (): WebSearchSettings => {
   };
 };
 
-// 定义初始状态
-const initialState: WebSearchSettings = loadFromStorage();
+// 定义初始状态（首次加载使用默认值）
+const initialState: WebSearchSettings = {
+  enabled: false,
+  provider: 'firecrawl',
+  apiKey: '',
+  includeInContext: true,
+  maxResults: 5,
+  showTimestamp: true,
+  filterSafeSearch: true,
+  searchMode: 'manual',
+  customProviders: []
+};
 
-// 保存到localStorage的辅助函数
-const saveToStorage = (state: WebSearchSettings) => {
-  try {
-    localStorage.setItem('webSearchSettings', JSON.stringify(state));
-  } catch (error) {
-    console.error('Failed to save webSearchSettings to localStorage', error);
+// 立即异步加载数据
+loadFromStorage().then(settings => {
+  // 此处暂时无法直接修改initialState
+  // 但Redux初始化后会调用setWebSearchSettings来更新状态
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      // 使用动态导入代替require
+      import('../../store').then(moduleExports => {
+        const store = moduleExports.default;
+        store.dispatch(setWebSearchSettings(settings));
+      }).catch(err => console.error('导入store模块失败:', err));
+    }, 0);
   }
+}).catch(err => console.error('加载网络搜索设置失败:', err));
+
+// 保存到IndexedDB的辅助函数
+const saveToStorage = (state: WebSearchSettings) => {
+  setStorageItem(STORAGE_KEY, state).catch(error => {
+    console.error('Failed to save webSearchSettings to IndexedDB', error);
+  });
 };
 
 const webSearchSlice = createSlice({

@@ -2,6 +2,8 @@ import { sendChatRequest } from '../api';
 import { updateTopic } from '../store/messagesSlice';
 import store from '../store';
 import type { ChatTopic } from '../types';
+import { getStorageItem, setStorageItem } from '../utils/storage';
+import { saveTopicToDB } from './storageService';
 
 /**
  * 话题命名服务
@@ -58,9 +60,10 @@ export class TopicNamingService {
    */
   static async generateTopicName(topic: ChatTopic, modelId?: string): Promise<void> {
     try {
-      // 使用本地存储避免重复命名
+      // 使用IndexedDB避免重复命名
       const namingKey = `topic_naming_${topic.id}`;
-      if (localStorage.getItem(namingKey)) {
+      const alreadyNamed = await getStorageItem<boolean>(namingKey);
+      if (alreadyNamed) {
         console.log('该话题已经完成自动命名，跳过');
         return;
       }
@@ -113,18 +116,15 @@ export class TopicNamingService {
           // 在Redux中更新话题
           store.dispatch(updateTopic(updatedTopic));
 
-          // 同时更新localStorage中的话题列表
+          // 同时更新数据库中的话题
           try {
-            const topicsJson = localStorage.getItem('chatTopics');
-            if (topicsJson) {
-              const topics = JSON.parse(topicsJson);
-              const updatedTopics = topics.map((t: ChatTopic) => 
-                t.id === topic.id ? {...t, title: newTitle} : t
-              );
-              localStorage.setItem('chatTopics', JSON.stringify(updatedTopics));
-            }
+            // 直接保存到数据库
+            await saveTopicToDB(updatedTopic);
+            
+            // 记录已命名状态，防止重复命名
+            await setStorageItem(namingKey, true);
           } catch (error) {
-            console.error('更新本地存储中的话题列表失败:', error);
+            console.error('更新数据库中的话题失败:', error);
           }
         } else {
           console.log('生成的话题标题无效或与旧标题相同，保持旧标题');

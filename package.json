@@ -48,6 +48,7 @@
     "better-react-mathjax": "^2.3.0",
     "buffer": "6.0.3",
     "dayjs": "^1.11.13",
+    "dexie": "^4.0.11",
     "idb": "^8.0.3",
     "katex": "^0.16.22",
     "mathjax": "^3.2.2",

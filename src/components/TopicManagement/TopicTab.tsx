@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
-import { 
-  Box, 
+import { useState, useMemo, useEffect } from 'react';
+import {
+  Box,
   Typography,
   Button,
   IconButton,
@@ -16,7 +16,10 @@ import {
   Menu,
   MenuItem,
   FormControlLabel,
-  Checkbox
+  Checkbox,
+  InputLabel,
+  Select,
+  FormControl
 } from '@mui/material';
 import { type ChatTopic } from '../../shared/types';
 import AddIcon from '@mui/icons-material/Add';
@@ -32,6 +35,9 @@ import type { RootState } from '../../shared/store';
 import { addItemToGroup, removeItemFromGroup } from '../../shared/store/slices/groupsSlice';
 import GroupDialog from './GroupDialog';
 import { CreateGroupButton, DraggableGroup, DraggableItem } from './GroupComponents';
+import { formatDateForTopicTitle } from '../../shared/utils';
+import { SystemPromptService } from '../../shared/services/SystemPromptService';
+import type { SystemPromptTemplate } from '../../shared/services/SystemPromptService';
 
 interface TopicTabProps {
   currentAssistant: { id: string; name: string; systemPrompt?: string; } | null;
@@ -55,55 +61,69 @@ export default function TopicTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const dispatch = useDispatch();
-  
+
   // 新增：添加删除确认状态，存储正在准备删除的话题ID
   const [topicPendingDelete, setTopicPendingDelete] = useState<string | null>(null);
-  
+
   // 话题菜单相关状态
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [contextTopic, setContextTopic] = useState<ChatTopic | null>(null);
-  
+
   // 编辑提示词对话框相关状态
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [topicPrompt, setTopicPrompt] = useState('');
   const [useAssistantPrompt, setUseAssistantPrompt] = useState(false);
-  
+
   // 编辑话题名称对话框相关状态
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [topicName, setTopicName] = useState('');
-  
+
   // 分组相关状态
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
-  
+
   // 添加话题到分组对话框状态
   const [addToGroupMenuAnchorEl, setAddToGroupMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [topicToGroup, setTopicToGroup] = useState<ChatTopic | null>(null);
-  
+
   // 从Redux获取分组数据
   const { groups, topicGroupMap } = useSelector((state: RootState) => state.groups);
-  
+
   // 是否显示菜单
   const isMenuOpen = Boolean(menuAnchorEl);
   const isAddToGroupMenuOpen = Boolean(addToGroupMenuAnchorEl);
-  
+
   // 获取话题分组
   const topicGroups = useMemo(() => {
     return groups
       .filter(group => group.type === 'topic')
       .sort((a, b) => a.order - b.order);
   }, [groups]);
-  
+
   // 获取当前助手的话题
   const assistantTopics = useMemo(() => {
     if (!currentAssistant) return [];
     // 直接返回所有话题
     return topics;
   }, [currentAssistant, topics]);
-  
+
   // 获取未分组的话题
   const ungroupedTopics = useMemo(() => {
     return assistantTopics.filter(topic => !topicGroupMap[topic.id]);
   }, [assistantTopics, topicGroupMap]);
+
+  const [templates, setTemplates] = useState<SystemPromptTemplate[]>([]);
+  const [useTemplate, setUseTemplate] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+
+  // 初始化模板数据
+  useEffect(() => {
+    const loadTemplates = async () => {
+      const promptService = SystemPromptService.getInstance();
+      await promptService.initialize();
+      setTemplates(promptService.getTemplates());
+    };
+    loadTemplates();
+  }, []);
 
   const handleSearchClick = () => {
     setShowSearch(true);
@@ -122,17 +142,17 @@ export default function TopicTab({
   const filteredTopics = assistantTopics.filter(
     (topic) => !searchQuery || (topic.title && topic.title.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-  
+
   // 关闭菜单
   const handleCloseMenu = () => {
     setMenuAnchorEl(null);
     setContextTopic(null);
   };
-  
+
   // 编辑提示词
   const handleEditPrompt = () => {
     if (!contextTopic) return;
-    
+
     // 如果话题没有提示词，但助手有系统提示词，则初始化为助手的提示词
     if (!contextTopic.prompt && currentAssistant?.systemPrompt) {
       setTopicPrompt(currentAssistant.systemPrompt);
@@ -141,17 +161,17 @@ export default function TopicTab({
       setTopicPrompt(contextTopic.prompt || '');
       setUseAssistantPrompt(currentAssistant?.systemPrompt ? false : false);
     }
-    
+
     setPromptDialogOpen(true);
     handleCloseMenu();
   };
-  
+
   // 保存提示词
   const handleSavePrompt = () => {
     if (contextTopic && onUpdateTopic) {
       // 如果选择使用助手提示词，则清空话题提示词
       const updatedPrompt = useAssistantPrompt ? '' : topicPrompt;
-      
+
       onUpdateTopic({
         ...contextTopic,
         prompt: updatedPrompt
@@ -159,85 +179,85 @@ export default function TopicTab({
     }
     handleClosePromptDialog();
   };
-  
+
   // 关闭提示词对话框
   const handleClosePromptDialog = () => {
     setPromptDialogOpen(false);
     setTopicPrompt('');
     setUseAssistantPrompt(false);
   };
-  
+
   // 分析对话
   const handleAnalyzeConversation = () => {
     // 实现对话分析功能
     handleCloseMenu();
   };
-  
+
   // 打开分组对话框
   const handleOpenGroupDialog = () => {
     setGroupDialogOpen(true);
   };
-  
+
   // 关闭分组对话框
   const handleCloseGroupDialog = () => {
     setGroupDialogOpen(false);
   };
-  
+
   // 打开添加到分组菜单
   const handleAddToGroupMenu = (event: React.MouseEvent, topic: ChatTopic) => {
     event.stopPropagation();
     setTopicToGroup(topic);
     setAddToGroupMenuAnchorEl(event.currentTarget as HTMLElement);
   };
-  
+
   // 关闭添加到分组菜单
   const handleCloseAddToGroupMenu = () => {
     setAddToGroupMenuAnchorEl(null);
     setTopicToGroup(null);
   };
-  
+
   // 添加话题到分组
   const handleAddToGroup = (groupId: string) => {
     if (topicToGroup) {
       // 如果话题已经在其他分组中，先移除
       if (topicGroupMap[topicToGroup.id]) {
-        dispatch(removeItemFromGroup({ 
-          itemId: topicToGroup.id, 
-          type: 'topic' 
+        dispatch(removeItemFromGroup({
+          itemId: topicToGroup.id,
+          type: 'topic'
         }));
       }
-      
+
       // 添加到新分组
-      dispatch(addItemToGroup({ 
-        groupId, 
-        itemId: topicToGroup.id 
+      dispatch(addItemToGroup({
+        groupId,
+        itemId: topicToGroup.id
       }));
     }
-    
+
     handleCloseAddToGroupMenu();
   };
-  
+
   // 从分组中移除话题
   const handleRemoveFromGroup = (event: React.MouseEvent, topic: ChatTopic) => {
     event.stopPropagation();
     event.preventDefault();
-    
-    dispatch(removeItemFromGroup({ 
-      itemId: topic.id, 
-      type: 'topic' 
+
+    dispatch(removeItemFromGroup({
+      itemId: topic.id,
+      type: 'topic'
     }));
   };
-  
+
   // 添加话题到新分组
   const handleAddToNewGroup = () => {
     setGroupDialogOpen(true);
     handleCloseAddToGroupMenu();
   };
-  
+
   // 新增：处理话题删除按钮点击
   const handleDeleteClick = (event: React.MouseEvent, topicId: string) => {
     event.stopPropagation();
-    
+
     if (topicPendingDelete === topicId) {
       // 如果是第二次点击同一个话题，执行删除
       onDeleteTopic(topicId, event);
@@ -245,63 +265,81 @@ export default function TopicTab({
     } else {
       // 第一次点击，标记为准备删除状态
       setTopicPendingDelete(topicId);
-      
+
       // 添加5秒后自动重置删除状态的计时器
       setTimeout(() => {
         setTopicPendingDelete(current => current === topicId ? null : current);
       }, 5000);
     }
   };
-  
+
   // 编辑话题名称
   const handleEditTopicName = () => {
     if (!contextTopic) return;
-    
+
     setTopicName(contextTopic.title || '');
     setNameDialogOpen(true);
     handleCloseMenu();
   };
-  
+
   // 保存话题名称
   const handleSaveTopicName = () => {
     if (contextTopic && onUpdateTopic) {
+      const now = new Date();
+      const formattedDate = formatDateForTopicTitle(now);
       onUpdateTopic({
         ...contextTopic,
-        title: topicName.trim() || '新对话'
+        title: topicName.trim() || `新的对话 ${formattedDate}`
       });
     }
     handleCloseNameDialog();
   };
-  
+
   // 关闭名称编辑对话框
   const handleCloseNameDialog = () => {
     setNameDialogOpen(false);
     setTopicName('');
   };
-  
+
+  // 选择模板时更新编辑提示词
+  const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const templateId = e.target.value;
+    setSelectedTemplateId(templateId);
+    
+    if (templateId) {
+      const template = templates.find(t => t.id === templateId);
+      if (template) {
+        setTopicPrompt(template.content);
+      }
+    }
+    
+    // 如果选择了模板，关闭使用助手提示词的选项
+    setUseAssistantPrompt(false);
+  };
+
   // 渲染单个话题项
   const renderTopicItem = (topic: ChatTopic, index: number, inGroup: boolean = false) => {
     const isSelected = currentTopic?.id === topic.id;
     const isPendingDelete = topicPendingDelete === topic.id;
-    
-    const lastMessage = topic.messages.length > 0 
-      ? new Date(topic.lastMessageTime).toLocaleString('zh-CN', { 
-          hour: '2-digit', 
+
+    const lastMessage = topic.messages.length > 0
+      ? new Date(topic.lastMessageTime).toLocaleString('zh-CN', {
+          hour: '2-digit',
           minute: '2-digit',
           month: 'short',
           day: 'numeric'
         })
       : '';
-      
+
     return (
       <Box key={topic.id} sx={{ position: 'relative' }}>
         {inGroup ? (
           <DraggableItem id={topic.id} index={index}>
-            <ListItemButton 
+            <ListItemButton
               onClick={() => onSelectTopic(topic)}
               selected={isSelected}
-              sx={{ 
-                borderRadius: '8px', 
+              sx={{
+                borderRadius: '8px',
                 mb: 1,
                 pl: 2,
                 '&.Mui-selected': {
@@ -315,8 +353,8 @@ export default function TopicTab({
               <ListItemIcon sx={{ minWidth: 40 }}>
                 <ForumIcon fontSize="small" color={isSelected ? "primary" : "action"} />
               </ListItemIcon>
-              <ListItemText 
-                primary={topic.title || '新对话'} 
+              <ListItemText
+                primary={topic.title || '新对话'}
                 secondary={lastMessage}
                 primaryTypographyProps={{
                   variant: 'body2',
@@ -328,24 +366,24 @@ export default function TopicTab({
                   noWrap: true
                 }}
               />
-              
+
               {/* 删除图标 */}
-              <IconButton 
-                size="small" 
+              <IconButton
+                size="small"
                 onClick={(e) => handleDeleteClick(e, topic.id)}
                 sx={{ mr: 0.5 }}
               >
-                <DeleteIcon 
-                  fontSize="small" 
-                  sx={{ 
+                <DeleteIcon
+                  fontSize="small"
+                  sx={{
                     color: isPendingDelete ? 'error.main' : 'action.disabled',
                     transition: 'color 0.2s'
-                  }} 
+                  }}
                 />
               </IconButton>
-              
-              <IconButton 
-                size="small" 
+
+              <IconButton
+                size="small"
                 onClick={(e) => handleRemoveFromGroup(e, topic)}
                 sx={{ mr: -1 }}
               >
@@ -354,11 +392,11 @@ export default function TopicTab({
             </ListItemButton>
           </DraggableItem>
         ) : (
-          <ListItemButton 
+          <ListItemButton
             onClick={() => onSelectTopic(topic)}
             selected={isSelected}
-            sx={{ 
-              borderRadius: '8px', 
+            sx={{
+              borderRadius: '8px',
               mb: 1,
               '&.Mui-selected': {
                 backgroundColor: 'rgba(25, 118, 210, 0.08)',
@@ -371,8 +409,8 @@ export default function TopicTab({
             <ListItemIcon sx={{ minWidth: 40 }}>
               <ForumIcon fontSize="small" color={isSelected ? "primary" : "action"} />
             </ListItemIcon>
-            <ListItemText 
-              primary={topic.title || '新对话'} 
+            <ListItemText
+              primary={topic.title || '新对话'}
               secondary={lastMessage}
               primaryTypographyProps={{
                 variant: 'body2',
@@ -384,24 +422,24 @@ export default function TopicTab({
                 noWrap: true
               }}
             />
-            
+
             {/* 删除图标 */}
-            <IconButton 
-              size="small" 
+            <IconButton
+              size="small"
               onClick={(e) => handleDeleteClick(e, topic.id)}
               sx={{ mr: 0.5 }}
             >
-              <DeleteIcon 
-                fontSize="small" 
-                sx={{ 
+              <DeleteIcon
+                fontSize="small"
+                sx={{
                   color: isPendingDelete ? 'error.main' : 'action.disabled',
                   transition: 'color 0.2s'
-                }} 
+                }}
               />
             </IconButton>
-            
-            <IconButton 
-              size="small" 
+
+            <IconButton
+              size="small"
               onClick={(e) => {
                 e.stopPropagation();
                 setContextTopic(topic);
@@ -416,7 +454,7 @@ export default function TopicTab({
       </Box>
     );
   };
-  
+
   // 渲染分组和未分组的话题
   const renderTopicGroups = () => {
     // 在搜索模式下，直接显示所有过滤后的话题
@@ -427,51 +465,51 @@ export default function TopicTab({
         </List>
       );
     }
-    
+
     return (
       <>
         {/* 创建分组按钮 */}
         <CreateGroupButton type="topic" onClick={handleOpenGroupDialog} />
-        
+
         {/* 分组列表 */}
         {topicGroups.map((group) => {
           // 获取分组内的话题
           const groupTopics = assistantTopics.filter(
             topic => topicGroupMap[topic.id] === group.id
           );
-          
+
           if (groupTopics.length === 0) return null;
-          
+
           return (
-            <DraggableGroup 
-              key={group.id} 
-              group={group} 
+            <DraggableGroup
+              key={group.id}
+              group={group}
               onAddItem={onCreateTopic}
             >
-              {groupTopics.map((topic, index) => 
+              {groupTopics.map((topic, index) =>
                 renderTopicItem(topic, index, true)
               )}
             </DraggableGroup>
           );
         })}
-        
+
         {/* 未分组的话题 */}
         {ungroupedTopics.length > 0 && (
           <Box sx={{ mb: 2 }}>
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                mb: 1, 
-                fontWeight: 500, 
+            <Typography
+              variant="body2"
+              sx={{
+                mb: 1,
+                fontWeight: 500,
                 color: 'text.secondary',
                 fontSize: '0.875rem'
               }}
             >
               未分组
             </Typography>
-            
+
             <List sx={{ pl: 1 }}>
-              {ungroupedTopics.map((topic, index) => 
+              {ungroupedTopics.map((topic, index) =>
                 renderTopicItem(topic, index)
               )}
             </List>
@@ -480,7 +518,7 @@ export default function TopicTab({
       </>
     );
   };
-  
+
   // 添加到分组菜单
   const renderAddToGroupMenu = () => (
     <Menu
@@ -492,16 +530,16 @@ export default function TopicTab({
         <AddIcon fontSize="small" sx={{ mr: 1 }} />
         创建新分组
       </MenuItem>
-      
+
       {topicGroups.length > 0 && (
         <>
           <MenuItem disabled sx={{ opacity: 0.7 }}>
             选择现有分组
           </MenuItem>
-          
+
           {topicGroups.map(group => (
-            <MenuItem 
-              key={group.id} 
+            <MenuItem
+              key={group.id}
               onClick={() => handleAddToGroup(group.id)}
               sx={{ pl: 3 }}
             >
@@ -528,7 +566,7 @@ export default function TopicTab({
             InputProps={{
               startAdornment: <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} />,
             }}
-            sx={{ 
+            sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: '8px',
               }
@@ -553,9 +591,9 @@ export default function TopicTab({
           </Box>
         </Box>
       )}
-      
+
       {renderTopicGroups()}
-      
+
       {/* 话题菜单 */}
       <Menu
         anchorEl={menuAnchorEl}
@@ -584,7 +622,7 @@ export default function TopicTab({
           <AnalyticsIcon fontSize="small" sx={{ mr: 1 }} />
           分析对话
         </MenuItem>
-        <MenuItem 
+        <MenuItem
           onClick={(e) => {
             if (contextTopic) {
               onDeleteTopic(contextTopic.id, e);
@@ -597,7 +635,7 @@ export default function TopicTab({
           删除话题
         </MenuItem>
       </Menu>
-      
+
       {/* 提示词编辑对话框 */}
       <Dialog
         open={promptDialogOpen}
@@ -617,6 +655,8 @@ export default function TopicTab({
                       setUseAssistantPrompt(e.target.checked);
                       if (e.target.checked) {
                         setTopicPrompt(currentAssistant.systemPrompt || '');
+                        setUseTemplate(false);
+                        setSelectedTemplateId('');
                       }
                     }}
                   />
@@ -625,26 +665,60 @@ export default function TopicTab({
               />
             </Box>
           )}
+
+          <Box sx={{ mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={useTemplate}
+                  onChange={(e) => {
+                    setUseTemplate(e.target.checked);
+                    if (e.target.checked) {
+                      setUseAssistantPrompt(false);
+                    }
+                  }}
+                />
+              }
+              label="使用提示词模板"
+            />
+          </Box>
           
+          {useTemplate && (
+            <FormControl fullWidth margin="dense" sx={{ mb: 2 }}>
+              <InputLabel>选择提示词模板</InputLabel>
+              <Select
+                value={selectedTemplateId}
+                onChange={(e) => handleTemplateChange(e as any)}
+                label="选择提示词模板"
+              >
+                {templates.map(template => (
+                  <MenuItem key={template.id} value={template.id}>
+                    {template.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
             <TextField
               autoFocus
-            label="话题提示词"
+              label="话题提示词"
               multiline
-            rows={6}
-            fullWidth
+              rows={6}
+              fullWidth
               variant="outlined"
               value={topicPrompt}
               onChange={(e) => setTopicPrompt(e.target.value)}
-            disabled={useAssistantPrompt}
+              disabled={useAssistantPrompt}
             />
-          
+
           <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
             提示词将用于引导AI的行为和角色定位，作为系统指令发送给模型。
           </Typography>
         </DialogContent>
         <DialogActions>
               <Button onClick={handleClosePromptDialog}>取消</Button>
-              <Button 
+              <Button
             onClick={handleSavePrompt}
             color="primary"
               >
@@ -652,7 +726,7 @@ export default function TopicTab({
               </Button>
         </DialogActions>
       </Dialog>
-      
+
       {/* 话题名称编辑对话框 */}
       <Dialog
         open={nameDialogOpen}
@@ -675,7 +749,7 @@ export default function TopicTab({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseNameDialog}>取消</Button>
-          <Button 
+          <Button
             onClick={handleSaveTopicName}
             color="primary"
           >
@@ -683,15 +757,15 @@ export default function TopicTab({
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       {/* 分组对话框 */}
-      <GroupDialog 
+      <GroupDialog
         open={groupDialogOpen}
         onClose={handleCloseGroupDialog}
         type="topic"
       />
-      
+
       {renderAddToGroupMenu()}
     </>
   );
-} 
+}

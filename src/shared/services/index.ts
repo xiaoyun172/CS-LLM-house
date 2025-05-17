@@ -148,3 +148,16 @@ export const DataManager = {
 
 // 导出所有服务模块
 export * from './messages';
+
+/**
+ * 初始化所有服务
+ * 应在应用启动时调用
+ */
+export async function initializeServices(): Promise<void> {
+  try {
+    // 系统提示词服务现在通过Redux thunk初始化
+    console.log('服务初始化完成');
+  } catch (error) {
+    console.error('服务初始化失败:', error);
+  }
+}

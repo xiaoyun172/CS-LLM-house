@@ -405,8 +405,8 @@ const ChatPage: React.FC = () => {
                 selectedModel={selectedModel}
                 availableModels={availableModels}
                 handleModelSelect={handleModelSelect}
-                handleModelMenuClick={handleModelMenuClick}
-                handleModelMenuClose={handleModelMenuClose}
+                handleMenuClick={handleModelMenuClick}
+                handleMenuClose={handleModelMenuClose}
                 menuOpen={menuOpen}
               />
 

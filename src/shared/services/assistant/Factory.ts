@@ -6,9 +6,12 @@ import { uuid } from '../../utils';
 import { DataService } from '../DataService';
 import { getDefaultTopic } from './types';
 import { AssistantManager } from './AssistantManager';
+import { DEFAULT_SYSTEM_PROMPT, WEB_ANALYSIS_PROMPT } from '../../config/prompts';
+import { SystemPromptService } from '../SystemPromptService';
 
 // 获取DataService实例
 const dataService = DataService.getInstance();
+const promptService = SystemPromptService.getInstance();
 
 /**
  * 助手工厂服务 - 负责创建默认助手和初始化数据
@@ -18,6 +21,9 @@ export class AssistantFactory {
    * 初始化默认助手
    */
   static async initializeDefaultAssistants(): Promise<Assistant[]> {
+    // 获取当前系统提示词，如果没有使用默认值
+    const systemPrompt = promptService.getActiveSystemPrompt() || DEFAULT_SYSTEM_PROMPT;
+
     const defaultAssistants: Assistant[] = [
       {
         id: uuid(),
@@ -26,16 +32,16 @@ export class AssistantFactory {
         icon: React.createElement(EmojiEmotionsIcon, { sx: { color: '#FFD700' } }),
         isSystem: true,
         topicIds: [],
-        systemPrompt: '你是一个友好、专业、乐于助人的AI助手。你会以客观、准确的态度回答用户的问题，并在不确定的情况下坦诚表明。你可以协助用户完成各种任务，提供信息，或进行有意义的对话。'
+        systemPrompt: systemPrompt
       },
       {
         id: uuid(),
-        name: '消息器顽天助手',
+        name: '网页分析助手',
         description: '帮助分析各种网页内容',
         icon: React.createElement(AutoAwesomeIcon, { sx: { color: '#1E90FF' } }),
         isSystem: true,
         topicIds: [],
-        systemPrompt: '你是一个专注于网页内容分析的AI助手。你能帮助用户理解、总结和提取网页中的关键信息。无论是新闻、文章、论坛还是社交媒体内容，你都能提供有价值的见解和分析。'
+        systemPrompt: WEB_ANALYSIS_PROMPT
       }
     ];
 
@@ -53,9 +59,17 @@ export class AssistantFactory {
       }
     }
 
-    // 保存到DataService
+    // 保存到数据库，使用AssistantManager以确保更好的兼容性
     for (const assistant of defaultAssistants) {
-      await dataService.saveAssistant(assistant);
+      try {
+        // 使用AssistantManager.addAssistant方法，它有更好的错误处理和兼容性
+        const success = await AssistantManager.addAssistant(assistant);
+        if (!success) {
+          console.error(`通过AssistantManager保存默认助手 ${assistant.id} 失败`);
+        }
+      } catch (saveAssistantError) {
+        console.error(`保存默认助手 ${assistant.id} 时发生异常:`, saveAssistantError);
+      }
     }
 
     // 保存当前助手设置
@@ -63,11 +77,15 @@ export class AssistantFactory {
 
     return defaultAssistants;
   }
-  
+
   /**
    * 创建新助手
    */
   static createAssistant(name: string, description = '', systemPrompt = ''): Assistant {
+    // 如果没有提供系统提示词，使用当前系统提示词或默认值
+    const activePrompt = promptService.getActiveSystemPrompt() || DEFAULT_SYSTEM_PROMPT;
+    const finalPrompt = systemPrompt || activePrompt;
+
     return {
       id: uuid(),
       name,
@@ -75,7 +93,7 @@ export class AssistantFactory {
       icon: React.createElement(EmojiEmotionsIcon, { sx: { color: '#4CAF50' } }),
       isSystem: false,
       topicIds: [],
-      systemPrompt: systemPrompt || '你是一个友好、专业的AI助手。请用简洁、准确的方式回答用户的问题。'
+      systemPrompt: finalPrompt
     };
   }
-} 
+}

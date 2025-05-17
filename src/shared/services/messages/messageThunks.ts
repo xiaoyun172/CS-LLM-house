@@ -8,9 +8,9 @@ import {
   setTopicStreaming, 
   setError,
   setCurrentTopic,
-  loadTopics
-} from '../../store/messagesSlice';
-import { handleChatRequest, saveTopicsToLocalStorage } from './messageService';
+  initializeTopics
+} from '../../store/slices/messagesSlice';
+import { handleChatRequest, saveTopics } from './messageService';
 
 /**
  * 发送消息的异步action
@@ -123,10 +123,10 @@ export const setCurrentTopicThunk = createAsyncThunk(
     try {
       dispatch(setCurrentTopic(topic));
       
-      // 保存到localStorage
+      // 保存到数据库
       const state = getState() as RootState;
       const allTopics = state.messages.topics;
-      saveTopicsToLocalStorage([...allTopics, topic]);
+      await saveTopics([...allTopics, topic]);
       
       return topic;
     } catch (error) {
@@ -143,7 +143,7 @@ export const loadTopicsThunk = createAsyncThunk(
   'messages/loadTopicsThunk',
   async (_, { dispatch }) => {
     try {
-      dispatch(loadTopics());
+      await dispatch(initializeTopics());
       return true;
     } catch (error) {
       console.error('加载话题失败:', error);
@@ -162,11 +162,11 @@ export const deleteTopicThunk = createAsyncThunk(
       const state = getState() as RootState;
       const allTopics = state.messages.topics.filter(t => t.id !== topicId);
       
-      // 保存更新后的主题列表到localStorage
-      saveTopicsToLocalStorage(allTopics);
+      // 保存更新后的主题列表到数据库
+      await saveTopics(allTopics);
       
       // 重新加载主题
-      dispatch(loadTopics());
+      await dispatch(initializeTopics());
       
       return true;
     } catch (error) {

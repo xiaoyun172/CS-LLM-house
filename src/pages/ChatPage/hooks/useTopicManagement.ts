@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
-import { 
-  createTopic, 
-  setCurrentTopic, 
+import {
+  createTopic,
+  setCurrentTopic,
   setTopicMessages
-} from '../../../shared/store/messagesSlice';
+} from '../../../shared/store/slices/messagesSlice';
 import type { ChatTopic } from '../../../shared/types';
 import { AssistantService } from '../../../shared/services';
 import { DataAdapter } from '../../../shared/services/DataAdapter';
 import type { Assistant } from '../../../shared/types/Assistant';
 import { TopicService } from '../../../shared/services/TopicService';
+import { getStorageItem } from '../../../shared/utils/storage';
+import { formatDateForTopicTitle } from '../../../shared/utils';
 
 // 获取DataAdapter实例
 const dataAdapter = DataAdapter.getInstance();
@@ -68,7 +70,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
       console.error('通过DataAdapter加载话题失败:', error);
 
       // 检查是否是首次使用应用
-      const isFirstTimeUser = localStorage.getItem('first-time-user') === null;
+      const isFirstTimeUser = await getStorageItem<string>('first-time-user') === null;
 
       // 只有在首次使用应用时才创建默认话题
       if (isFirstTimeUser) {
@@ -84,17 +86,19 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
   // 创建默认话题
   const createDefaultTopic = async (): Promise<ChatTopic[]> => {
     console.log('正在创建默认话题');
-    
+
     // 创建一个默认话题
+    const now = new Date();
+    const formattedDate = formatDateForTopicTitle(now);
     const defaultTopic: ChatTopic = {
       id: generateId(),
-      title: '新的对话',
-      lastMessageTime: new Date().toISOString(),
+      title: `新的对话 ${formattedDate}`,
+      lastMessageTime: now.toISOString(),
       messages: []
     };
-    
+
     console.log('默认话题创建成功:', defaultTopic);
-    
+
     // 使用DataAdapter保存话题到数据库
     try {
       const savedTopic = await dataAdapter.createTopic(defaultTopic);
@@ -108,7 +112,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
     dispatch(setCurrentTopic(defaultTopic));
 
     // 获取当前助手ID
-    const currentAssistantId = localStorage.getItem('currentAssistant');
+    const currentAssistantId = await getStorageItem<string>('currentAssistant');
 
     // 如果存在助手ID，尝试关联话题
     if (currentAssistantId) {
@@ -150,7 +154,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
     try {
       // 使用统一的TopicService创建话题
       const newTopic = await TopicService.createNewTopic();
-      
+
       if (newTopic) {
         console.log('useTopicManagement: 话题创建成功', newTopic.id);
         return newTopic;
