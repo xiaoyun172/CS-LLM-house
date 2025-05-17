@@ -1,5 +1,6 @@
 import { DataService } from '../DataService';
 import { TopicService } from '../TopicService';
+import { TopicStatsService } from '../TopicStatsService';
 import type { ChatTopic } from '../../types';
 import { getDefaultTopic } from './types';
 import { AssistantManager } from './AssistantManager';
@@ -18,6 +19,12 @@ export class TopicManager {
     try {
       console.log(`尝试将话题 ${topicId} 添加到助手 ${assistantId}`);
 
+      // 参数验证
+      if (!assistantId || !topicId) {
+        console.error('添加话题到助手失败: 无效的参数', { assistantId, topicId });
+        return false;
+      }
+
       // 获取助手
       const assistant = await dataService.getAssistant(assistantId);
       if (!assistant) {
@@ -26,10 +33,56 @@ export class TopicManager {
       }
 
       // 获取话题
-      const topic = await TopicService.getTopicById(topicId);
+      let topic = await TopicService.getTopicById(topicId);
       if (!topic) {
-        console.error(`话题 ${topicId} 不存在`);
-        return false;
+        console.error(`话题 ${topicId} 不存在，尝试创建临时话题`);
+
+        // 创建临时话题
+        try {
+          // 创建一个确保有效的临时话题
+          const currentTime = new Date().toISOString();
+          const tempTopic = {
+            id: topicId,
+            title: '恢复的话题 ' + new Date().toLocaleTimeString(),
+            lastMessageTime: currentTime,
+            // 使用系统提示词而不是系统消息
+            prompt: '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。这是一个恢复的对话，请告诉我您需要什么帮助？',
+            messages: []
+          };
+
+          // 保存临时话题
+          await dataService.saveTopic(tempTopic);
+          console.log(`为ID ${topicId} 创建了临时话题，并添加了系统提示词确保有效性`);
+
+          // 重新获取确认
+          topic = await TopicService.getTopicById(topicId);
+          if (!topic) {
+            console.error(`创建临时话题后仍无法获取话题 ${topicId}`);
+            return false;
+          }
+          console.log(`临时话题 ${topicId} 创建成功，可以继续关联`);
+        } catch (createError) {
+          console.error(`无法创建临时话题: ${createError}`);
+          return false;
+        }
+      }
+
+      // 验证话题有效性
+      if (!TopicStatsService.isValidTopic(topic)) {
+        console.error(`话题 ${topicId} 无效，尝试修复`);
+
+        // 尝试修复话题 - 添加系统提示词
+        if (!topic.prompt) {
+          topic.prompt = '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。请告诉我您需要什么帮助？';
+          await dataService.saveTopic(topic);
+          console.log(`已为话题 ${topicId} 添加系统提示词`);
+        }
+
+        // 再次验证
+        if (!TopicStatsService.isValidTopic(topic)) {
+          console.error(`修复后话题 ${topicId} 仍然无效，无法添加到助手`);
+          return false;
+        }
       }
 
       // 确保topicIds是数组
@@ -49,9 +102,23 @@ export class TopicManager {
 
       // 保存更新后的助手
       const success = await AssistantManager.updateAssistant(updatedAssistant);
-      
+
       if (success) {
         console.log(`成功将话题 ${topicId} 添加到助手 ${assistantId}`);
+
+        // 派发话题创建事件，确保UI更新
+        try {
+          const event = new CustomEvent('topicCreated', {
+            detail: {
+              topic,
+              assistantId
+            }
+          });
+          window.dispatchEvent(event);
+          console.log(`已派发topicCreated事件，通知UI更新`);
+        } catch (eventError) {
+          console.warn(`派发话题创建事件失败:`, eventError);
+        }
       } else {
         console.error(`无法将话题 ${topicId} 添加到助手 ${assistantId}`);
       }
@@ -94,7 +161,7 @@ export class TopicManager {
 
       // 保存更新后的助手
       const success = await AssistantManager.updateAssistant(updatedAssistant);
-      
+
       if (success) {
         console.log(`成功从助手 ${assistantId} 移除话题 ${topicId}`);
       } else {
@@ -153,14 +220,14 @@ export class TopicManager {
 
       // 保存更新后的助手
       const success = await AssistantManager.updateAssistant(updatedAssistant);
-      
+
       if (success) {
         console.log(`成功清空助手 ${assistantId} 的话题`);
-        
+
         // 发送事件通知其他组件更新
         if (originalTopicIds.length > 0) {
           const event = new CustomEvent('topicsCleared', {
-            detail: { 
+            detail: {
               assistantId,
               clearedTopicIds: originalTopicIds
             }
@@ -184,31 +251,49 @@ export class TopicManager {
    */
   static async ensureAssistantHasTopic(assistantId: string): Promise<ChatTopic> {
     try {
-      console.log(`确保助手 ${assistantId} 有话题`);
+      console.log(`[TopicManager] 确保助手 ${assistantId} 有话题`);
 
       // 获取助手
       const assistant = await dataService.getAssistant(assistantId);
       if (!assistant) {
+        console.error(`[TopicManager] 助手 ${assistantId} 不存在，无法确保话题`);
         throw new Error(`助手 ${assistantId} 不存在`);
       }
 
+      console.log(`[TopicManager] 成功获取助手: ${assistant.name} (${assistant.id})`);
+
       // 检查是否有话题
       const topicIds = Array.isArray(assistant.topicIds) ? assistant.topicIds : [];
+      console.log(`[TopicManager] 助手 ${assistant.name} 有 ${topicIds.length} 个话题ID: ${JSON.stringify(topicIds)}`);
+
       if (topicIds.length > 0) {
         // 获取第一个话题
         const firstTopicId = topicIds[0];
-        const topic = await TopicService.getTopicById(firstTopicId);
-        
-        if (topic) {
-          console.log(`助手 ${assistantId} 已有话题 ${firstTopicId}`);
-          return topic;
+        console.log(`[TopicManager] 尝试获取第一个话题: ${firstTopicId}`);
+
+        try {
+          const topic = await TopicService.getTopicById(firstTopicId);
+
+          if (topic) {
+            console.log(`[TopicManager] 助手 ${assistant.name} 已有有效话题: ${topic.title} (${topic.id})`);
+            return topic;
+          } else {
+            console.warn(`[TopicManager] 话题ID ${firstTopicId} 存在于助手的topicIds中，但无法获取话题数据`);
+          }
+        } catch (topicError) {
+          console.error(`[TopicManager] 获取话题 ${firstTopicId} 时出错:`, topicError);
         }
       }
 
+      console.log(`[TopicManager] 助手 ${assistant.name} 没有有效话题，将创建默认话题`);
+
       // 创建默认话题
-      return await this.createDefaultTopicForAssistant(assistantId);
+      const defaultTopic = await this.createDefaultTopicForAssistant(assistantId);
+      console.log(`[TopicManager] 成功为助手 ${assistant.name} 创建默认话题: ${defaultTopic.title} (${defaultTopic.id})`);
+
+      return defaultTopic;
     } catch (error) {
-      console.error(`确保助手有话题失败: ${error}`);
+      console.error(`[TopicManager] 确保助手有话题失败:`, error);
       throw error;
     }
   }
@@ -218,22 +303,57 @@ export class TopicManager {
    */
   static async createDefaultTopicForAssistant(assistantId: string): Promise<ChatTopic> {
     try {
-      console.log(`为助手 ${assistantId} 创建默认话题`);
+      console.log(`[TopicManager] 为助手 ${assistantId} 创建默认话题`);
 
       // 创建话题
       const defaultTopic = getDefaultTopic(assistantId);
-      console.log(`创建默认话题: ${defaultTopic.id}`);
+      console.log(`[TopicManager] 创建默认话题对象: ${defaultTopic.title} (${defaultTopic.id})`);
 
-      // 保存话题
-      await dataService.saveTopic(defaultTopic);
+      try {
+        // 保存话题到数据库
+        console.log(`[TopicManager] 尝试保存话题到数据库: ${defaultTopic.id}`);
+        await dataService.saveTopic(defaultTopic);
+        console.log(`[TopicManager] 话题 ${defaultTopic.id} 已成功保存到数据库`);
+      } catch (saveError) {
+        console.error(`[TopicManager] 保存话题 ${defaultTopic.id} 到数据库失败:`, saveError);
+        throw new Error(`保存话题失败: ${saveError}`);
+      }
 
-      // 关联话题到助手
-      await this.addTopicToAssistant(assistantId, defaultTopic.id);
+      try {
+        // 关联话题到助手
+        console.log(`[TopicManager] 尝试将话题 ${defaultTopic.id} 关联到助手 ${assistantId}`);
+        const success = await this.addTopicToAssistant(assistantId, defaultTopic.id);
 
-      console.log(`成功为助手 ${assistantId} 创建并关联默认话题 ${defaultTopic.id}`);
+        if (!success) {
+          console.error(`[TopicManager] 关联话题 ${defaultTopic.id} 到助手 ${assistantId} 失败`);
+          throw new Error(`关联话题到助手失败`);
+        }
+
+        console.log(`[TopicManager] 话题 ${defaultTopic.id} 已成功关联到助手 ${assistantId}`);
+      } catch (linkError) {
+        console.error(`[TopicManager] 关联话题到助手时出错:`, linkError);
+        // 即使关联失败，仍然返回创建的话题，以便UI可以显示
+        console.warn(`[TopicManager] 虽然关联失败，但话题已创建，将返回话题对象`);
+      }
+
+      // 派发话题创建事件
+      try {
+        const event = new CustomEvent('topicCreated', {
+          detail: {
+            topic: defaultTopic,
+            assistantId
+          }
+        });
+        window.dispatchEvent(event);
+        console.log(`[TopicManager] 已派发topicCreated事件`);
+      } catch (eventError) {
+        console.warn(`[TopicManager] 派发话题创建事件失败:`, eventError);
+      }
+
+      console.log(`[TopicManager] 成功为助手 ${assistantId} 创建默认话题 ${defaultTopic.id}`);
       return defaultTopic;
     } catch (error) {
-      console.error(`为助手创建默认话题失败: ${error}`);
+      console.error(`[TopicManager] 为助手创建默认话题失败:`, error);
       throw error;
     }
   }
@@ -245,12 +365,12 @@ export class TopicManager {
     try {
       // 获取助手的话题列表
       const topicIds = await this.getAssistantTopics(assistantId);
-      
+
       // 如果没有话题，返回null
       if (topicIds.length === 0) {
         return null;
       }
-      
+
       // 获取第一个话题
       return await TopicService.getTopicById(topicIds[0]);
     } catch (error) {
@@ -258,4 +378,121 @@ export class TopicManager {
       return null;
     }
   }
-} 
+
+  /**
+   * 验证并修复助手的话题引用
+   * 检查助手引用的话题是否都存在且有效，移除无效引用
+   */
+  static async validateAndFixAssistantTopicReferences(assistantId: string): Promise<{
+    fixed: boolean;
+    removedCount: number;
+    validCount: number;
+  }> {
+    try {
+      console.log(`[TopicManager] 验证助手 ${assistantId} 的话题引用`);
+
+      // 获取助手
+      const assistant = await dataService.getAssistant(assistantId);
+      if (!assistant) {
+        console.error(`[TopicManager] 助手 ${assistantId} 不存在，无法验证话题引用`);
+        return { fixed: false, removedCount: 0, validCount: 0 };
+      }
+
+      // 确保topicIds是数组
+      const topicIds = Array.isArray(assistant.topicIds) ? assistant.topicIds : [];
+      if (topicIds.length === 0) {
+        console.log(`[TopicManager] 助手 ${assistant.name} 没有关联话题，无需修复`);
+        return { fixed: false, removedCount: 0, validCount: 0 };
+      }
+
+      console.log(`[TopicManager] 助手 ${assistant.name} 有 ${topicIds.length} 个话题引用，开始验证`);
+
+      // 验证每个话题ID
+      const validTopicIds: string[] = [];
+      const invalidTopicIds: string[] = [];
+
+      for (const topicId of topicIds) {
+        try {
+          const topic = await TopicService.getTopicById(topicId);
+
+          if (topic && TopicStatsService.isValidTopic(topic)) {
+            validTopicIds.push(topicId);
+          } else {
+            console.log(`[TopicManager] 话题 ${topicId} 无效或不存在，将从助手中移除`);
+            invalidTopicIds.push(topicId);
+          }
+        } catch (error) {
+          console.error(`[TopicManager] 验证话题 ${topicId} 时出错:`, error);
+          invalidTopicIds.push(topicId);
+        }
+      }
+
+      // 如果没有无效话题，不需要修复
+      if (invalidTopicIds.length === 0) {
+        console.log(`[TopicManager] 助手 ${assistant.name} 的所有话题引用都有效，无需修复`);
+        return { fixed: false, removedCount: 0, validCount: validTopicIds.length };
+      }
+
+      // 更新助手，移除无效话题引用
+      const updatedAssistant = {
+        ...assistant,
+        topicIds: validTopicIds
+      };
+
+      // 保存更新后的助手
+      const success = await AssistantManager.updateAssistant(updatedAssistant);
+
+      if (success) {
+        console.log(`[TopicManager] 成功修复助手 ${assistant.name} 的话题引用，移除了 ${invalidTopicIds.length} 个无效引用`);
+        return { fixed: true, removedCount: invalidTopicIds.length, validCount: validTopicIds.length };
+      } else {
+        console.error(`[TopicManager] 无法更新助手 ${assistant.name} 的话题引用`);
+        return { fixed: false, removedCount: 0, validCount: validTopicIds.length };
+      }
+    } catch (error) {
+      console.error(`[TopicManager] 验证并修复助手话题引用时出错:`, error);
+      return { fixed: false, removedCount: 0, validCount: 0 };
+    }
+  }
+
+  /**
+   * 验证并修复所有助手的话题引用
+   */
+  static async validateAndFixAllAssistantsTopicReferences(): Promise<{
+    assistantsFixed: number;
+    totalAssistants: number;
+    totalRemoved: number;
+  }> {
+    try {
+      console.log('[TopicManager] 开始验证所有助手的话题引用');
+
+      // 获取所有助手
+      const assistants = await AssistantManager.getUserAssistants();
+      if (!assistants || assistants.length === 0) {
+        console.log('[TopicManager] 没有找到助手，无需修复');
+        return { assistantsFixed: 0, totalAssistants: 0, totalRemoved: 0 };
+      }
+
+      console.log(`[TopicManager] 找到 ${assistants.length} 个助手，开始验证话题引用`);
+
+      let assistantsFixed = 0;
+      let totalRemoved = 0;
+
+      // 验证每个助手的话题引用
+      for (const assistant of assistants) {
+        const result = await this.validateAndFixAssistantTopicReferences(assistant.id);
+
+        if (result.fixed) {
+          assistantsFixed++;
+          totalRemoved += result.removedCount;
+        }
+      }
+
+      console.log(`[TopicManager] 验证完成，修复了 ${assistantsFixed} 个助手的话题引用，共移除 ${totalRemoved} 个无效引用`);
+      return { assistantsFixed, totalAssistants: assistants.length, totalRemoved };
+    } catch (error) {
+      console.error('[TopicManager] 验证所有助手话题引用时出错:', error);
+      return { assistantsFixed: 0, totalAssistants: 0, totalRemoved: 0 };
+    }
+  }
+}

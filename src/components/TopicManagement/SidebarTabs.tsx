@@ -12,6 +12,11 @@ import type { ChatTopic } from '../../shared/types';
 import type { Assistant } from '../../shared/types/Assistant';
 import { AssistantService } from '../../shared/services';
 import { TopicService } from '../../shared/services/TopicService';
+import { TopicStatsService } from '../../shared/services/TopicStatsService';
+import { TopicCreationService } from '../../shared/services/TopicCreationService';
+// 获取DataService实例
+import { DataService } from '../../shared/services/DataService';
+const dataService = DataService.getInstance();
 
 // 导入子组件
 import AssistantTab from './AssistantTab';
@@ -115,22 +120,67 @@ export default function SidebarTabs() {
           const assistantTopicIds = Array.isArray(currentAssistant.topicIds) ? currentAssistant.topicIds : [];
           console.log(`助手 ${currentAssistant.id} (${currentAssistant.name}) 有 ${assistantTopicIds.length} 个关联话题ID`);
 
-          // 移除自动创建话题的逻辑，允许查看无话题的助手
+          // 恢复自动创建话题的逻辑，确保助手始终有关联话题
           if (assistantTopicIds.length === 0) {
-            console.log('当前助手没有关联话题，显示空话题列表');
-            setCurrentAssistantTopics([]);
-            return;
+            console.log('当前助手没有关联话题，自动创建默认话题');
+            try {
+              // 使用 TopicManager.ensureAssistantHasTopic 确保助手有话题
+              const defaultTopic = await AssistantService.ensureAssistantHasTopic(currentAssistant.id);
+              console.log('已为助手创建默认话题:', defaultTopic.id);
+
+              // 更新本地状态
+              setCurrentAssistantTopics([defaultTopic]);
+
+              // 设置为当前话题
+              dispatch(setCurrentTopic(defaultTopic));
+
+              // 更新当前助手的 topicIds
+              const updatedAssistant = {
+                ...currentAssistant,
+                topicIds: [defaultTopic.id]
+              };
+              setCurrentAssistant(updatedAssistant);
+
+              // 更新全局助手列表
+              setUserAssistants(prev =>
+                prev.map(a => a.id === currentAssistant.id ? updatedAssistant : a)
+              );
+
+              return;
+            } catch (error) {
+              console.error('自动创建默认话题失败:', error);
+              setCurrentAssistantTopics([]);
+              return;
+            }
           }
 
           // 获取当前助手的话题
-          const assistantTopics = topics.filter(topic => 
+          const assistantTopics = topics.filter(topic =>
             assistantTopicIds.includes(topic.id)
           );
 
           console.log(`找到 ${assistantTopics.length} 个有效话题，总话题数: ${topics.length}`);
 
-          // 移除无效话题ID的检测和警告日志
-          // 直接使用找到的话题
+          // 验证话题有效性
+          const validTopics = assistantTopics.filter(topic =>
+            TopicStatsService.isValidTopic(topic)
+          );
+
+          if (validTopics.length !== assistantTopics.length) {
+            console.warn(`发现 ${assistantTopics.length - validTopics.length} 个无效话题，将尝试修复`);
+
+            // 尝试修复无效话题 - 添加系统提示词
+            for (const topic of assistantTopics) {
+              if (!TopicStatsService.isValidTopic(topic)) {
+                console.log(`尝试修复无效话题: ${topic.id}`);
+                if (!topic.prompt) {
+                  topic.prompt = '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。请告诉我您需要什么帮助？';
+                  await dataService.saveTopic(topic);
+                  console.log(`已为话题 ${topic.id} 添加系统提示词`);
+                }
+              }
+            }
+          }
 
           if (assistantTopics.length > 0) {
             setCurrentAssistantTopics(assistantTopics);
@@ -142,6 +192,27 @@ export default function SidebarTabs() {
           } else {
             console.log('没有找到有效话题，显示空话题列表');
             setCurrentAssistantTopics([]);
+
+            // 检查是否是由于清空话题操作导致的空话题列表
+            // 如果是清空话题操作，则不在这里创建新话题，而是由事件处理器统一处理
+            const isAfterTopicsClear = localStorage.getItem('_justClearedTopics') === currentAssistant.id;
+
+            if (isAfterTopicsClear) {
+              console.log('检测到刚刚清空了话题，不在这里创建新话题，等待事件处理器处理');
+              // 清除标记
+              localStorage.removeItem('_justClearedTopics');
+            } else {
+              // 如果不是清空话题操作，则尝试创建一个默认话题
+              console.log('尝试为当前助手创建默认话题');
+              try {
+                const defaultTopic = await AssistantService.ensureAssistantHasTopic(currentAssistant.id);
+                console.log('成功创建默认话题:', defaultTopic.id);
+                setCurrentAssistantTopics([defaultTopic]);
+                dispatch(setCurrentTopic(defaultTopic));
+              } catch (createError) {
+                console.error('创建默认话题失败:', createError);
+              }
+            }
           }
         } catch (error) {
           console.error('更新助手话题列表时出错:', error);
@@ -161,16 +232,18 @@ export default function SidebarTabs() {
   useEffect(() => {
     const handleTopicCreated = (event: Event) => {
       const customEvent = event as TopicCreatedEvent;
-      console.log('接收到话题创建事件:', customEvent.detail);
+      console.log('[话题创建监控] SidebarTabs接收到topicCreated事件:', customEvent.detail);
+      console.log(`[话题创建监控] 话题ID: ${customEvent.detail.topic.id}, 标题: "${customEvent.detail.topic.title}"`);
+      console.log(`[话题创建监控] 目标助手ID: ${customEvent.detail.assistantId}`);
 
       // 如果当前没有选中的助手，或者不是当前助手的话题，则不处理
       if (!currentAssistant) {
-        console.log('没有当前助手，不处理话题创建事件');
+        console.log('[话题创建监控] 没有当前助手，不处理话题创建事件');
         return;
       }
 
       if (currentAssistant.id !== customEvent.detail.assistantId) {
-        console.log('创建的话题属于其他助手，不处理');
+        console.log(`[话题创建监控] 创建的话题属于助手${customEvent.detail.assistantId}，非当前助手${currentAssistant.id}，不处理`);
         return;
       }
 
@@ -179,43 +252,52 @@ export default function SidebarTabs() {
       // 检查话题是否已存在于当前列表中
       const exists = currentAssistantTopics.some(t => t.id === topic.id);
       if (exists) {
-        console.log('话题已存在于当前列表中，不重复添加');
+        console.log(`[话题创建监控] 话题${topic.id}已存在于当前列表中，不重复添加`);
         return;
       }
 
-      console.log('添加新话题到助手话题列表');
+      console.log(`[话题创建监控] 准备添加新话题${topic.id}到助手${currentAssistant.id}的话题列表`);
 
       // 直接更新助手的话题列表 - 核心操作1
-      setCurrentAssistantTopics(prev => [topic, ...prev]);
+      setCurrentAssistantTopics(prev => {
+        console.log(`[话题创建监控] 更新前话题数量: ${prev.length}, 添加后数量: ${prev.length + 1}`);
+        return [topic, ...prev];
+      });
 
       // 更新当前助手的topicIds - 核心操作2
       const updatedAssistant = {
         ...currentAssistant,
         topicIds: [...(currentAssistant.topicIds || []), topic.id]
       };
+      console.log(`[话题创建监控] 更新助手${updatedAssistant.id}的topicIds，添加话题${topic.id}后数量: ${updatedAssistant.topicIds.length}`);
       setCurrentAssistant(updatedAssistant);
-      
+
       // 添加回：更新全局助手列表 - 确保UI一致性
-      setUserAssistants(prev => 
+      setUserAssistants(prev =>
         prev.map(a => a.id === currentAssistant.id ? updatedAssistant : a)
       );
+      console.log(`[话题创建监控] 已更新全局助手列表`);
 
       // 自动切换到话题标签页
       setValue(1);
+      console.log(`[话题创建监控] 已切换到话题标签页`);
 
       // 异步更新助手
-      AssistantService.updateAssistant(updatedAssistant).catch(console.error);
-      
+      AssistantService.updateAssistant(updatedAssistant)
+        .then(() => console.log(`[话题创建监控] 已成功保存助手${updatedAssistant.id}的更新`))
+        .catch(error => console.error(`[话题创建监控] 保存助手更新失败:`, error));
+
       // 添加回：强制刷新机制 - 确保界面更新
       setTimeout(() => {
-        console.log('强制刷新话题列表状态');
+        console.log('[话题创建监控] 强制刷新话题列表状态');
         setCurrentAssistantTopics(prev => [...prev]);
-        
+
         // 派发一个自定义事件通知其他组件刷新
         const refreshEvent = new CustomEvent('topicsRefreshed', {
           detail: { assistantId: currentAssistant.id }
         });
         window.dispatchEvent(refreshEvent);
+        console.log('[话题创建监控] 已派发topicsRefreshed事件');
       }, 200);
     };
 
@@ -287,11 +369,38 @@ export default function SidebarTabs() {
       const assistantTopicIds = Array.isArray(assistant.topicIds) ? assistant.topicIds : [];
       console.log(`助手 ${assistant.id} (${assistant.name}) 有 ${assistantTopicIds.length} 个话题ID`);
 
-      // 允许无话题的助手显示空话题列表
+      // 确保助手始终有关联话题
       if (assistantTopicIds.length === 0) {
-        console.log('当前助手没有关联话题，显示空话题列表');
-        setCurrentAssistantTopics([]);
-        return;
+        console.log('当前助手没有关联话题，自动创建默认话题');
+        try {
+          // 使用 TopicManager.ensureAssistantHasTopic 确保助手有话题
+          const defaultTopic = await AssistantService.ensureAssistantHasTopic(assistant.id);
+          console.log('已为助手创建默认话题:', defaultTopic.id);
+
+          // 更新本地状态
+          setCurrentAssistantTopics([defaultTopic]);
+
+          // 设置为当前话题
+          dispatch(setCurrentTopic(defaultTopic));
+
+          // 更新当前助手的 topicIds
+          const updatedAssistant = {
+            ...assistant,
+            topicIds: [defaultTopic.id]
+          };
+          setCurrentAssistant(updatedAssistant);
+
+          // 更新全局助手列表
+          setUserAssistants(prev =>
+            prev.map(a => a.id === assistant.id ? updatedAssistant : a)
+          );
+
+          return;
+        } catch (error) {
+          console.error('自动创建默认话题失败:', error);
+          setCurrentAssistantTopics([]);
+          return;
+        }
       }
 
       if (assistantTopicIds.length > 0) {
@@ -323,10 +432,10 @@ export default function SidebarTabs() {
 
   // 添加助手
   const handleAddAssistant = async (assistant: Assistant) => {
-    console.log('添加新助手:', assistant.name, '助手ID:', assistant.id);
+    console.log('添加新助手:', assistant.name, '助手数据:', assistant);
 
-    // 确保助手有正确的属性
-    if (!assistant.id || !assistant.name) {
+    // 确保助手有正确的名称属性
+    if (!assistant.name) {
       console.error('无法添加助手: 缺少必要属性');
       return;
     }
@@ -424,15 +533,23 @@ export default function SidebarTabs() {
   // 创建新话题 (使用useCallback优化)
   const handleCreateTopic = useCallback(async () => {
     if (!currentAssistant) {
-      console.error('无法创建话题: 当前没有选中的助手');
-      return;
+      console.error('[话题管理] SidebarTabs: 无法创建话题: 当前没有选中的助手');
+      return null;
     }
 
     try {
-      // 使用统一的TopicService创建话题
-      await TopicService.createNewTopic();
+      console.log('[话题管理] SidebarTabs: 调用TopicCreationService创建新话题');
+      // 使用统一的TopicCreationService创建话题
+      const newTopic = await TopicCreationService.handleSidebarButtonCreation();
+      if (newTopic) {
+        console.log(`[话题管理] SidebarTabs: 成功创建新话题: ${newTopic.id}`);
+      } else {
+        console.error('[话题管理] SidebarTabs: 创建话题失败');
+      }
+      return newTopic;
     } catch (error) {
-      console.error('创建新话题时出错:', error);
+      console.error('[话题管理] SidebarTabs: 创建新话题时出错:', error);
+      return null;
     }
   }, [currentAssistant]);
 
@@ -446,8 +563,19 @@ export default function SidebarTabs() {
     const isDeletingCurrentTopic = currentTopic && currentTopic.id === topicId;
 
     try {
+      console.log(`开始删除话题: ${topicId}`);
+
       // 从助手中移除话题
       await AssistantService.removeTopicFromAssistant(currentAssistant.id, topicId);
+      console.log(`已从助手 ${currentAssistant.id} 中移除话题 ${topicId}`);
+
+      // 从数据库中删除话题
+      const deleteResult = await TopicService.deleteTopic(topicId);
+      if (deleteResult) {
+        console.log(`话题 ${topicId} 已从数据库中删除`);
+      } else {
+        console.error(`无法从数据库中删除话题 ${topicId}`);
+      }
 
       // 更新当前助手
       const updatedAssistant = {
@@ -553,33 +681,17 @@ export default function SidebarTabs() {
 
   // 监听assistantNeedsTopic事件，在助手清空话题后自动创建新话题
   useEffect(() => {
-    const handleAssistantNeedsTopic = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { assistantId } = customEvent.detail;
-
-      console.log('接收到助手需要话题事件:', assistantId);
-      
-      // 确保当前助手与事件中的助手一致
-      if (currentAssistant && currentAssistant.id === assistantId) {
-        console.log('准备为当前助手创建新话题');
-        // 延迟创建话题，确保其他状态已更新
-        setTimeout(() => {
-          handleCreateTopic();
-        }, 100);
-      }
-    };
-
     // 处理话题清空事件，强制更新UI
     const handleTopicsCleared = (event: Event) => {
       const customEvent = event as CustomEvent;
-      const { assistantId, clearedTopicIds } = customEvent.detail;
+      const { assistantId, clearedTopicIds, shouldCreateNewTopic } = customEvent.detail;
 
-      console.log('接收到话题清空事件:', assistantId, '已清空话题:', clearedTopicIds);
+      console.log('[话题管理] SidebarTabs: 接收到话题清空事件:', assistantId, '已清空话题:', clearedTopicIds);
 
       // 强制更新本地话题状态
       const updatedTopics = topics.filter(topic => !clearedTopicIds.includes(topic.id));
       setCurrentAssistantTopics(updatedTopics);
-      console.log('已更新本地话题状态，移除已清空话题');
+      console.log('[话题管理] SidebarTabs: 已更新本地话题状态，移除已清空话题');
 
       // 如果当前助手是被清空的助手，额外处理
       if (currentAssistant && currentAssistant.id === assistantId) {
@@ -589,16 +701,30 @@ export default function SidebarTabs() {
           topicIds: []
         };
         setCurrentAssistant(updatedAssistant);
-        console.log('已更新当前助手状态，清空topicIds');
+        console.log('[话题管理] SidebarTabs: 已更新当前助手状态，清空topicIds');
+
+        // 如果需要创建新话题
+        if (shouldCreateNewTopic) {
+          console.log('[话题管理] SidebarTabs: 需要为清空的助手创建新话题');
+          
+          // 使用专门的服务创建新话题
+          TopicCreationService.handleTopicsClearedAutoCreation(assistantId)
+            .then(newTopic => {
+              if (newTopic) {
+                console.log(`[话题管理] SidebarTabs: 成功为清空的助手创建新话题: ${newTopic.id}`);
+              } else {
+                console.error('[话题管理] SidebarTabs: 为清空的助手创建新话题失败');
+              }
+            });
+        }
       }
     };
+
     // 注册事件监听器
-    window.addEventListener('assistantNeedsTopic', handleAssistantNeedsTopic);
     window.addEventListener('topicsCleared', handleTopicsCleared);
 
     // 清理函数
     return () => {
-      window.removeEventListener('assistantNeedsTopic', handleAssistantNeedsTopic);
       window.removeEventListener('topicsCleared', handleTopicsCleared);
     };
   }, [currentAssistant, handleCreateTopic, topics]);

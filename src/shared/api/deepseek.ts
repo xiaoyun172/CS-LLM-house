@@ -192,6 +192,9 @@ export async function handleStreamResponse(
         reasoningStartTime = Date.now();
         console.log('[DeepSeek] 开始收集推理过程');
       }
+      
+      // 立即返回，开始标记单独作为一次思考过程更新
+      return { text: '', reasoning: content };
     }
     
     // 检查是否结束收集推理过程
@@ -206,10 +209,14 @@ export async function handleStreamResponse(
         reasoning = match[2].trim();
         console.log(`[DeepSeek] 提取到推理过程，长度: ${reasoning.length}`);
       }
+      
+      // 结束标记单独作为一次思考过程更新
+      return { text: '', reasoning: content };
     }
     
     // 如果正在收集推理过程，返回空字符串，将当前内容添加到推理过程
     if (isCollectingReasoning) {
+      // 每次收集到新的推理内容都立即返回
       return { text: '', reasoning: content };
     }
     
@@ -256,6 +263,8 @@ export async function handleStreamResponse(
               // 如果有新的推理过程，添加到推理过程
               if (newReasoning) {
                 reasoning += newReasoning;
+                // 每次有新的推理内容都立即触发回调
+                onChunk('', false, reasoning);
               }
               
               // 如果有新的文本内容，返回给回调函数

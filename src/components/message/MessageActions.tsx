@@ -4,6 +4,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import HistoryIcon from '@mui/icons-material/History';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import ForkRightIcon from '@mui/icons-material/ForkRight';
 import { useDispatch, useSelector } from 'react-redux';
 import type { Message } from '../../shared/types';
 import type { RootState } from '../../shared/store';
@@ -11,6 +12,7 @@ import { switchToVersion } from '../../shared/store/messagesSlice';
 import MessageEditor from '../../components/message/MessageEditor';
 import { TTSService } from '../../shared/services/TTSService';
 import { useTheme } from '@mui/material/styles';
+import { TopicService } from '../../shared/services/TopicService';
 
 interface MessageActionsProps {
   message: Message;
@@ -321,6 +323,54 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     return false;
   };
 
+  // 处理分支创建
+  const handleCreateBranch = async () => {
+    if (!topicId) return;
+    
+    // 1. 找到当前消息在消息列表中的索引
+    const currentIndex = messages.findIndex(msg => msg.id === message.id);
+    if (currentIndex === -1) return;
+    
+    // 2. 获取当前消息及之前的所有消息
+    const contextMessages = messages.slice(0, currentIndex + 1);
+    
+    try {
+      // 3. 使用TopicService创建新话题
+      console.log('准备创建分支话题');
+      const branchTitle = `从 "${typeof message.content === 'string' ? message.content.substring(0, 20) : '对话'}..." 分支`;
+      
+      // 使用TopicService的createNewTopic方法创建话题，确保UI立即更新
+      const newTopic = await TopicService.createNewTopic();
+      
+      if (!newTopic) {
+        alert('创建分支话题失败');
+        return;
+      }
+      
+      console.log('话题创建成功:', newTopic.id);
+      
+      // 4. 更新话题标题
+      newTopic.title = branchTitle;
+      await TopicService.saveTopic(newTopic);
+      
+      // 5. 添加上下文消息到新话题
+      for (const msg of contextMessages) {
+        const messageCopy = {...msg}; // 创建消息的深拷贝
+        await TopicService.addMessageToTopic(newTopic.id, messageCopy);
+      }
+      console.log('已将上下文消息添加到新话题');
+      
+      // 通知用户
+      alert('已创建分支话题');
+    } catch (error) {
+      console.error('创建分支话题出错:', error);
+      alert('创建分支话题出错: ' + (error instanceof Error ? error.message : String(error)));
+    }
+    
+    // 关闭菜单
+    handleMenuClose();
+  };
+
   // 如果是用户消息，不显示TTS按钮
   if (isUser) {
     return (
@@ -409,23 +459,9 @@ const MessageActions: React.FC<MessageActionsProps> = ({
               opacity: 0.95,
               backgroundColor: isPlaying ? aiBubbleActiveColor : aiBubbleColor,
               color: textColor,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-              borderRadius: '10px',
-              border: 'none',
               '&:hover': {
-                opacity: 1,
-                cursor: 'pointer',
-                backgroundColor: aiBubbleActiveColor
-              },
-              '& .MuiChip-icon': {
-                ml: 0.3,
-                mr: -0.3,
-                fontSize: '10px',
-                color: textColor
-              },
-              '& .MuiChip-label': {
-                padding: '0 4px',
-                lineHeight: 1.2
+                backgroundColor: aiBubbleActiveColor,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
               }
             }}
           />
@@ -438,7 +474,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
             label={`版本 ${getCurrentVersionNumber()}/${calculateVersionCount()}`}
             variant="filled"
             color="info"
-            onClick={(e) => setVersionAnchorEl(e.currentTarget)}
+            onClick={handleVersionMenuOpen}
             icon={<HistoryIcon style={{ fontSize: 12 }} />}
             sx={{
               height: 18,
@@ -449,23 +485,9 @@ const MessageActions: React.FC<MessageActionsProps> = ({
               opacity: 0.95,
               backgroundColor: aiBubbleColor,
               color: textColor,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-              borderRadius: '10px',
-              border: 'none',
               '&:hover': {
-                opacity: 1,
-                cursor: 'pointer',
-                backgroundColor: aiBubbleActiveColor
-              },
-              '& .MuiChip-icon': {
-                ml: 0.3,
-                mr: -0.3,
-                fontSize: '10px',
-                color: textColor
-              },
-              '& .MuiChip-label': {
-                padding: '0 4px',
-                lineHeight: 1.2
+                backgroundColor: aiBubbleActiveColor,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
               }
             }}
           />
@@ -504,74 +526,85 @@ const MessageActions: React.FC<MessageActionsProps> = ({
           }
         }}
       >
-        {enableTTS && (
-          <MenuItem onClick={handleTextToSpeech} sx={{ fontSize: '14px' }}>
-            {isPlaying ? '停止播放' : '语音播放'}
-          </MenuItem>
-        )}
         <MenuItem onClick={handleCopyContent} sx={{ fontSize: '14px' }}>复制</MenuItem>
-        <MenuItem onClick={handleEditClick} sx={{ fontSize: '14px' }}>编辑</MenuItem>
-        <MenuItem onClick={handleRegenerateClick} sx={{ fontSize: '14px' }}>重新生成</MenuItem>
-        {getVersionMessages().length > 1 && (
-          <MenuItem onClick={handleVersionMenuOpen} sx={{ fontSize: '14px' }}>历史版本</MenuItem>
+        <MenuItem onClick={handleTextToSpeech} sx={{ fontSize: '14px' }}>
+          {isPlaying ? '停止播放' : '播放语音'}
+        </MenuItem>
+        {onRegenerate && <MenuItem onClick={handleRegenerateClick} sx={{ fontSize: '14px' }}>重新生成</MenuItem>}
+        <MenuItem onClick={handleCreateBranch} sx={{ fontSize: '14px' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ForkRightIcon fontSize="small" />
+            创建分支
+          </Box>
+        </MenuItem>
+        {hasAlternateVersions && (
+          <MenuItem onClick={handleVersionMenuOpen} sx={{ fontSize: '14px' }}>查看其他版本</MenuItem>
         )}
+        <MenuItem onClick={handleEditClick} sx={{ fontSize: '14px' }}>编辑</MenuItem>
         <MenuItem onClick={handleDeleteClick} sx={{ color: '#f44336', fontSize: '14px' }}>删除</MenuItem>
       </Menu>
       
-      {/* 版本切换弹出框 */}
+      {/* 版本选择弹窗 */}
       <Popover
         open={versionPopoverOpen}
         anchorEl={versionAnchorEl}
         onClose={handleVersionMenuClose}
         anchorOrigin={{
           vertical: 'bottom',
-          horizontal: 'center',
+          horizontal: 'left',
         }}
         transformOrigin={{
           vertical: 'top',
-          horizontal: 'center',
-        }}
-        PaperProps={{
-          sx: { 
-            p: 2,
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-            borderRadius: '6px',
-            maxWidth: '300px'
-          }
+          horizontal: 'left',
         }}
       >
-        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-          回复历史版本
-        </Typography>
-        <Box sx={{ mb: 1 }}>
-          <Typography variant="caption" color="text.secondary">
-            您可以切换查看AI回复的不同版本
+        <Box 
+          sx={{
+            p: 2,
+            maxWidth: 280,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1
+        }}
+      >
+          <Typography variant="subtitle2" gutterBottom>
+            选择消息版本
           </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
-          {getVersionMessages().map((versionMsg, index) => {
-            // 计算版本号 (索引+1)，确保版本1是第一个
-            const versionNumber = index + 1;
-            
-            return (
+          
+          <Box 
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 1,
+              justifyContent: 'flex-start'
+            }}
+          >
+            {getVersionMessages().map((versionMsg, index) => (
               <Button
                 key={versionMsg.id}
                 variant={versionMsg.isCurrentVersion ? "contained" : "outlined"}
                 size="small"
-                onClick={() => handleSwitchVersion(versionMsg.id)}
+                onClick={() => {
+                  handleSwitchVersion(versionMsg.id);
+                  handleVersionMenuClose();
+                }}
                 sx={{ 
-                  justifyContent: 'flex-start',
-                  textTransform: 'none',
-                  fontSize: '13px',
-                  py: 0.75,
-                  fontWeight: versionMsg.isCurrentVersion ? 600 : 400
+                  minWidth: '60px',
+                  fontSize: '12px',
+                  borderRadius: '4px',
+                  boxShadow: 'none',
+                  padding: '2px 8px',
+                  backgroundColor: versionMsg.isCurrentVersion ? '#2196f3' : 'transparent',
+                  '&:hover': {
+                    backgroundColor: versionMsg.isCurrentVersion ? '#1976d2' : 'rgba(33, 150, 243, 0.08)',
+                    boxShadow: 'none',
+                  }
                 }}
               >
-                版本 {versionNumber}
-                {versionMsg.isCurrentVersion && " (当前)"}
+                版本 {versionMsg.version || index + 1}
               </Button>
-            );
-          })}
+            ))}
+          </Box>
         </Box>
       </Popover>
       

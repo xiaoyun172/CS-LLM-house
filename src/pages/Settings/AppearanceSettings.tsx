@@ -1,89 +1,64 @@
 import React from 'react';
-import {
-  Box,
-  Typography,
-  FormControl,
-  InputLabel,
-  Select,
+import { 
+  Box, 
+  Typography, 
+  FormControl, 
+  InputLabel, 
+  Select, 
   MenuItem,
-  Slider,
-  AppBar,
-  Toolbar,
-  IconButton,
-  Container,
-  Divider,
-  Paper,
-  useTheme
+  Paper
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../../shared/store';
-import { setTheme, setFontSize, setLanguage } from '../../shared/store/settingsSlice';
+import { setTheme } from '../../shared/store/settingsSlice';
 
 const AppearanceSettings: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const settings = useAppSelector((state) => state.settings);
-  const theme = useTheme();
 
   const handleBack = () => {
     navigate('/settings');
   };
 
+  const handleNavigateToChatInterface = () => {
+    navigate('/settings/appearance/chat-interface');
+  };
+
   return (
-    <Box sx={{ 
-      flexGrow: 1,
-      bgcolor: theme.palette.background.default
-    }}>
-      <AppBar 
-        position="static"
-        elevation={0}
-        sx={{
-          bgcolor: 'background.paper',
-          color: 'text.primary',
-          borderBottom: 1,
-          borderColor: 'divider'
+    <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          padding: 2, 
+          borderBottom: 1, 
+          borderColor: 'divider',
+          position: 'sticky',
+          top: 0,
+          backgroundColor: 'background.paper',
+          zIndex: 10
         }}
       >
-        <Toolbar>
-          <IconButton
-            edge="start"
-            onClick={handleBack}
-            aria-label="back"
-            sx={{ color: theme.palette.primary.main }}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            外观
+        <ArrowBackIcon 
+          sx={{ mr: 2, cursor: 'pointer' }} 
+          onClick={handleBack}
+        />
+        <Typography variant="h6" color="primary">
+          外观
+        </Typography>
+      </Box>
+      
+      <Box sx={{ p: 2 }}>
+        <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            主题和颜色
           </Typography>
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="sm" sx={{ mt: 2, mb: 2 }}>
-        <Paper 
-          elevation={0}
-          sx={{ 
-            p: 3, 
-            borderRadius: 2,
-            border: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper'
-          }}
-        >
-          <Typography 
-            variant="h6" 
-            gutterBottom
-            sx={{ fontWeight: 600, color: 'text.primary' }}
-          >
-            外观
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
-
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="theme-label">主题</InputLabel>
+          <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+            <InputLabel>主题</InputLabel>
             <Select
-              labelId="theme-label"
               value={settings.theme}
               onChange={(e) => dispatch(setTheme(e.target.value as 'light' | 'dark' | 'system'))}
               label="主题"
@@ -93,39 +68,30 @@ const AppearanceSettings: React.FC = () => {
               <MenuItem value="system">跟随系统</MenuItem>
             </Select>
           </FormControl>
-
-          <Box sx={{ mt: 3 }}>
-            <Typography gutterBottom color="text.primary">字体大小</Typography>
-            <Slider
-              value={settings.fontSize}
-              onChange={(_, value) => dispatch(setFontSize(value as number))}
-              min={12}
-              max={24}
-              step={1}
-              marks={[
-                { value: 12, label: '12' },
-                { value: 16, label: '16' },
-                { value: 20, label: '20' },
-                { value: 24, label: '24' },
-              ]}
-              valueLabelDisplay="auto"
-            />
-          </Box>
-
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="language-label">语言</InputLabel>
-            <Select
-              labelId="language-label"
-              value={settings.language}
-              onChange={(e) => dispatch(setLanguage(e.target.value as string))}
-              label="语言"
-            >
-              <MenuItem value="zh-CN">简体中文</MenuItem>
-              <MenuItem value="en-US">English (US)</MenuItem>
-            </Select>
-          </FormControl>
         </Paper>
-      </Container>
+
+        <Paper 
+          elevation={0} 
+          sx={{ 
+            p: 2, 
+            mb: 3, 
+            border: '1px solid #eee',
+            cursor: 'pointer'
+          }}
+          onClick={handleNavigateToChatInterface}
+        >
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center' 
+          }}>
+            <Typography variant="subtitle1">
+              聊天界面设置
+            </Typography>
+            <ChevronRightIcon color="action" />
+          </Box>
+        </Paper>
+      </Box>
     </Box>
   );
 };

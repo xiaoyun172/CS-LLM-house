@@ -44,6 +44,8 @@ import { addItemToGroup, removeItemFromGroup } from '../../shared/store/slices/g
 import { deleteTopic } from '../../shared/store/messagesSlice';
 import { CreateGroupButton, DraggableGroup, DraggableItem } from './GroupComponents';
 import GroupDialog from './GroupDialog';
+import { TopicService } from '../../shared/services/TopicService';
+import { TopicCreationService } from '../../shared/services/TopicCreationService';
 
 // 预设助手数据 - 应该移动到服务中
 const predefinedAssistants: Assistant[] = [
@@ -291,14 +293,28 @@ export default function AssistantTab({
       };
       onUpdateAssistant(updatedAssistant);
 
-      // 使用Redux的deleteTopic action删除每个话题
+      // 使用Redux的deleteTopic action删除每个话题，并从数据库中删除
       if (topicIdsToDelete.length > 0) {
-        console.log('准备删除话题:', topicIdsToDelete);
+        console.log('[话题管理] 准备删除话题:', topicIdsToDelete);
 
-        topicIdsToDelete.forEach(topicId => {
-          dispatch(deleteTopic(topicId));
-          console.log(`删除话题: ${topicId}`);
-        });
+        // 使用Promise.all并行处理所有话题删除
+        Promise.all(topicIdsToDelete.map(async (topicId) => {
+          try {
+            // 从数据库中删除话题
+            const deleteResult = await TopicService.deleteTopic(topicId);
+            if (deleteResult) {
+              console.log(`[话题管理] 话题 ${topicId} 已从数据库中删除`);
+            } else {
+              console.error(`[话题管理] 无法从数据库中删除话题 ${topicId}`);
+            }
+
+            // 从Redux中删除话题
+            dispatch(deleteTopic(topicId));
+            console.log(`[话题管理] 话题 ${topicId} 已从Redux中删除`);
+          } catch (error) {
+            console.error(`[话题管理] 删除话题 ${topicId} 时出错:`, error);
+          }
+        }));
 
         // 添加强制更新机制
         dispatch({ type: 'FORCE_MESSAGES_UPDATE' });
@@ -311,22 +327,25 @@ export default function AssistantTab({
           }
         });
         window.dispatchEvent(clearTopicsEvent);
-        console.log('已分发topicsCleared事件，强制UI更新');
-      }
+        console.log('[话题管理] 已分发topicsCleared事件，强制UI更新');
 
-      // 如果是当前选中的助手，自动创建一个新话题
-      if (isCurrentSelectedAssistant) {
-        console.log('清空了当前助手的话题，触发创建新话题事件');
-
-        // 延迟创建新话题，确保删除操作先完成
-        setTimeout(() => {
-          const event = new CustomEvent('assistantNeedsTopic', {
-            detail: {
-              assistantId: selectedMenuAssistant.id
-            }
-          });
-          window.dispatchEvent(event);
-        }, 100);
+        // 如果是当前选中的助手，使用专门的服务创建新话题
+        if (isCurrentSelectedAssistant) {
+          console.log('[话题管理] 清空了当前助手的话题，使用TopicCreationService创建新话题');
+          
+          // 延迟创建话题，确保删除操作先完成
+          setTimeout(() => {
+            // 使用专门的服务处理清空话题后的自动创建
+            TopicCreationService.handleTopicsClearedAutoCreation(selectedMenuAssistant.id)
+              .then(newTopic => {
+                if (newTopic) {
+                  console.log(`[话题管理] 成功创建新话题: ${newTopic.id}`);
+                } else {
+                  console.error('[话题管理] 创建新话题失败');
+                }
+              });
+          }, 200);
+        }
       }
     }
     handleCloseAssistantMenu();

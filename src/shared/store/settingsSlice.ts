@@ -2,6 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 import type { Model } from '../types';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { GeneratedImage } from '../types';
+import { ThinkingDisplayStyle } from '../../components/message/ThinkingProcess';
 
 export interface ModelProvider {
   id: string;
@@ -29,6 +30,8 @@ interface SettingsState {
   autoNameTopic: boolean;
   topicNamingModelId?: string;
   modelSelectorStyle: 'dialog' | 'dropdown';
+  thinkingDisplayStyle: string;
+  toolbarDisplayStyle: 'icon' | 'text' | 'both'; // 工具栏显示样式：仅图标、仅文字、图标+文字
 }
 
 // 初始预设供应商
@@ -132,6 +135,16 @@ const loadFromStorage = (): SettingsState => {
         parsed.currentModelId = parsed.defaultModelId || getDefaultModelId(providers);
       }
 
+      // 如果没有思考过程显示样式设置，使用默认值
+      if (!parsed.thinkingDisplayStyle) {
+        parsed.thinkingDisplayStyle = ThinkingDisplayStyle.COMPACT;
+      }
+
+      // 如果没有工具栏显示样式设置，使用默认值
+      if (!parsed.toolbarDisplayStyle) {
+        parsed.toolbarDisplayStyle = 'both';
+      }
+
       return {
         ...parsed,
         providers
@@ -152,6 +165,8 @@ const loadFromStorage = (): SettingsState => {
     providers: initialProviders,
     autoNameTopic: true,
     modelSelectorStyle: 'dialog' as 'dialog' | 'dropdown',
+    thinkingDisplayStyle: ThinkingDisplayStyle.COMPACT, // 默认使用紧凑型显示样式
+    toolbarDisplayStyle: 'both' as 'icon' | 'text' | 'both', // 默认显示图标+文字
   };
 
   // 设置默认模型

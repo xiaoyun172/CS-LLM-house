@@ -2,6 +2,20 @@ import type { DBSchema } from 'idb';
 import type { Assistant } from './Assistant';
 import type { ChatTopic } from '../types';
 
+// 统一的数据库配置
+export const DB_CONFIG = {
+  NAME: 'aetherlink-db-new',
+  VERSION: 2,
+  STORES: {
+    TOPICS: 'topics' as const,
+    ASSISTANTS: 'assistants' as const,
+    SETTINGS: 'settings' as const,
+    IMAGES: 'images' as const,
+    IMAGE_METADATA: 'imageMetadata' as const,
+    METADATA: 'metadata' as const
+  }
+};
+
 // 图片元数据接口
 export interface ImageMetadata {
   id: string;
@@ -32,7 +46,7 @@ export interface AetherLinkDB extends DBSchema {
       'by-system': string;
     };
   };
-  
+
   topics: {
     key: string;
     value: ChatTopic;
@@ -41,12 +55,12 @@ export interface AetherLinkDB extends DBSchema {
       'by-last-time': number;
     };
   };
-  
+
   images: {
     key: string;
     value: Blob;
   };
-  
+
   imageMetadata: {
     key: string;
     value: ImageMetadata;
@@ -55,14 +69,14 @@ export interface AetherLinkDB extends DBSchema {
       'by-time': number;
     };
   };
-  
+
   settings: {
     key: string;
     value: any;
   };
-  
+
   metadata: {
     key: string;
     value: any;
   };
-} 
+}

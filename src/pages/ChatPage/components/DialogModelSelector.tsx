@@ -160,7 +160,7 @@ export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
                 <ModelItem 
                   key={model.id} 
                   model={model} 
-                  isSelected={selectedModel?.id === model.id}
+                  isSelected={selectedModel?.id === model.id && selectedModel?.provider === model.provider}
                   onSelect={() => handleModelSelect(model)}
                   providerDisplayName={getProviderName(model.provider || model.providerType || '未知')}
                 />
@@ -171,7 +171,7 @@ export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
                 <ModelItem 
                   key={model.id} 
                   model={model} 
-                  isSelected={selectedModel?.id === model.id}
+                  isSelected={selectedModel?.id === model.id && selectedModel?.provider === model.provider}
                   onSelect={() => handleModelSelect(model)}
                   providerDisplayName={getProviderName(model.provider || model.providerType || '未知')}
                 />

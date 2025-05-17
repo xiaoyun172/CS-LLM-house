@@ -14,7 +14,6 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { loadTopics } from './shared/store/messagesSlice';
 import { useSelector } from 'react-redux';
 import { DataManager } from './shared/services';
-import { AssistantService } from './shared/services';
 
 // 初始化日志拦截器
 LoggerService.log('INFO', '应用初始化');
@@ -23,31 +22,12 @@ LoggerService.log('INFO', '应用初始化');
 const MemoizedExitConfirmDialog = memo(ExitConfirmDialog);
 
 function App() {
-  // 删除未使用的isReady状态
+  // 应用初始化状态
   const [appInitialized, setAppInitialized] = useState(false);
   const [mode, setMode] = useState<'light' | 'dark'>('light');
-  // 添加数据结构迁移状态
-  const [dataMigrationComplete, setDataMigrationComplete] = useState(false);
 
   // 从Redux状态获取主题设置
   const themePreference = useSelector((state: any) => state.settings.theme);
-
-  // 数据结构迁移
-  useEffect(() => {
-    const migrateDataStructure = async () => {
-      try {
-        console.log('[App] 开始检查并迁移数据结构...');
-        const migrationResult = await AssistantService.checkAndMigrateOnStartup();
-        console.log('[App] 数据结构迁移结果:', migrationResult ? '成功' : '失败或已完成');
-        setDataMigrationComplete(true);
-      } catch (error) {
-        console.error('[App] 数据结构迁移出错:', error);
-        setDataMigrationComplete(true); // 即使出错也继续应用启动
-      }
-    };
-
-    migrateDataStructure();
-  }, []);
 
   // 监听主题变化
   useEffect(() => {
@@ -181,7 +161,7 @@ function App() {
   // 记录应用启动日志
   useEffect(() => {
     console.info('[App] 应用已启动');
-    
+
     // 声明清理函数变量
     let cleanup = () => {};
 
@@ -209,51 +189,64 @@ function App() {
     // 调用状态栏初始化
     setupStatusBar();
 
-    // 等待数据迁移完成后再加载话题数据
-    if (dataMigrationComplete) {
-      // 加载话题数据并修复重复话题 - 使用标记避免重复加载
-      const hasLoadedTopics = sessionStorage.getItem('_topicsLoaded');
+    // 检查并修复数据库版本
+    DataManager.ensureDatabaseVersion()
+      .then(result => {
+        if (result.success) {
+          console.log(`[App] 数据库版本检查: ${result.message}`);
+          if (result.oldVersion && result.newVersion) {
+            console.log(`[App] 数据库版本已从 v${result.oldVersion} 更新到 v${result.newVersion}`);
+          }
+        } else {
+          console.error(`[App] 数据库版本检查失败: ${result.message}`);
+        }
+      })
+      .catch(error => {
+        console.error('[App] 数据库版本检查出错:', error);
+      });
 
-      if (!hasLoadedTopics) {
-        // 标记已加载话题，避免重复加载
-        sessionStorage.setItem('_topicsLoaded', 'true');
+    // 加载话题数据并修复重复话题 - 使用标记避免重复加载
+    const hasLoadedTopics = sessionStorage.getItem('_topicsLoaded');
 
-        console.log('[App] 初始化时加载话题数据');
-        store.dispatch(loadTopics());
+    if (!hasLoadedTopics) {
+      // 标记已加载话题，避免重复加载
+      sessionStorage.setItem('_topicsLoaded', 'true');
 
-        // 修复重复话题
-        DataManager.fixDuplicateTopics()
-          .then(result => {
-            if (result.fixed > 0) {
-              console.log(`[App] 已修复 ${result.fixed} 个重复话题，共 ${result.total} 个话题`);
-              // 重新加载话题
-              store.dispatch(loadTopics());
-            } else {
-              console.log('[App] 未发现重复话题');
-            }
-          })
-          .catch(error => {
-            console.error('[App] 修复重复话题失败:', error);
-          });
-      } else {
-        console.log('[App] 话题已在本次会话中加载，跳过重复加载');
-      }
+      console.log('[App] 初始化时加载话题数据');
+      store.dispatch(loadTopics());
 
-      // 延迟非关键初始化逻辑
-      const initTimer = setTimeout(() => {
-        console.log('[App] 主题:', theme);
-        console.log('[App] Redux Store已初始化');
-        setAppInitialized(true);
-
-        // 设置性能监控定时器
-        const performanceTimer = setInterval(monitorPerformance, 30000); // 每30秒监控一次
-
-        cleanup = () => {
-          clearInterval(performanceTimer);
-          clearTimeout(initTimer);
-        };
-      }, 100);
+      // 修复重复话题
+      DataManager.fixDuplicateTopics()
+        .then(result => {
+          if (result.fixed > 0) {
+            console.log(`[App] 已修复 ${result.fixed} 个重复话题，共 ${result.total} 个话题`);
+            // 重新加载话题
+            store.dispatch(loadTopics());
+          } else {
+            console.log('[App] 未发现重复话题');
+          }
+        })
+        .catch(error => {
+          console.error('[App] 修复重复话题失败:', error);
+        });
+    } else {
+      console.log('[App] 话题已在本次会话中加载，跳过重复加载');
     }
+
+    // 延迟非关键初始化逻辑
+    const initTimer = setTimeout(() => {
+      console.log('[App] 主题:', theme);
+      console.log('[App] Redux Store已初始化');
+      setAppInitialized(true);
+
+      // 设置性能监控定时器
+      const performanceTimer = setInterval(monitorPerformance, 30000); // 每30秒监控一次
+
+      cleanup = () => {
+        clearInterval(performanceTimer);
+        clearTimeout(initTimer);
+      };
+    }, 100);
 
     // 禁用Capacitor的默认返回键行为
     const setupListener = async () => {
@@ -279,10 +272,10 @@ function App() {
           console.error('[App] 清理监听器失败:', error);
         }
       };
-      
+
       cleanupListeners();
     };
-  }, [dataMigrationComplete, theme]); // 添加依赖，当迁移完成时重新执行
+  }, [theme, mode]); // 只依赖主题变化
 
   // 性能监控函数
   const monitorPerformance = () => {

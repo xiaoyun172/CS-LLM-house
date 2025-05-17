@@ -449,26 +449,40 @@ const streamCompletion = async (
             reasoningStartTime = new Date().getTime();
             console.log('[思考过程] 收到思考过程开始标记');
           }
+          
+          // 立即触发UI更新以显示思考过程开始
+          if (onUpdate) {
+            onUpdate(content, reasoning + delta);
+          }
         }
         
         // 检查是否是思考过程结束
         if (delta.includes('</thinking>') || delta.includes('</reasoning>')) {
           isCollectingReasoning = false;
+          
+          // 思考过程结束时也立即触发更新
+          if (onUpdate) {
+            onUpdate(content, reasoning + delta);
+          }
         }
         
         // 根据当前状态收集内容
         if (isCollectingReasoning) {
           // 收集思考过程
           reasoning += delta;
-          // 不添加到最终内容
+          
+          // 每次收到思考过程内容都立即触发更新
+          if (onUpdate) {
+            onUpdate(content, reasoning);
+          }
         } else {
           // 普通内容收集
           content += delta;
-        }
         
-        // 无条件通知更新
+          // 普通内容更新
         if (onUpdate) {
           onUpdate(content, reasoning);
+          }
         }
       }
     }

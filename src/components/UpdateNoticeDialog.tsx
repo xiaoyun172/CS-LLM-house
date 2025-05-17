@@ -11,7 +11,6 @@ import {
 } from '@mui/material';
 import ChatIcon from '@mui/icons-material/Chat';
 import CloseIcon from '@mui/icons-material/Close';
-import { Browser } from '@capacitor/browser';
 
 // QQ群链接
 const QQ_GROUP_URL = 'http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=V-b46WoBNLIM4oc34JMULwoyJ3hyrKac&authKey=q%2FSwCcxda4e55ygtwp3h9adQXhqBLZ9wJdvM0QxTjXQkbxAa2tHoraOGy2fiibyY&noverify=0&group_code=930126592';
@@ -47,12 +46,10 @@ const UpdateNoticeDialog: React.FC = () => {
 
   const handleJoinQQGroup = async () => {
     try {
-      // 使用Capacitor的Browser插件在外部浏览器中打开链接
-      await Browser.open({ url: QQ_GROUP_URL });
+      // 使用传统方法打开链接 - 避免使用Capacitor插件
+      window.open(QQ_GROUP_URL, '_blank');
     } catch (error) {
       console.error('打开浏览器失败:', error);
-      // 降级方案：如果Capacitor Browser插件失败，尝试使用传统方法
-      window.open(QQ_GROUP_URL, '_system');
     }
     // 不关闭弹窗，让用户可以继续查看内容
   };

@@ -5,22 +5,23 @@ import BackupButtons from './BackupButtons';
 import BackupFilesList from './BackupFilesList';
 import CustomBackupDialog from './CustomBackupDialog';
 import ImportExternalBackupDialog from './ImportExternalBackupDialog';
+import DatabaseDiagnosticDialog from './DatabaseDiagnosticDialog';
 import NotificationSnackbar from './NotificationSnackbar';
-import { 
-  prepareBasicBackupData, 
-  prepareFullBackupData, 
-  ensureBackupDirectory, 
-  createAndShareBackupFile 
+import {
+  prepareBasicBackupData,
+  prepareFullBackupData,
+  ensureBackupDirectory,
+  createAndShareBackupFile
 } from '../../utils/backupUtils';
-import { 
+import {
   performCustomBackup
 } from '../../utils/customBackupUtils';
 import type { CustomBackupOptions } from '../../utils/customBackupUtils';
-import { 
-  readJSONFromFile, 
-  performFullRestore, 
-  clearTopics, 
-  clearAssistants 
+import {
+  readJSONFromFile,
+  performFullRestore,
+  clearTopics,
+  clearAssistants
 } from '../../utils/restoreUtils';
 
 /**
@@ -38,10 +39,10 @@ const BackupRestorePanel: React.FC = () => {
     message: '',
     severity: 'info' as 'success' | 'error' | 'info' | 'warning'
   });
-  
+
   // 备份文件列表刷新触发器
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  
+
   // 自定义备份对话框状态
   const [customBackupOpen, setCustomBackupOpen] = useState(false);
   const [customBackupOptions, setCustomBackupOptions] = useState<CustomBackupOptions>({
@@ -60,6 +61,9 @@ const BackupRestorePanel: React.FC = () => {
   // 清理确认对话框状态
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
+  // 数据库诊断对话框状态
+  const [databaseDiagnosticOpen, setDatabaseDiagnosticOpen] = useState(false);
+
   // 显示提示信息
   const showMessage = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     setSnackbar({
@@ -73,27 +77,27 @@ const BackupRestorePanel: React.FC = () => {
   const handleCloseSnackbar = () => {
     setSnackbar({...snackbar, open: false});
   };
-  
+
   // 刷新备份文件列表
   const refreshBackupFilesList = () => {
     setRefreshTrigger(prev => prev + 1);
   };
-  
+
   // 处理基本备份
   const handleBasicBackup = async () => {
     try {
       setIsLoading(true);
-      
+
       // 确保目录存在
       await ensureBackupDirectory();
-      
+
       // 准备备份数据
       const backupData = await prepareBasicBackupData();
-      
+
       // 创建文件名
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const fileName = `AetherLink_Backup_${timestamp}.json`;
-      
+
       // 创建并共享备份文件
       await createAndShareBackupFile(
         fileName,
@@ -109,19 +113,19 @@ const BackupRestorePanel: React.FC = () => {
       setIsLoading(false);
     }
   };
-  
+
   // 处理完整备份
   const handleFullBackup = async () => {
     try {
       setIsLoading(true);
-      
+
       // 准备完整备份数据
       const backupData = await prepareFullBackupData();
-      
+
       // 创建文件名
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const fileName = `AetherLink_Backup_Full_${timestamp}.json`;
-      
+
       // 创建并共享备份文件
       await createAndShareBackupFile(
         fileName,
@@ -137,7 +141,7 @@ const BackupRestorePanel: React.FC = () => {
       setIsLoading(false);
     }
   };
-  
+
   // 处理自定义备份选项变更
   const handleCustomBackupOptionChange = (option: keyof CustomBackupOptions) => {
     setCustomBackupOptions(prev => {
@@ -148,7 +152,7 @@ const BackupRestorePanel: React.FC = () => {
           [option]: !prev[option]
         };
       }
-      
+
       // 如果选中了settings选项，则禁用modelSettings和uiSettings
       if (option === 'settings' && !prev.settings) {
         return {
@@ -158,7 +162,7 @@ const BackupRestorePanel: React.FC = () => {
           uiSettings: false
         };
       }
-      
+
       return {
         ...prev,
         [option]: !prev[option]
@@ -184,23 +188,23 @@ const BackupRestorePanel: React.FC = () => {
   const closeCustomBackupDialog = () => {
     setCustomBackupOpen(false);
   };
-  
+
   // 打开导入外部备份对话框
   const openImportExternalDialog = () => {
     setImportExternalOpen(true);
   };
-  
+
   // 关闭导入外部备份对话框
   const closeImportExternalDialog = () => {
     setImportExternalOpen(false);
   };
-  
+
   // 执行自定义备份
   const handleCustomBackup = async () => {
     try {
       setIsLoading(true);
       closeCustomBackupDialog();
-      
+
       // 执行自定义备份
       await performCustomBackup(
         customBackupOptions,
@@ -218,27 +222,27 @@ const BackupRestorePanel: React.FC = () => {
       setIsLoading(false);
     }
   };
-  
+
   // 处理恢复备份
   const handleRestore = async () => {
     try {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.json';
-      
+
       input.onchange = async (e: Event) => {
         const target = e.target as HTMLInputElement;
         const file = target.files?.[0];
-        
+
         if (!file) return;
-        
+
         setIsLoading(true);
         setRestoreProgress({
           active: true,
           stage: '读取文件中...',
           progress: 0.05
         });
-        
+
         try {
           // 读取JSON数据
           const backupData = await readJSONFromFile(file);
@@ -247,7 +251,7 @@ const BackupRestorePanel: React.FC = () => {
             stage: '验证备份数据...',
             progress: 0.1
           });
-          
+
           // 使用新的完整恢复过程
           const result = await performFullRestore(backupData, (stage, progress) => {
             setRestoreProgress({
@@ -256,28 +260,28 @@ const BackupRestorePanel: React.FC = () => {
               progress
             });
           });
-          
+
           // 处理恢复结果
           if (result.success) {
             // 生成成功消息
             let restoreMessage = '';
-            
+
             if (result.topicsCount > 0) {
               restoreMessage += `• 已恢复 ${result.topicsCount} 个对话话题\n`;
             }
-            
+
             if (result.assistantsCount > 0) {
               restoreMessage += `• 已恢复 ${result.assistantsCount} 个助手\n`;
             }
-            
+
             if (result.settingsRestored) {
               restoreMessage += `• 已恢复应用设置\n`;
             }
-            
+
             if (result.localStorageCount > 0) {
               restoreMessage += `• 已恢复 ${result.localStorageCount} 项其他应用数据\n`;
             }
-            
+
             showMessage(`备份恢复成功：\n${restoreMessage}\n请重启应用以应用所有更改`, 'success');
           } else {
             // 显示错误信息
@@ -298,7 +302,7 @@ const BackupRestorePanel: React.FC = () => {
           }, 1000);
         }
       };
-      
+
       input.click();
     } catch (error) {
       console.error('打开文件选择器失败:', error);
@@ -323,32 +327,32 @@ const BackupRestorePanel: React.FC = () => {
     try {
       setIsLoading(true);
       setClearConfirmOpen(false);
-      
+
       // 显示进度
       setRestoreProgress({
         active: true,
         stage: '正在清理话题数据...',
         progress: 0.3
       });
-      
+
       // 清理话题数据
       await clearTopics();
-      
+
       setRestoreProgress({
         active: true,
         stage: '正在清理助手数据...',
         progress: 0.7
       });
-      
+
       // 清理助手数据
       await clearAssistants();
-      
+
       setRestoreProgress({
         active: true,
         stage: '清理完成',
         progress: 1.0
       });
-      
+
       // 显示成功消息
       showMessage('已清理所有话题和助手数据。请重启应用以确保更改生效。', 'success');
     } catch (error) {
@@ -370,6 +374,16 @@ const BackupRestorePanel: React.FC = () => {
   // 取消清理
   const cancelClearAll = () => {
     setClearConfirmOpen(false);
+  };
+
+  // 打开数据库诊断对话框
+  const openDatabaseDiagnosticDialog = () => {
+    setDatabaseDiagnosticOpen(true);
+  };
+
+  // 关闭数据库诊断对话框
+  const closeDatabaseDiagnosticDialog = () => {
+    setDatabaseDiagnosticOpen(false);
   };
 
   // 处理备份文件列表中的还原成功
@@ -403,18 +417,18 @@ const BackupRestorePanel: React.FC = () => {
       }}
     >
       <BackupHeader />
-      
+
       {/* 恢复进度 */}
       {restoreProgress.active && (
         <Box sx={{ mb: 3, mt: 2 }}>
           <Typography variant="body2" sx={{ mb: 1 }}>
             {restoreProgress.stage}
           </Typography>
-          <LinearProgress 
-            variant="determinate" 
-            value={restoreProgress.progress * 100} 
-            sx={{ 
-              height: 8, 
+          <LinearProgress
+            variant="determinate"
+            value={restoreProgress.progress * 100}
+            sx={{
+              height: 8,
               borderRadius: 4,
               '& .MuiLinearProgress-bar': {
                 borderRadius: 4,
@@ -423,8 +437,8 @@ const BackupRestorePanel: React.FC = () => {
           />
         </Box>
       )}
-      
-      <BackupButtons 
+
+      <BackupButtons
         isLoading={isLoading}
         onBasicBackup={handleBasicBackup}
         onFullBackup={handleFullBackup}
@@ -432,8 +446,9 @@ const BackupRestorePanel: React.FC = () => {
         onRestore={handleRestore}
         onImportExternal={openImportExternalDialog}
         onClearAll={handleClearAll}
+        onDiagnoseDatabase={openDatabaseDiagnosticDialog}
       />
-      
+
       {/* 备份文件列表 */}
       <BackupFilesList
         onRestoreSuccess={handleBackupRestoreSuccess}
@@ -441,9 +456,9 @@ const BackupRestorePanel: React.FC = () => {
         onFileDeleted={handleFileDeleted}
         refreshTrigger={refreshTrigger}
       />
-      
+
       {/* 自定义备份对话框 */}
-      <CustomBackupDialog 
+      <CustomBackupDialog
         open={customBackupOpen}
         options={customBackupOptions}
         isLoading={isLoading}
@@ -451,7 +466,7 @@ const BackupRestorePanel: React.FC = () => {
         onOptionChange={handleCustomBackupOptionChange}
         onBackup={handleCustomBackup}
       />
-      
+
       {/* 清理确认对话框 */}
       <Dialog
         open={clearConfirmOpen}
@@ -476,14 +491,14 @@ const BackupRestorePanel: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      
-      <NotificationSnackbar 
+
+      <NotificationSnackbar
         open={snackbar.open}
         message={snackbar.message}
         severity={snackbar.severity}
         onClose={handleCloseSnackbar}
       />
-      
+
       {/* 导入外部AI备份对话框 */}
       <ImportExternalBackupDialog
         open={importExternalOpen}
@@ -491,8 +506,14 @@ const BackupRestorePanel: React.FC = () => {
         onImportSuccess={handleBackupRestoreSuccess}
         onImportError={handleBackupError}
       />
+
+      {/* 数据库诊断对话框 */}
+      <DatabaseDiagnosticDialog
+        open={databaseDiagnosticOpen}
+        onClose={closeDatabaseDiagnosticDialog}
+      />
     </Paper>
   );
 };
 
-export default BackupRestorePanel; 
+export default BackupRestorePanel;

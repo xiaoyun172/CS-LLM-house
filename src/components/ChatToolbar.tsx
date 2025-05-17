@@ -37,6 +37,11 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   
   // 从Redux获取网络搜索设置
   const webSearchEnabled = useSelector((state: RootState) => state.webSearch?.enabled || false);
+  
+  // 获取工具栏显示样式设置
+  const toolbarDisplayStyle = useSelector((state: RootState) => 
+    (state.settings as any).toolbarDisplayStyle || 'both'
+  );
 
   // 创建新话题 - 使用统一的TopicService
   const handleCreateTopic = async () => {
@@ -194,17 +199,19 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
               }
             }}
           >
-            {button.icon}
-            <Typography
-              variant="body2"
-              sx={{
-                fontWeight: 500,
-                fontSize: '13px',
-                ml: 0.5
-              }}
-            >
-              {button.label}
-            </Typography>
+            {toolbarDisplayStyle !== 'text' && button.icon}
+            {toolbarDisplayStyle !== 'icon' && (
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  ml: toolbarDisplayStyle === 'both' ? 0.5 : 0
+                }}
+              >
+                {button.label}
+              </Typography>
+            )}
           </Box>
         ))}
       </Box>

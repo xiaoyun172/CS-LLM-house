@@ -6,6 +6,7 @@ const WelcomePage = lazy(() => import('../pages/WelcomePage'));
 const SettingsPage = lazy(() => import('../pages/Settings'));
 const AppearanceSettings = lazy(() => import('../pages/Settings/AppearanceSettings'));
 const BehaviorSettings = lazy(() => import('../pages/Settings/BehaviorSettings'));
+const ChatInterfaceSettings = lazy(() => import('../pages/Settings/ChatInterfaceSettings'));
 const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSettings'));
 const DefaultModelSettingsPage = lazy(() => import('../pages/Settings/DefaultModelSettings/index'));
 const ModelProviderSettings = lazy(() => import('../pages/Settings/ModelProviderSettings'));
@@ -60,6 +61,7 @@ const AppRouter: React.FC = () => {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/appearance" element={<AppearanceSettings />} />
+        <Route path="/settings/appearance/chat-interface" element={<ChatInterfaceSettings />} />
         <Route path="/settings/behavior" element={<BehaviorSettings />} />
         <Route path="/settings/default-model" element={<DefaultModelSettings />} />
         <Route path="/settings/default-model-settings" element={<DefaultModelSettingsPage />} />

@@ -43,6 +43,18 @@ export interface ImageContent {
   size?: number; // 文件大小（字节）
 }
 
+// 文件内容类型
+export interface FileContent {
+  name: string; // 文件名
+  mimeType: string; // MIME类型
+  extension: string; // 文件扩展名
+  size: number; // 文件大小（字节）
+  base64Data?: string; // 可选的base64数据
+  url: string; // 文件URL，用于本地或远程访问
+  width?: number; // 可选，图片宽度
+  height?: number; // 可选，图片高度
+}
+
 // 硅基流动API的图片格式
 export interface SiliconFlowImageFormat {
   type: 'image_url';

@@ -15,13 +15,34 @@ export class TopicStatsService {
   static isValidTopic(topic: ChatTopic): boolean {
     // 检查话题是否有基本必要字段
     const hasBasicFields = topic && topic.id && topic.title;
-    
+
     // 检查是否包含消息或最后消息时间（表示曾经使用过）
     const hasMessages = Array.isArray(topic.messages) && topic.messages.length > 0;
     const hasActivity = Boolean(topic.lastMessageTime);
-    
-    // 有效话题必须有基本字段，且拥有消息或有活动记录
-    return Boolean(hasBasicFields && (hasMessages || hasActivity));
+
+    // 检查是否有系统提示词
+    const hasPrompt = Boolean(topic.prompt);
+
+    // 添加详细调试日志
+    const isValid = Boolean(hasBasicFields && (hasMessages || hasActivity || hasPrompt));
+
+    // 只对无效话题输出详细日志，避免日志过多
+    if (!isValid) {
+      console.log('话题验证失败:', {
+        topicId: topic?.id || '无ID',
+        hasBasicFields,
+        hasMessages,
+        hasActivity,
+        hasPrompt,
+        title: topic?.title || '无标题',
+        messagesCount: Array.isArray(topic?.messages) ? topic.messages.length : '非数组',
+        lastMessageTime: topic?.lastMessageTime || '无时间戳',
+        prompt: topic?.prompt ? '有提示词' : '无提示词'
+      });
+    }
+
+    // 有效话题必须有基本字段，且拥有消息或有活动记录或有系统提示词
+    return isValid;
   }
 
   /**
@@ -46,13 +67,13 @@ export class TopicStatsService {
     byAssistantId: Record<string, number>;
   }> {
     let topics: ChatTopic[] = [];
-    
+
     try {
       // 优先使用TopicService获取话题
       topics = await TopicService.getAllTopics();
     } catch (error) {
       console.error('通过TopicService获取话题失败，尝试通过DataAdapter获取', error);
-      
+
       try {
         // 备选方案：使用DataAdapter
         const adapter = DataAdapter.getInstance();
@@ -70,14 +91,14 @@ export class TopicStatsService {
         };
       }
     }
-    
+
     // 区分有效和无效话题
     const validTopics = topics.filter(t => this.isValidTopic(t));
     const invalidTopics = topics.filter(t => !this.isValidTopic(t));
-    
+
     // 按助手ID统计话题数量
     const byAssistantId: Record<string, number> = {};
-    
+
     validTopics.forEach(topic => {
       // 使用可选链和类型断言处理可能不存在的assistantId
       const assistantId = (topic as any).assistantId || '';
@@ -85,7 +106,7 @@ export class TopicStatsService {
         byAssistantId[assistantId] = (byAssistantId[assistantId] || 0) + 1;
       }
     });
-    
+
     return {
       totalCount: topics.length,
       validCount: validTopics.length,
@@ -95,7 +116,7 @@ export class TopicStatsService {
       byAssistantId
     };
   }
-  
+
   /**
    * 获取特定助手的话题统计
    * @param assistantId 助手ID
@@ -107,19 +128,19 @@ export class TopicStatsService {
     topics: ChatTopic[];
   }> {
     const stats = await this.getTopicsStats();
-    
+
     // 过滤指定助手的话题
     const assistantTopics = stats.validTopics.filter(
       topic => (topic as any).assistantId === assistantId
     );
-    
+
     return {
       totalCount: assistantTopics.length,
       validCount: assistantTopics.length,
       topics: assistantTopics
     };
   }
-  
+
   /**
    * 清理无效话题
    * @returns 清理结果，包含删除的话题数量
@@ -129,14 +150,14 @@ export class TopicStatsService {
     total: number;
   }> {
     const stats = await this.getTopicsStats();
-    
+
     if (stats.invalidCount === 0) {
       return { removed: 0, total: stats.totalCount };
     }
-    
+
     const adapter = DataAdapter.getInstance();
     let removedCount = 0;
-    
+
     // 删除无效话题
     for (const topic of stats.invalidTopics) {
       try {
@@ -148,10 +169,10 @@ export class TopicStatsService {
         console.error(`删除无效话题 ${topic.id} 失败:`, error);
       }
     }
-    
+
     return {
       removed: removedCount,
       total: stats.totalCount - removedCount
     };
   }
-} 
+}

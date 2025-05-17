@@ -257,11 +257,12 @@ export const ImageUploadService = {
   },
   
   /**
-   * 确保图片格式符合硅基流动API要求
-   * @param imageContent 图片内容对象
-   * @returns ImageContent 格式化后的图片内容
+   * 确保图片格式正确，在不同场景下可能需要不同格式
+   * @param imageContent 图片内容
+   * @returns 格式化后的图片内容
    */
   ensureCorrectFormat(imageContent: ImageContent): ImageContent {
+    // 如果没有base64数据，直接返回原始图片
     if (!imageContent.base64Data) return imageContent;
     
     // 确保base64数据包含正确的前缀
@@ -271,6 +272,18 @@ export const ImageUploadService = {
         ...imageContent,
         base64Data: `data:${mimeType};base64,${imageContent.base64Data}`
       };
+    }
+    
+    // 如果没有宽高信息，尝试从已有图片中获取，但不等待Promise
+    if ((!imageContent.width || !imageContent.height) && imageContent.base64Data) {
+      // 这是一个副作用，我们不等待它完成，也不改变返回类型
+      const img = new Image();
+      img.onload = () => {
+        // 这里不修改原始对象，因为它可能已经被使用
+        // 只是记录一下，以便将来可能的优化
+        console.log(`获取到图片尺寸: ${img.width}x${img.height}`);
+      };
+      img.src = imageContent.base64Data;
     }
     
     return imageContent;

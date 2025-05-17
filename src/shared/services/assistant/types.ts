@@ -8,8 +8,6 @@ import { uuid } from '../../utils';
 // 定义常量
 export const ASSISTANTS_STORAGE_KEY = 'userAssistants';
 export const CURRENT_ASSISTANT_KEY = 'currentAssistant';
-export const MIGRATION_COMPLETED_KEY = 'dataStructureMigrationCompleted';
-export const DESKTOP_ASSISTANTS_KEY = 'desktopStructureAssistants';
 
 /**
  * 反序列化助手（添加图标）
@@ -40,12 +38,16 @@ export function deserializeAssistant(assistant: SerializableAssistant): Assistan
 
 /**
  * 创建默认话题对象
+ * 确保创建的话题符合有效话题的标准
  */
 export function getDefaultTopic(_assistantId: string): ChatTopic {
+  const currentTime = new Date().toISOString();
   return {
     id: uuid(),
     title: '新的对话',
-    lastMessageTime: new Date().toISOString(),
+    lastMessageTime: currentTime,
+    // 添加系统提示词而不是系统消息
+    prompt: '我是您的AI助手，可以回答问题、提供信息和帮助完成各种任务。请告诉我您需要什么帮助？',
     messages: []
   };
 }
@@ -59,4 +61,4 @@ export function serializeAssistant(assistant: Assistant): SerializableAssistant 
     ...serializableAssistant,
     icon: null
   };
-} 
+}

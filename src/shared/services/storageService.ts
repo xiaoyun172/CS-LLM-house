@@ -1,576 +1,503 @@
 import { openDB } from 'idb';
-import type { IDBPDatabase, DBSchema } from 'idb';
+import type { IDBPDatabase } from 'idb';
 import type { ChatTopic } from '../types';
 import type { Assistant } from '../types/Assistant';
 import { Preferences } from '@capacitor/preferences';
+import type { AetherLinkDB } from '../types/DatabaseSchema';
+import { DB_CONFIG } from '../types/DatabaseSchema';
 
-// 定义数据库schema
-interface AetherLinkDB extends DBSchema {
-  topics: {
-    key: string;
-    value: ChatTopic;
-  };
-  assistants: {
-    key: string;
-    value: Assistant;
-  };
-  settings: {
-    key: string;
-    value: any;
-  };
-}
+// 使用统一的数据库配置
+const { NAME: DB_NAME, VERSION: DB_VERSION, STORES } = DB_CONFIG;
 
-// 数据库名和版本
-const OLD_DB_NAME_1 = 'cherry-studio-db'; // 保留第一个旧名称用于数据迁移
-const OLD_DB_NAME_2 = 'llm-house-db'; // 保留第二个旧名称用于数据迁移
-const DB_NAME = 'aetherlink-db-new'; // 新的数据库名称，与DataService保持一致
-const DB_VERSION = 1;
-
-// 对象仓库名称
-const STORES = {
-  TOPICS: 'topics' as const,
-  ASSISTANTS: 'assistants' as const,
-  SETTINGS: 'settings' as const
-};
-
-// 初始化数据库
+/**
+ * 初始化数据库
+ * 创建统一的数据库结构
+ */
 async function initDB(): Promise<IDBPDatabase<AetherLinkDB>> {
   return openDB<AetherLinkDB>(DB_NAME, DB_VERSION, {
     upgrade(db: IDBPDatabase<AetherLinkDB>) {
       // 创建话题存储
       if (!db.objectStoreNames.contains(STORES.TOPICS)) {
-        db.createObjectStore(STORES.TOPICS, { keyPath: 'id' });
+        const topicsStore = db.createObjectStore(STORES.TOPICS, { keyPath: 'id' });
+        // 添加索引以提高查询性能
+        topicsStore.createIndex('by-assistant', 'assistantId', { unique: false });
+        topicsStore.createIndex('by-last-time', 'lastMessageTime', { unique: false });
+        console.log('创建topics存储');
       }
-      
+
       // 创建助手存储
       if (!db.objectStoreNames.contains(STORES.ASSISTANTS)) {
-        db.createObjectStore(STORES.ASSISTANTS, { keyPath: 'id' });
+        const assistantsStore = db.createObjectStore(STORES.ASSISTANTS, { keyPath: 'id' });
+        assistantsStore.createIndex('by-system', 'isSystem', { unique: false });
+        console.log('创建assistants存储');
       }
-      
+
       // 创建设置存储
       if (!db.objectStoreNames.contains(STORES.SETTINGS)) {
         db.createObjectStore(STORES.SETTINGS, { keyPath: 'id' });
+        console.log('创建settings存储');
       }
+
+      // 创建图片存储
+      if (!db.objectStoreNames.contains(STORES.IMAGES)) {
+        db.createObjectStore(STORES.IMAGES, { keyPath: 'id' });
+        console.log('创建images存储');
+      }
+
+      // 创建图片元数据存储
+      if (!db.objectStoreNames.contains(STORES.IMAGE_METADATA)) {
+        const imageMetadataStore = db.createObjectStore(STORES.IMAGE_METADATA, { keyPath: 'id' });
+        imageMetadataStore.createIndex('by-topic', 'topicId', { unique: false });
+        imageMetadataStore.createIndex('by-time', 'created', { unique: false });
+        console.log('创建imageMetadata存储');
+      }
+
+      // 创建元数据存储
+      if (!db.objectStoreNames.contains(STORES.METADATA)) {
+        db.createObjectStore(STORES.METADATA, { keyPath: 'id' });
+        console.log('创建metadata存储');
+      }
+    },
+    blocked() {
+      console.warn('数据库升级被阻塞，请关闭其他标签页或应用');
+    },
+    blocking() {
+      console.warn('此连接正在阻塞数据库升级，将关闭连接');
+    },
+    terminated() {
+      console.error('数据库连接意外终止');
     }
   });
 }
 
-// 辅助函数：从localStorage迁移数据到IndexedDB
-async function migrateFromLocalStorage() {
-  try {
-    // 迁移话题
-    const topicsJson = localStorage.getItem('chatTopics');
-    if (topicsJson) {
-      const topics = JSON.parse(topicsJson);
-      if (Array.isArray(topics)) {
-        for (const topic of topics) {
-          await saveTopicToDB(topic);
-        }
-        console.log('话题数据已从localStorage迁移到IndexedDB');
-      }
-    }
-    
-    // 迁移助手
-    const assistantsJson = localStorage.getItem('userAssistants');
-    if (assistantsJson) {
-      const assistants = JSON.parse(assistantsJson);
-      if (Array.isArray(assistants)) {
-        for (const assistant of assistants) {
-          // 处理助手icon序列化问题
-          const cleanAssistant = {
-            ...assistant,
-            icon: assistant.icon === null ? null : undefined // 不存储React元素
-          };
-          await saveAssistantToDB(cleanAssistant);
-        }
-        console.log('助手数据已从localStorage迁移到IndexedDB');
-      }
-    }
-    
-    // 确保移除迁移提示框
-    const migrationNotice = document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-    if (migrationNotice && migrationNotice.parentNode) {
-      migrationNotice.parentNode.removeChild(migrationNotice);
-    }
-  } catch (error) {
-    console.error('数据迁移失败:', error);
-    // 确保移除迁移提示框
-    const migrationNotice = document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-    if (migrationNotice && migrationNotice.parentNode) {
-      migrationNotice.parentNode.removeChild(migrationNotice);
-    }
-  }
-}
-
-// 从旧数据库迁移数据到新数据库
-async function migrateFromOldDB(): Promise<boolean> {
-  let migrationNotice: HTMLDivElement | null = null;
-  
-  try {
-    // 检查第一个旧数据库(cherry-studio-db)是否存在
-    const oldDB1Exists = await new Promise<boolean>((resolve) => {
-      const request = indexedDB.open(OLD_DB_NAME_1);
-      
-      request.onsuccess = () => {
-        const db = request.result;
-        db.close();
-        resolve(true);
-      };
-      
-      request.onerror = () => {
-        resolve(false);
-      };
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        db.close();
-        // 如果是新创建的，那就没有旧数据
-        resolve(false);
-      };
-    });
-    
-    // 检查第二个旧数据库(llm-house-db)是否存在
-    const oldDB2Exists = await new Promise<boolean>((resolve) => {
-      const request = indexedDB.open(OLD_DB_NAME_2);
-      
-      request.onsuccess = () => {
-        const db = request.result;
-        db.close();
-        resolve(true);
-      };
-      
-      request.onerror = () => {
-        resolve(false);
-      };
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        db.close();
-        // 如果是新创建的，那就没有旧数据
-        resolve(false);
-      };
-    });
-    
-    if (!oldDB1Exists && !oldDB2Exists) {
-      console.log('没有找到旧数据库，不需要迁移');
-      // 确保移除可能存在的迁移提示框
-      const existingNotice = document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-      if (existingNotice && existingNotice.parentNode) {
-        existingNotice.parentNode.removeChild(existingNotice);
-      }
-      
-      // 设置迁移完成标记，避免反复尝试迁移
-      localStorage.setItem('aetherlink-migration-completed', 'true');
-      return false;
-    }
-    
-    console.log('发现旧数据库，开始迁移数据...');
-    
-    // 显示迁移提示
-    if (typeof window !== 'undefined') {
-      // 移除任何可能已存在的提示框
-      const existingNotice = document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-      if (existingNotice && existingNotice.parentNode) {
-        existingNotice.parentNode.removeChild(existingNotice);
-      }
-      
-      // 创建一个临时div元素作为提示框
-      migrationNotice = document.createElement('div');
-      migrationNotice.id = 'aetherlink-migration-notice';
-      migrationNotice.style.position = 'fixed';
-      migrationNotice.style.top = '20%';
-      migrationNotice.style.left = '50%';
-      migrationNotice.style.transform = 'translateX(-50%)';
-      migrationNotice.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-      migrationNotice.style.color = 'white';
-      migrationNotice.style.padding = '20px';
-      migrationNotice.style.borderRadius = '8px';
-      migrationNotice.style.zIndex = '9999';
-      migrationNotice.style.maxWidth = '80%';
-      migrationNotice.style.textAlign = 'center';
-      migrationNotice.innerHTML = `
-        <h3 style="margin: 0 0 10px 0;">数据迁移</h3>
-        <p style="margin: 0;">正在进行应用数据迁移到 AetherLink，请勿关闭应用...<br>您的所有对话记录和助手将会自动保留</p>
-        <div id="migration-progress" style="margin-top: 10px; height: 4px; background-color: #333; border-radius: 2px;">
-          <div id="migration-bar" style="width: 10%; height: 100%; background-color: #1E88E5; border-radius: 2px;"></div>
-        </div>
-      `;
-      document.body.appendChild(migrationNotice);
-      
-      // 更新进度条函数
-      const updateProgress = (percent: number) => {
-        const progressBar = document.getElementById('migration-bar');
-        if (progressBar) {
-          progressBar.style.width = `${percent}%`;
-        }
-      };
-      
-      updateProgress(10);
-    }
-    
-    let migratedTopics = false;
-    let migratedAssistants = false;
-    let migratedSettings = false;
-    
-    // 优先从第二个数据库(llm-house-db)迁移，因为它可能是最新的
-    if (oldDB2Exists) {
-      // 打开第二个旧数据库
-      const oldDB = await openDB(OLD_DB_NAME_2, DB_VERSION);
-      
-      // 获取所有话题
-      const oldTopics = await oldDB.getAll(STORES.TOPICS);
-      if (oldTopics.length > 0) {
-        console.log(`从AetherLink旧数据库找到 ${oldTopics.length} 个话题需要迁移`);
-        
-        // 更新进度到30%
-        const progressBar = document.getElementById('migration-bar');
-        if (progressBar) progressBar.style.width = '30%';
-        
-        // 保存到新数据库
-        for (const topic of oldTopics) {
-          await saveTopicToDB(topic);
-        }
-        console.log('AetherLink旧数据库话题迁移完成');
-        migratedTopics = true;
-        
-        // 更新进度到40%
-        if (progressBar) progressBar.style.width = '40%';
-      }
-      
-      // 获取所有助手
-      const oldAssistants = await oldDB.getAll(STORES.ASSISTANTS);
-      if (oldAssistants.length > 0) {
-        console.log(`从AetherLink旧数据库找到 ${oldAssistants.length} 个助手需要迁移`);
-        
-        // 保存到新数据库
-        for (const assistant of oldAssistants) {
-          await saveAssistantToDB(assistant);
-        }
-        console.log('AetherLink旧数据库助手迁移完成');
-        migratedAssistants = true;
-        
-        // 更新进度到50%
-        const progressBar = document.getElementById('migration-bar');
-        if (progressBar) progressBar.style.width = '50%';
-      }
-      
-      // 获取所有设置
-      const oldSettings = await oldDB.getAll(STORES.SETTINGS);
-      if (oldSettings.length > 0) {
-        console.log(`从AetherLink旧数据库找到 ${oldSettings.length} 个设置项需要迁移`);
-        
-        // 保存到新数据库
-        const db = await initDB();
-        for (const setting of oldSettings) {
-          await db.put(STORES.SETTINGS, setting);
-        }
-        console.log('AetherLink旧数据库设置迁移完成');
-        migratedSettings = true;
-      }
-      
-      // 关闭第二个旧数据库
-      oldDB.close();
-    }
-    
-    // 如果有数据没有迁移成功，尝试从第一个数据库(cherry-studio-db)迁移
-    if (oldDB1Exists && (!migratedTopics || !migratedAssistants || !migratedSettings)) {
-      // 打开第一个旧数据库
-      const oldDB = await openDB(OLD_DB_NAME_1, DB_VERSION);
-      
-      // 只迁移还没迁移过的数据
-      if (!migratedTopics) {
-        // 获取所有话题
-        const oldTopics = await oldDB.getAll(STORES.TOPICS);
-        if (oldTopics.length > 0) {
-          console.log(`从Cherry Studio数据库找到 ${oldTopics.length} 个话题需要迁移`);
-          
-          // 更新进度到60%
-          const progressBar = document.getElementById('migration-bar');
-          if (progressBar) progressBar.style.width = '60%';
-          
-          // 保存到新数据库
-          for (const topic of oldTopics) {
-            await saveTopicToDB(topic);
-          }
-          console.log('Cherry Studio话题迁移完成');
-        }
-      }
-      
-      if (!migratedAssistants) {
-        // 获取所有助手
-        const oldAssistants = await oldDB.getAll(STORES.ASSISTANTS);
-        if (oldAssistants.length > 0) {
-          console.log(`从Cherry Studio数据库找到 ${oldAssistants.length} 个助手需要迁移`);
-          
-          // 保存到新数据库
-          for (const assistant of oldAssistants) {
-            await saveAssistantToDB(assistant);
-          }
-          console.log('Cherry Studio助手迁移完成');
-          
-          // 更新进度到70%
-          const progressBar = document.getElementById('migration-bar');
-          if (progressBar) progressBar.style.width = '70%';
-        }
-      }
-      
-      if (!migratedSettings) {
-        // 获取所有设置
-        const oldSettings = await oldDB.getAll(STORES.SETTINGS);
-        if (oldSettings.length > 0) {
-          console.log(`从Cherry Studio数据库找到 ${oldSettings.length} 个设置项需要迁移`);
-          
-          // 保存到新数据库
-          const db = await initDB();
-          for (const setting of oldSettings) {
-            await db.put(STORES.SETTINGS, setting);
-          }
-          console.log('Cherry Studio设置迁移完成');
-          
-          // 更新进度到80%
-          const progressBar = document.getElementById('migration-bar');
-          if (progressBar) progressBar.style.width = '80%';
-        }
-      }
-      
-      // 关闭第一个旧数据库
-      oldDB.close();
-    }
-    
-    console.log('数据迁移完成');
-    
-    // 完成进度条
-    const progressBar = document.getElementById('migration-bar');
-    if (progressBar) progressBar.style.width = '100%';
-    
-    // 标记迁移已完成
-    localStorage.setItem('aetherlink-migration-completed', 'true');
-    
-    // 移除提示框
-    if (migrationNotice && migrationNotice.parentNode) {
-      setTimeout(() => {
-        if (migrationNotice && migrationNotice.parentNode) {
-          migrationNotice.parentNode.removeChild(migrationNotice);
-        }
-      }, 2000);
-    } else {
-      // 查找并移除可能存在的其他迁移提示框
-      const existingNotice = document.getElementById('aetherlink-migration-notice') || 
-                            document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-      if (existingNotice && existingNotice.parentNode) {
-        setTimeout(() => {
-          if (existingNotice && existingNotice.parentNode) {
-            existingNotice.parentNode.removeChild(existingNotice);
-          }
-        }, 2000);
-      }
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('数据库迁移失败:', error);
-    
-    // 迁移失败也要移除提示框
-    if (migrationNotice && migrationNotice.parentNode) {
-      migrationNotice.parentNode.removeChild(migrationNotice);
-    } else {
-      // 查找并移除可能存在的其他迁移提示框
-      const existingNotice = document.getElementById('aetherlink-migration-notice') || 
-                           document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-      if (existingNotice && existingNotice.parentNode) {
-        existingNotice.parentNode.removeChild(existingNotice);
-      }
-    }
-    
-    // 设置迁移完成标记，避免反复尝试迁移
-    localStorage.setItem('aetherlink-migration-completed', 'true');
-    
-    // 显示错误提示
-    alert('AetherLink数据迁移失败，部分数据可能无法恢复。请尝试重启应用。');
-    
-    return false;
-  }
-}
-
-// 保存话题到数据库
+/**
+ * 保存话题到数据库
+ * @param topic 话题对象
+ */
 export async function saveTopicToDB(topic: ChatTopic): Promise<void> {
   const db = await initDB();
   await db.put(STORES.TOPICS, topic);
 }
 
-// 从数据库获取所有话题
+/**
+ * 从数据库获取所有话题
+ * @returns 话题数组
+ */
 export async function getAllTopicsFromDB(): Promise<ChatTopic[]> {
   const db = await initDB();
   return db.getAll(STORES.TOPICS);
 }
 
-// 从数据库获取单个话题
+/**
+ * 按助手ID获取话题
+ * @param assistantId 助手ID
+ * @returns 话题数组
+ */
+export async function getTopicsByAssistantId(assistantId: string): Promise<ChatTopic[]> {
+  const db = await initDB();
+  const index = db.transaction(STORES.TOPICS).store.index('by-assistant');
+  return index.getAll(assistantId);
+}
+
+/**
+ * 获取最近的话题
+ * @param limit 限制数量
+ * @returns 话题数组
+ */
+export async function getRecentTopics(limit: number = 10): Promise<ChatTopic[]> {
+  const db = await initDB();
+  const index = db.transaction(STORES.TOPICS).store.index('by-last-time');
+  const topics = await index.getAll(IDBKeyRange.lowerBound(0));
+
+  // 按时间倒序排序
+  topics.sort((a, b) => {
+    const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+    const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  return topics.slice(0, limit);
+}
+
+/**
+ * 从数据库获取单个话题
+ * @param id 话题ID
+ * @returns 话题对象或undefined
+ */
 export async function getTopicFromDB(id: string): Promise<ChatTopic | undefined> {
   const db = await initDB();
   return db.get(STORES.TOPICS, id);
 }
 
-// 保存助手到数据库
+/**
+ * 保存助手到数据库
+ * @param assistant 助手对象
+ */
 export async function saveAssistantToDB(assistant: Assistant): Promise<void> {
   const db = await initDB();
   await db.put(STORES.ASSISTANTS, assistant);
 }
 
-// 从数据库获取所有助手
+/**
+ * 从数据库获取所有助手
+ * @returns 助手数组
+ */
 export async function getAllAssistantsFromDB(): Promise<Assistant[]> {
   const db = await initDB();
   return db.getAll(STORES.ASSISTANTS);
 }
 
-// 从数据库获取单个助手
+/**
+ * 获取系统助手
+ * @returns 系统助手数组
+ */
+export async function getSystemAssistants(): Promise<Assistant[]> {
+  const db = await initDB();
+  const index = db.transaction(STORES.ASSISTANTS).store.index('by-system');
+  return index.getAll(IDBKeyRange.only(1)); // 使用1代表true
+}
+
+/**
+ * 从数据库获取单个助手
+ * @param id 助手ID
+ * @returns 助手对象或undefined
+ */
 export async function getAssistantFromDB(id: string): Promise<Assistant | undefined> {
   const db = await initDB();
   return db.get(STORES.ASSISTANTS, id);
 }
 
-// 删除助手
+/**
+ * 删除助手
+ * @param id 助手ID
+ */
 export async function deleteAssistantFromDB(id: string): Promise<void> {
   const db = await initDB();
   await db.delete(STORES.ASSISTANTS, id);
 }
 
-// 删除话题
+/**
+ * 删除话题
+ * @param id 话题ID
+ */
 export async function deleteTopicFromDB(id: string): Promise<void> {
   const db = await initDB();
   await db.delete(STORES.TOPICS, id);
 }
 
-// 数据库初始化和迁移
+/**
+ * 保存设置到数据库
+ * @param id 设置ID
+ * @param value 设置值
+ */
+export async function saveSettingToDB(id: string, value: any): Promise<void> {
+  const db = await initDB();
+  await db.put(STORES.SETTINGS, { id, value });
+}
+
+/**
+ * 从数据库获取设置
+ * @param id 设置ID
+ * @returns 设置值或undefined
+ */
+export async function getSettingFromDB(id: string): Promise<any> {
+  const db = await initDB();
+  const setting = await db.get(STORES.SETTINGS, id);
+  return setting?.value;
+}
+
+/**
+ * 数据库初始化
+ * 简化版本，不再包含迁移逻辑
+ */
 export async function initStorageService(): Promise<void> {
   try {
-    // 初始化新数据库
+    // 清理旧数据库
+    await cleanupOldDatabases();
+
+    // 初始化数据库
     await initDB();
-    
-    // 检查是否已经从旧数据库迁移过
-    const dbMigrationCompleted = localStorage.getItem('aetherlink-migration-completed');
-    if (!dbMigrationCompleted) {
-      // 从旧数据库迁移数据
-      await migrateFromOldDB();
-    } else {
-      // 已经迁移过，确保任何遗留的迁移对话框被移除
-      const existingNotice = document.getElementById('aetherlink-migration-notice') || 
-                           document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-      if (existingNotice && existingNotice.parentNode) {
-        existingNotice.parentNode.removeChild(existingNotice);
-      }
-    }
-    
-    // 检查是否已经从localStorage迁移过数据
-    const lsMigrationFlag = localStorage.getItem('idb-migration-done');
-    if (!lsMigrationFlag) {
-      await migrateFromLocalStorage();
-      localStorage.setItem('idb-migration-done', 'true');
-    }
+    console.log('存储服务初始化成功');
   } catch (error) {
     console.error('存储服务初始化失败:', error);
-    
-    // 确保任何遗留的迁移对话框被移除
-    const existingNotice = document.getElementById('aetherlink-migration-notice') || 
-                         document.querySelector('div[style*="position: fixed"][style*="zIndex: 9999"]');
-    if (existingNotice && existingNotice.parentNode) {
-      existingNotice.parentNode.removeChild(existingNotice);
-    }
-    
-    // 设置迁移完成标记，避免反复尝试迁移
-    localStorage.setItem('aetherlink-migration-completed', 'true');
   }
 }
 
-// 提供兼容层 - 如果IndexedDB失败，回退到localStorage
+/**
+ * 清理旧数据库
+ * 删除所有旧版本的数据库，避免冲突
+ */
+export async function cleanupOldDatabases(): Promise<{
+  found: number;
+  cleaned: number;
+  current: string;
+}> {
+  try {
+    // 获取所有数据库
+    const databases = await indexedDB.databases();
+
+    // 当前使用的数据库名称
+    const currentDB = DB_NAME;
+
+    // 需要清理的旧数据库
+    const oldDBs = databases
+      .filter(db => db.name && db.name !== currentDB)
+      .map(db => db.name as string);
+
+    console.log(`发现 ${oldDBs.length} 个旧数据库需要清理`);
+
+    // 清理旧数据库
+    let cleanedCount = 0;
+    for (const dbName of oldDBs) {
+      try {
+        const deleteRequest = indexedDB.deleteDatabase(dbName);
+        deleteRequest.onsuccess = () => {
+          cleanedCount++;
+          console.log(`成功删除旧数据库: ${dbName}`);
+        };
+        deleteRequest.onerror = (event) => {
+          console.error(`删除数据库 ${dbName} 失败:`, event);
+        };
+      } catch (error) {
+        console.error(`删除数据库 ${dbName} 失败:`, error);
+      }
+    }
+
+    return {
+      found: oldDBs.length,
+      cleaned: cleanedCount,
+      current: currentDB
+    };
+  } catch (error) {
+    console.error('清理旧数据库失败:', error);
+    return { found: 0, cleaned: 0, current: DB_NAME };
+  }
+}
+
+/**
+ * 诊断数据库状态
+ * 获取数据库的健康状况信息
+ */
+export async function getDatabaseStatus(): Promise<{
+  databases: string[];
+  currentDB: string;
+  objectStores: string[];
+  topicsCount: number;
+  assistantsCount: number;
+  missingStores: string[];
+  dbVersion: number;
+}> {
+  try {
+    // 获取所有数据库
+    const databases = await indexedDB.databases();
+    const dbNames = databases.map(db => db.name || 'unknown').filter(Boolean);
+
+    // 获取当前数据库信息
+    const db = await initDB();
+    const objectStores = Array.from(db.objectStoreNames);
+
+    // 获取数据统计
+    const topicsCount = (await getAllTopicsFromDB()).length;
+    const assistantsCount = (await getAllAssistantsFromDB()).length;
+
+    // 检查是否缺少必要的对象存储
+    const requiredStores = [
+      DB_CONFIG.STORES.TOPICS,
+      DB_CONFIG.STORES.ASSISTANTS,
+      DB_CONFIG.STORES.SETTINGS,
+      DB_CONFIG.STORES.IMAGES,
+      DB_CONFIG.STORES.IMAGE_METADATA,
+      DB_CONFIG.STORES.METADATA
+    ];
+    const missingStores = requiredStores.filter(store => !objectStores.includes(store as any));
+
+    return {
+      databases: dbNames,
+      currentDB: DB_NAME,
+      objectStores,
+      topicsCount,
+      assistantsCount,
+      missingStores,
+      dbVersion: DB_VERSION
+    };
+  } catch (error) {
+    console.error('获取数据库状态失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 统一数据服务接口
+ * 提供对数据库的统一访问
+ */
 export const storageService = {
+  /**
+   * 保存助手
+   * @param assistant 助手对象
+   */
   async saveAssistant(assistant: Assistant): Promise<void> {
-    try {
-      await saveAssistantToDB(assistant);
-    } catch (error) {
-      console.error('IndexedDB保存失败，回退到localStorage:', error);
-      
-      try {
-        const assistantsJson = localStorage.getItem('userAssistants');
-        const assistants = assistantsJson ? JSON.parse(assistantsJson) : [];
-        
-        const index = assistants.findIndex((a: any) => a.id === assistant.id);
-        if (index !== -1) {
-          assistants[index] = {...assistant};
-        } else {
-          assistants.push(assistant);
-        }
-        
-        localStorage.setItem('userAssistants', JSON.stringify(assistants));
-      } catch (e) {
-        console.error('localStorage回退也失败:', e);
-        throw e;
-      }
-    }
+    await saveAssistantToDB(assistant);
   },
-  
+
+  /**
+   * 获取所有助手
+   * @returns 助手数组
+   */
+  async getAllAssistants(): Promise<Assistant[]> {
+    return getAllAssistantsFromDB();
+  },
+
+  /**
+   * 获取单个助手
+   * @param id 助手ID
+   * @returns 助手对象或undefined
+   */
+  async getAssistant(id: string): Promise<Assistant | undefined> {
+    return getAssistantFromDB(id);
+  },
+
+  /**
+   * 删除助手
+   * @param id 助手ID
+   */
+  async deleteAssistant(id: string): Promise<void> {
+    await deleteAssistantFromDB(id);
+  },
+
+  /**
+   * 保存话题
+   * @param topic 话题对象
+   */
   async saveTopic(topic: ChatTopic): Promise<void> {
-    try {
-      await saveTopicToDB(topic);
-    } catch (error) {
-      console.error('IndexedDB保存失败，回退到localStorage:', error);
-      
-      try {
-        const topicsJson = localStorage.getItem('chatTopics');
-        const topics = topicsJson ? JSON.parse(topicsJson) : [];
-        
-        const index = topics.findIndex((t: any) => t.id === topic.id);
-        if (index !== -1) {
-          topics[index] = {...topic};
-        } else {
-          topics.push(topic);
-        }
-        
-        localStorage.setItem('chatTopics', JSON.stringify(topics));
-      } catch (e) {
-        console.error('localStorage回退也失败:', e);
-        throw e;
-      }
-    }
+    await saveTopicToDB(topic);
   },
-  
-  async getTopic(topicId: string): Promise<ChatTopic | undefined> {
-    try {
-      return await getTopicFromDB(topicId);
-    } catch (error) {
-      console.error('IndexedDB获取失败，回退到localStorage:', error);
-      
-      try {
-        const topicsJson = localStorage.getItem('chatTopics');
-        if (!topicsJson) return undefined;
-        
-        const topics = JSON.parse(topicsJson);
-        return topics.find((t: any) => t.id === topicId);
-      } catch (e) {
-        console.error('localStorage回退也失败:', e);
-        throw e;
-      }
-    }
+
+  /**
+   * 获取所有话题
+   * @returns 话题数组
+   */
+  async getAllTopics(): Promise<ChatTopic[]> {
+    return getAllTopicsFromDB();
   },
-  
-  async deleteTopic(topicId: string): Promise<void> {
+
+  /**
+   * 获取单个话题
+   * @param id 话题ID
+   * @returns 话题对象或undefined
+   */
+  async getTopic(id: string): Promise<ChatTopic | undefined> {
+    return getTopicFromDB(id);
+  },
+
+  /**
+   * 删除话题
+   * @param id 话题ID
+   */
+  async deleteTopic(id: string): Promise<void> {
+    await deleteTopicFromDB(id);
+  },
+
+  /**
+   * 按助手ID获取话题
+   * @param assistantId 助手ID
+   * @returns 话题数组
+   */
+  async getTopicsByAssistant(assistantId: string): Promise<ChatTopic[]> {
+    return getTopicsByAssistantId(assistantId);
+  },
+
+  /**
+   * 获取最近的话题
+   * @param limit 限制数量
+   * @returns 话题数组
+   */
+  async getRecentTopics(limit: number = 10): Promise<ChatTopic[]> {
+    return getRecentTopics(limit);
+  },
+
+  /**
+   * 保存设置
+   * @param id 设置ID
+   * @param value 设置值
+   */
+  async saveSetting(id: string, value: any): Promise<void> {
+    await saveSettingToDB(id, value);
+  },
+
+  /**
+   * 获取设置
+   * @param id 设置ID
+   * @returns 设置值或undefined
+   */
+  async getSetting(id: string): Promise<any> {
+    return getSettingFromDB(id);
+  },
+
+  /**
+   * 保存图片数据
+   * @param id 图片ID
+   * @param blob 图片Blob数据
+   * @param metadata 图片元数据
+   */
+  async saveImage(id: string, blob: Blob, metadata: any): Promise<void> {
+    const db = await initDB();
+    await db.put(STORES.IMAGES, blob, id);
+    await db.put(STORES.IMAGE_METADATA, { id, ...metadata });
+  },
+
+  /**
+   * 获取图片数据
+   * @param id 图片ID
+   * @returns 图片Blob数据
+   */
+  async getImage(id: string): Promise<Blob | undefined> {
+    const db = await initDB();
+    return db.get(STORES.IMAGES, id);
+  },
+
+  /**
+   * 获取图片元数据
+   * @param id 图片ID
+   * @returns 图片元数据
+   */
+  async getImageMetadata(id: string): Promise<any> {
+    const db = await initDB();
+    return db.get(STORES.IMAGE_METADATA, id);
+  },
+
+  /**
+   * 保存Base64图片
+   * @param base64Data Base64编码的图片数据
+   * @param metadata 图片元数据
+   * @returns 图片引用
+   */
+  async saveBase64Image(base64Data: string, metadata: any): Promise<{ id: string }> {
     try {
-      // 尝试从IndexedDB删除
-      await deleteTopicFromDB(topicId);
+      // 生成唯一ID
+      const id = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+      // 转换Base64为Blob
+      const response = await fetch(base64Data);
+      const blob = await response.blob();
+
+      // 保存图片和元数据
+      const db = await initDB();
+      await db.put(STORES.IMAGES, blob, id);
+
+      // 准备元数据
+      const imageMetadata = {
+        id,
+        mimeType: metadata.mimeType || 'image/png',
+        created: Date.now(),
+        ...metadata
+      };
+
+      await db.put(STORES.IMAGE_METADATA, imageMetadata);
+
+      return { id };
     } catch (error) {
-      console.error('IndexedDB删除失败，回退到localStorage:', error);
-      
-      try {
-        // 从localStorage删除
-        const topicsJson = localStorage.getItem('chatTopics');
-        if (topicsJson) {
-          const topics = JSON.parse(topicsJson);
-          const filteredTopics = topics.filter((t: any) => t.id !== topicId);
-          localStorage.setItem('chatTopics', JSON.stringify(filteredTopics));
-        }
-      } catch (e) {
-        console.error('localStorage回退也失败:', e);
-        throw e;
-      }
+      console.error('保存Base64图片失败:', error);
+      throw error;
     }
   }
 };
@@ -579,10 +506,11 @@ export const storageService = {
 initStorageService().catch(console.error);
 
 /**
- * 存储服务 - 使用Capacitor Storage API替代localStorage
- * 提供更可靠的移动端存储解决方案
+ * Capacitor存储服务
+ * 使用Capacitor Preferences API提供更可靠的移动端存储解决方案
+ * 用于存储小型配置数据，不适合存储大型数据
  */
-export class StorageService {
+export class CapacitorStorageService {
   /**
    * 设置存储项
    * @param key 键名
@@ -596,7 +524,7 @@ export class StorageService {
         value: jsonValue
       });
     } catch (error) {
-      console.error('StorageService.setItem 失败:', error);
+      console.error('CapacitorStorageService.setItem 失败:', error);
       throw error;
     }
   }
@@ -610,11 +538,11 @@ export class StorageService {
   static async getItem<T>(key: string, defaultValue: T | null = null): Promise<T | null> {
     try {
       const { value } = await Preferences.get({ key });
-      
+
       if (value === null || value === undefined) {
         return defaultValue;
       }
-      
+
       try {
         return JSON.parse(value) as T;
       } catch {
@@ -622,7 +550,7 @@ export class StorageService {
         return value as unknown as T;
       }
     } catch (error) {
-      console.error('StorageService.getItem 失败:', error);
+      console.error('CapacitorStorageService.getItem 失败:', error);
       return defaultValue;
     }
   }
@@ -635,7 +563,7 @@ export class StorageService {
     try {
       await Preferences.remove({ key });
     } catch (error) {
-      console.error('StorageService.removeItem 失败:', error);
+      console.error('CapacitorStorageService.removeItem 失败:', error);
       throw error;
     }
   }
@@ -647,7 +575,7 @@ export class StorageService {
     try {
       await Preferences.clear();
     } catch (error) {
-      console.error('StorageService.clear 失败:', error);
+      console.error('CapacitorStorageService.clear 失败:', error);
       throw error;
     }
   }
@@ -661,11 +589,11 @@ export class StorageService {
       const { keys } = await Preferences.keys();
       return keys;
     } catch (error) {
-      console.error('StorageService.keys 失败:', error);
+      console.error('CapacitorStorageService.keys 失败:', error);
       return [];
     }
   }
-  
+
   /**
    * 批量设置多个键值对
    * @param items 键值对对象
@@ -675,33 +603,11 @@ export class StorageService {
       const operations = Object.entries(items).map(([key, value]) => {
         return this.setItem(key, value);
       });
-      
+
       await Promise.all(operations);
     } catch (error) {
-      console.error('StorageService.setItems 失败:', error);
+      console.error('CapacitorStorageService.setItems 失败:', error);
       throw error;
     }
   }
-  
-  /**
-   * 从localStorage迁移数据到Capacitor Storage
-   * 用于应用从使用localStorage迁移到StorageService的情况
-   */
-  static async migrateFromLocalStorage(keys: string[]): Promise<void> {
-    try {
-      const operations = keys.map(key => {
-        const value = localStorage.getItem(key);
-        if (value !== null) {
-          return this.setItem(key, value);
-        }
-        return Promise.resolve();
-      });
-      
-      await Promise.all(operations);
-      console.log('从localStorage迁移数据成功');
-    } catch (error) {
-      console.error('从localStorage迁移数据失败:', error);
-      throw error;
-    }
-  }
-} 
+}

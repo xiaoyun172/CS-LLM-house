@@ -38,8 +38,15 @@ export const DropdownModelSelector: React.FC<DropdownModelSelectorProps> = ({
   }, [providers]);
   
   const handleChange = (event: SelectChangeEvent<string>) => {
-    const modelId = event.target.value;
-    const model = availableModels.find(m => m.id === modelId);
+    const compositeValue = event.target.value;
+    // 从复合值中提取模型ID和提供商
+    const [modelId, providerId] = compositeValue.split('-');
+    
+    // 找到匹配ID和提供商的模型
+    const model = availableModels.find(m => 
+      m.id === modelId && (m.provider || '') === providerId
+    );
+    
     if (model) {
       handleModelSelect(model);
     }
@@ -65,15 +72,16 @@ export const DropdownModelSelector: React.FC<DropdownModelSelectorProps> = ({
       <Select
         labelId="model-select-label"
         id="model-select"
-        value={selectedModel?.id || ''}
+        value={selectedModel ? `${selectedModel.id}-${selectedModel.provider || ''}` : ''}
         onChange={handleChange}
         displayEmpty
       >
         {availableModels.map((model) => {
           const providerName = getProviderName(model.provider || model.providerType || '未知');
+          const compositeValue = `${model.id}-${model.provider || ''}`;
           
           return (
-            <MenuItem key={model.id} value={model.id} sx={{ py: 1 }}>
+            <MenuItem key={compositeValue} value={compositeValue} sx={{ py: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Box>
                   <Typography variant="body2" sx={{ fontWeight: 500 }}>

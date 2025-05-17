@@ -6,6 +6,7 @@ import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import StorageIcon from '@mui/icons-material/Storage';
 import { alpha } from '@mui/material/styles';
 
 interface BackupButtonsProps {
@@ -16,6 +17,7 @@ interface BackupButtonsProps {
   onRestore: () => void;
   onImportExternal: () => void;
   onClearAll: () => void;
+  onDiagnoseDatabase?: () => void; // 新增数据库诊断功能
 }
 
 /**
@@ -28,7 +30,8 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
   onCustomBackup,
   onRestore,
   onImportExternal,
-  onClearAll
+  onClearAll,
+  onDiagnoseDatabase
 }) => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 1 }}>
@@ -39,7 +42,7 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
           fullWidth
           onClick={onBasicBackup}
           disabled={isLoading}
-          sx={{ 
+          sx={{
             py: 1.5,
             borderRadius: 2,
             background: 'linear-gradient(90deg, #9333EA, #754AB4)',
@@ -51,14 +54,14 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
         >
           {isLoading ? '备份中...' : '备份聊天和助手'}
         </Button>
-        
+
         <Button
           variant="contained"
           startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : <SaveAltIcon />}
           fullWidth
           onClick={onFullBackup}
           disabled={isLoading}
-          sx={{ 
+          sx={{
             py: 1.5,
             borderRadius: 2,
             backgroundColor: '#6B7280',
@@ -71,7 +74,7 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
           {isLoading ? '备份中...' : '完整系统备份'}
         </Button>
       </Box>
-      
+
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
         <Button
           variant="outlined"
@@ -79,7 +82,7 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
           fullWidth
           onClick={onCustomBackup}
           disabled={isLoading}
-          sx={{ 
+          sx={{
             py: 1.5,
             borderRadius: 2,
             borderColor: '#9333EA',
@@ -92,14 +95,14 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
         >
           自定义选择性备份
         </Button>
-        
+
         <Button
           variant="outlined"
           startIcon={<FileDownloadIcon />}
           fullWidth
           onClick={onRestore}
           disabled={isLoading}
-          sx={{ 
+          sx={{
             py: 1.5,
             borderRadius: 2,
             borderColor: 'divider',
@@ -120,7 +123,7 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
           fullWidth
           onClick={onImportExternal}
           disabled={isLoading}
-          sx={{ 
+          sx={{
             py: 1.5,
             borderRadius: 2,
             borderColor: '#2563EB',
@@ -133,7 +136,7 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
         >
           导入其他AI助手备份
         </Button>
-        
+
         <Button
           variant="outlined"
           color="error"
@@ -141,7 +144,7 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
           fullWidth
           onClick={onClearAll}
           disabled={isLoading}
-          sx={{ 
+          sx={{
             py: 1.5,
             borderRadius: 2,
             borderColor: '#d32f2f',
@@ -155,8 +158,33 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
           清理全部助手和话题
         </Button>
       </Box>
+
+      {/* 数据库诊断按钮 */}
+      {onDiagnoseDatabase && (
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<StorageIcon />}
+            fullWidth
+            onClick={onDiagnoseDatabase}
+            disabled={isLoading}
+            sx={{
+              py: 1.5,
+              borderRadius: 2,
+              borderColor: '#10B981',
+              color: '#10B981',
+              '&:hover': {
+                borderColor: '#059669',
+                bgcolor: alpha('#10B981', 0.05),
+              },
+            }}
+          >
+            数据库诊断与修复
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 };
 
-export default BackupButtons; 
+export default BackupButtons;

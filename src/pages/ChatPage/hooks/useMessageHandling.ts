@@ -318,25 +318,17 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
               const reasoning = chunkData.reasoning;
               const reasoningTime = chunkData.reasoningTime;
               
-              if (content) {
-                // 优化流式输出性能 - 减少更新频率
-                // 只有当内容至少增加了5个字符或是最后一个chunk时才更新UI
-                const currentContent = typeof assistantMessage.content === 'string' 
-                  ? assistantMessage.content 
-                  : (assistantMessage.content as any)?.text || '';
-                const currentLength = currentContent.length;
-                const newLength = content.length;
-                
-                // 增加防抖动机制，避免频繁更新导致卡顿
-                if (newLength - currentLength >= 5 || newLength < currentLength) {
                   // 构建更新对象，包含内容和思考过程
-                  const updates: any = {
-                    content: content,
-                    status: 'complete',
-                    modelId: selectedModel?.id || currentModelId
-                  };
+              const updates: any = {};
+              
+              // 更新内容（如果有）
+              if (content) {
+                updates.content = content;
+                updates.status = 'complete';
+                updates.modelId = selectedModel?.id || currentModelId;
+              }
                   
-                  // 如果有思考过程，添加到更新对象
+              // 更新思考过程（如果有）- 始终更新思考过程，无论长度变化
                   if (reasoning) {
                     console.log('收到思考过程，长度:', reasoning.length, '思考时间:', reasoningTime);
                     updates.reasoning = reasoning;
@@ -345,13 +337,14 @@ export function useMessageHandling(selectedModel: Model | null, currentTopic: Ch
                     }
                   }
                   
+              // 只有当有更新内容时才分发更新
+              if (Object.keys(updates).length > 0) {
                   // 更新消息
                   dispatch(updateMessage({
                     topicId: currentTopic.id,
                     messageId: assistantMessage.id,
                     updates: updates
                   }));
-                }
               }
             } catch (error) {
               console.error('解析响应数据失败:', error);

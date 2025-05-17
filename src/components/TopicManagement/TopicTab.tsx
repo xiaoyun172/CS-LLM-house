@@ -32,6 +32,7 @@ import type { RootState } from '../../shared/store';
 import { addItemToGroup, removeItemFromGroup } from '../../shared/store/slices/groupsSlice';
 import GroupDialog from './GroupDialog';
 import { CreateGroupButton, DraggableGroup, DraggableItem } from './GroupComponents';
+import { TopicCreationService } from '../../shared/services/TopicCreationService';
 
 interface TopicTabProps {
   currentAssistant: { id: string; name: string; systemPrompt?: string; } | null;
@@ -279,6 +280,20 @@ export default function TopicTab({
     setTopicName('');
   };
   
+  // 创建新话题
+  const handleCreateTopic = () => {
+    console.log('[话题管理] 点击创建话题按钮，使用TopicCreationService处理');
+    // 使用专门的服务处理侧边栏按钮创建
+    TopicCreationService.handleSidebarButtonCreation()
+      .then((newTopic) => {
+        if (newTopic) {
+          console.log(`[话题管理] 成功创建新话题: ${newTopic.id}`);
+        } else {
+          console.error('[话题管理] 创建新话题失败');
+        }
+      });
+  };
+  
   // 渲染单个话题项
   const renderTopicItem = (topic: ChatTopic, index: number, inGroup: boolean = false) => {
     const isSelected = currentTopic?.id === topic.id;
@@ -513,46 +528,48 @@ export default function TopicTab({
     </Menu>
   );
 
-  return (
-    <>
-      {showSearch ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <TextField
-            autoFocus
-            variant="outlined"
-            size="small"
-            fullWidth
-            placeholder="搜索话题"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            InputProps={{
-              startAdornment: <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} />,
-            }}
-            sx={{ 
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '8px',
-              }
-            }}
-          />
-          <IconButton onClick={handleCloseSearch} size="small" sx={{ ml: 1 }}>
-            <CloseIcon />
-          </IconButton>
-        </Box>
-      ) : (
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="subtitle1">
-            {currentAssistant?.name || '所有'} 话题
-          </Typography>
-          <Box>
-            <IconButton onClick={handleSearchClick} size="small" sx={{ mr: 1 }}>
-              <SearchIcon />
-            </IconButton>
-            <IconButton onClick={onCreateTopic} size="small">
-              <AddIcon />
+  // 渲染标题和操作按钮
+  const renderHeader = () => (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+      <Typography variant="subtitle1">
+        话题
+      </Typography>
+      <Box>
+        {showSearch ? (
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <TextField
+              size="small"
+              placeholder="搜索话题..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              sx={{ mr: 1 }}
+            />
+            <IconButton size="small" onClick={handleCloseSearch}>
+              <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
-        </Box>
-      )}
+        ) : (
+          <>
+            <IconButton size="small" onClick={handleSearchClick} sx={{ mr: 1 }}>
+              <SearchIcon />
+            </IconButton>
+            <IconButton 
+              size="small" 
+              onClick={handleCreateTopic}
+              disabled={!currentAssistant}
+            >
+              <AddIcon />
+            </IconButton>
+          </>
+        )}
+      </Box>
+    </Box>
+  );
+
+  return (
+    <div style={{ height: '100%', overflow: 'auto' }}>
+      {/* 渲染标题和搜索 */}
+      {renderHeader()}
       
       {renderTopicGroups()}
       
@@ -692,6 +709,6 @@ export default function TopicTab({
       />
       
       {renderAddToGroupMenu()}
-    </>
+    </div>
   );
 } 
