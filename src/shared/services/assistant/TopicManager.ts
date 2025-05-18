@@ -3,7 +3,6 @@ import { TopicStatsService } from '../TopicStatsService';
 import type { ChatTopic } from '../../types/Assistant';
 import type { Assistant } from '../../types/Assistant';
 import type { Message } from '../../types';
-import { getDefaultTopic } from './types';
 import { AssistantManager } from './AssistantManager';
 import { DEFAULT_TOPIC_PROMPT } from '../../config/prompts';
 import { dexieStorage } from '../DexieStorageService';
@@ -268,8 +267,6 @@ export class TopicManager {
       throw error;
     }
   }
-
-
 
   /**
    * 获取助手的默认话题（如果存在）
