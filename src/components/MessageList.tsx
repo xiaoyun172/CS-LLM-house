@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box, useTheme } from '@mui/material';
 import type { Message } from '../shared/types';
 import MessageItem from './MessageItem';
@@ -13,73 +13,57 @@ interface MessageListProps {
 const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete, onSwitchVersion }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
-  const [forceRender, setForceRender] = useState(0);
 
   // 滚动到最新消息
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 添加事件监听器，处理话题清空和强制更新事件
-  useEffect(() => {
-    console.log('MessageList: 设置事件监听器');
-    
-    const handleTopicCleared = (event: CustomEvent) => {
-      console.log('MessageList: 接收到topicCleared事件', event.detail);
-      setForceRender(prev => prev + 1);
-    };
-    
-    const handleForceUpdate = () => {
-      console.log('MessageList: 接收到强制更新事件');
-      setForceRender(prev => prev + 1);
-    };
-    
-    // 添加事件监听
-    window.addEventListener('topicCleared', handleTopicCleared as EventListener);
-    window.addEventListener('FORCE_MESSAGES_UPDATE', handleForceUpdate);
-    
-    // 清理事件监听
-    return () => {
-      window.removeEventListener('topicCleared', handleTopicCleared as EventListener);
-      window.removeEventListener('FORCE_MESSAGES_UPDATE', handleForceUpdate);
-    };
-  }, []);
-
   // 当消息列表更新时滚动到底部
   useEffect(() => {
-    console.log('MessageList: 消息列表更新，消息数量:', messages.length);
     scrollToBottom();
-  }, [messages, forceRender]);
+  }, [messages]);
 
   // 过滤消息，只显示当前版本或没有版本标记的消息
-  const filteredMessages = messages.filter(message => {
-    // 对于用户消息，始终显示
-    if (message.role === 'user') {
-      return true;
-    }
-    
-    // 查找是否有其他消息引用了当前消息作为替代版本
-    const referencedByOtherMessages = messages.some(
-      otherMsg => 
-        otherMsg.id !== message.id && 
-        otherMsg.alternateVersions && 
-        otherMsg.alternateVersions.includes(message.id)
-    );
-    
-    // 如果这个消息被其他消息引用为替代版本，则只有它被标记为当前版本时才显示
-    if (referencedByOtherMessages) {
-      return message.isCurrentVersion === true;
-    }
-    
-    // 如果消息有alternateVersions但没有isCurrentVersion标记，则默认显示
-    // 或者如果消息被明确标记为当前版本，则显示
-    if (message.alternateVersions) {
+  const filteredMessages = useMemo(() => {
+    return messages.filter(message => {
+      if (message.role === 'user') {
+        return true;
+      }
+      const referencedByOtherMessages = messages.some(
+        otherMsg => 
+          otherMsg.id !== message.id && 
+          otherMsg.alternateVersions && 
+          otherMsg.alternateVersions.includes(message.id)
+      );
+      if (referencedByOtherMessages) {
+        return message.isCurrentVersion === true;
+      }
+      if (message.alternateVersions) {
+        return message.isCurrentVersion !== false;
+      }
       return message.isCurrentVersion !== false;
+    });
+  }, [messages]);
+  
+  // Memoize callback props for MessageItem
+  const handleRegenerate = useCallback((messageId: string) => {
+    if (onRegenerate) {
+      onRegenerate(messageId);
     }
-    
-    // 对于其他消息，只要没有明确标记为非当前版本，就显示它们
-    return message.isCurrentVersion !== false;
-  });
+  }, [onRegenerate]);
+
+  const handleDelete = useCallback((messageId: string) => {
+    if (onDelete) {
+      onDelete(messageId);
+    }
+  }, [onDelete]);
+
+  const handleSwitchVersion = useCallback((messageId: string) => {
+    if (onSwitchVersion) {
+      onSwitchVersion(messageId);
+    }
+  }, [onSwitchVersion]);
 
   return (
     <Box
@@ -88,11 +72,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
         flexDirection: 'column',
         flexGrow: 1,
         overflowY: 'auto',
-        px: 0, // 移除水平内边距
+        px: 0,
         py: 2,
         bgcolor: theme.palette.mode === 'dark' 
           ? theme.palette.background.default 
-          : '#f5f5f5', // 适配深色/浅色主题
+          : '#f5f5f5',
         scrollbarWidth: 'thin',
         scrollbarColor: `${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : '#e1e1e1'} transparent`,
         '&::-webkit-scrollbar': {
@@ -127,7 +111,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
       ) : (
         filteredMessages.map((message, index) => (
           <React.Fragment key={message.id}>
-            {/* 如果是新的一天，显示日期分隔线 */}
             {index > 0 && 
               new Date(message.timestamp).toLocaleDateString() !== 
               new Date(filteredMessages[index - 1].timestamp).toLocaleDateString() && (
@@ -163,8 +146,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
                   })}
                 </Box>
             )}
-            
-            {/* 显示时间戳 */}
             {(index === 0 || 
               new Date(message.timestamp).getTime() - new Date(filteredMessages[index - 1].timestamp).getTime() > 5 * 60000) && (
               <Box 
@@ -181,12 +162,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
                 })}
               </Box>
             )}
-            
             <MessageItem 
               message={message} 
-              onRegenerate={onRegenerate}
-              onDelete={onDelete}
-              onSwitchVersion={onSwitchVersion}
+              onRegenerate={handleRegenerate}
+              onDelete={handleDelete}
+              onSwitchVersion={handleSwitchVersion}
             />
           </React.Fragment>
         ))

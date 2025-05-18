@@ -29,44 +29,42 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
   assistants: Assistant[];
 }> {
   try {
-    // 提取会话列表
     const sessionsList = backupData['chat-sessions-list'] || [];
     console.log(`找到 ${sessionsList.length} 个Chatboxai会话`);
     
     const convertedTopics: ChatTopic[] = [];
+    const assistantIdForImportedTopics = uuidv4(); // 生成将要创建的助手的 ID
     
-    // 遍历会话列表
     for (const session of sessionsList) {
       const sessionId = session.id;
       const sessionKey = `session:${sessionId}`;
-      
-      // 获取会话详情
       const sessionData = backupData[sessionKey];
       if (!sessionData) {
         console.warn(`未找到会话 ${sessionId} 的详情数据`);
         continue;
       }
       
-      // 创建新的AetherLink话题
       const newTopic: ChatTopic = {
-        id: uuidv4(), // 生成新ID避免冲突
+        id: uuidv4(),
+        name: session.name || '导入的对话',
         title: session.name || '导入的对话',
-        messages: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         lastMessageTime: new Date().toISOString(),
-        modelId: '', // 将根据消息自动设置
-        prompt: '' // 将从系统消息提取
+        messages: [],
+        prompt: '',
+        assistantId: assistantIdForImportedTopics, // 使用预先生成的助手 ID
+        isNameManuallyEdited: false
       };
       
       // 提取消息
       if (Array.isArray(sessionData.messages)) {
         for (const chatboxMsg of sessionData.messages) {
-          // 处理系统消息，提取为系统提示
           if (chatboxMsg.role === 'system' && chatboxMsg.contentParts?.[0]?.text) {
             newTopic.prompt = chatboxMsg.contentParts[0].text;
-            continue; // 系统消息不添加到常规消息列表
+            continue;
           }
           
-          // 转换为AetherLink消息格式
           const newMessage: Message = {
             id: chatboxMsg.id || uuidv4(),
             role: chatboxMsg.role === 'user' ? 'user' : 'assistant',
@@ -79,40 +77,60 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
             alternateVersions: []
           };
           
-          // 尝试提取模型信息
           if (chatboxMsg.model) {
             newMessage.modelId = chatboxMsg.model;
-            if (!newTopic.modelId && chatboxMsg.role === 'assistant') {
-              newTopic.modelId = chatboxMsg.model;
-            }
           }
-          
-          // 添加消息到话题
           newTopic.messages.push(newMessage);
         }
       }
       
-      // 只有消息不为空的话题才添加
       if (newTopic.messages.length > 0) {
-        // 更新最后消息时间
         if (newTopic.messages.length > 0) {
           const lastMsg = newTopic.messages[newTopic.messages.length - 1];
           newTopic.lastMessageTime = lastMsg.timestamp;
         }
-        
         convertedTopics.push(newTopic);
       }
     }
     
-    // 创建导入的助手
     const importedAssistant: Assistant = {
-      id: uuidv4(),
+      id: assistantIdForImportedTopics, 
       name: 'ChatboxAI 导入助手',
       description: '从ChatboxAI导入的对话助手',
       systemPrompt: '你是一个从ChatboxAI导入的助手，我已经将你的所有聊天记录都导入到AetherLink中了',
       icon: null,
       isSystem: false,
-      topicIds: convertedTopics.map(topic => topic.id)
+      topicIds: convertedTopics.map(topic => topic.id),
+      topics: convertedTopics, 
+      avatar: undefined,
+      tags: [],
+      engine: undefined,
+      model: undefined,
+      temperature: undefined,
+      maxTokens: undefined,
+      topP: undefined,
+      frequencyPenalty: undefined,
+      presencePenalty: undefined,
+      prompt: undefined, 
+      maxMessagesInContext: undefined,
+      isDefault: undefined,
+      archived: undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastUsedAt: new Date().toISOString(),
+      selectedSystemPromptId: undefined,
+      mcpConfigId: undefined,
+      tools: [],
+      tool_choice: undefined,
+      speechModel: undefined,
+      speechVoice: undefined,
+      speechSpeed: undefined,
+      responseFormat: undefined,
+      isLocal: undefined,
+      localModelName: undefined,
+      localModelPath: undefined,
+      localModelType: undefined,
+      file_ids: [],
     };
     
     return {

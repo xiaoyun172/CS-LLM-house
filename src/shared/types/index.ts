@@ -146,12 +146,19 @@ export interface Message {
 // 聊天主题类型
 export interface ChatTopic {
   id: string;
-  title: string;
-  lastMessageTime: string;
+  name: string;            // 使用name字段而不是title
+  title?: string;          // 保留title作为可选字段，兼容旧代码
+  createdAt: string;       // 添加创建时间
+  updatedAt: string;       // 添加更新时间
+  lastMessageTime?: string; // 改为可选
   messages: Message[];
-  modelId?: string; // 默认使用的模型ID
-  prompt?: string; // 话题特定提示词，会覆盖助手的系统提示词
-  assistantId?: string; // 关联的助手ID
+  assistantId: string;     // 关联的助手ID，改为必需
+  prompt?: string;         // 话题特定提示词，会覆盖助手的系统提示词
+  messageCount?: number;   // 可选字段
+  tokenCount?: number;     // 可选字段
+  inputTemplate?: string;  // 可选字段
+  isDefault?: boolean;     // 可选字段
+  isNameManuallyEdited: boolean; // 添加手动编辑标记
 }
 
 // 模型类型

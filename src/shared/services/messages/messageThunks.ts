@@ -11,6 +11,7 @@ import {
   initializeTopics
 } from '../../store/slices/messagesSlice';
 import { handleChatRequest, saveTopics } from './messageService';
+import { TopicService } from '../TopicService';
 
 /**
  * 发送消息的异步action
@@ -119,14 +120,12 @@ export const sendMessage = createAsyncThunk(
  */
 export const setCurrentTopicThunk = createAsyncThunk(
   'messages/setCurrentTopicThunk',
-  async (topic: ChatTopic, { dispatch, getState }) => {
+  async (topic: ChatTopic, { dispatch }) => {
     try {
       dispatch(setCurrentTopic(topic));
       
-      // 保存到数据库
-      const state = getState() as RootState;
-      const allTopics = state.messages.topics;
-      await saveTopics([...allTopics, topic]);
+      // 直接保存单个话题到数据库，不需要依赖状态中的topics列表
+      await saveTopics([topic]);
       
       return topic;
     } catch (error) {
@@ -157,13 +156,10 @@ export const loadTopicsThunk = createAsyncThunk(
  */
 export const deleteTopicThunk = createAsyncThunk(
   'messages/deleteTopicThunk',
-  async (topicId: string, { dispatch, getState }) => {
+  async (topicId: string, { dispatch }) => {
     try {
-      const state = getState() as RootState;
-      const allTopics = state.messages.topics.filter(t => t.id !== topicId);
-      
-      // 保存更新后的主题列表到数据库
-      await saveTopics(allTopics);
+      // 使用TopicService的deleteTopic方法删除话题
+      await TopicService.deleteTopic(topicId);
       
       // 重新加载主题
       await dispatch(initializeTopics());

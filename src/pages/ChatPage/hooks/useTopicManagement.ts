@@ -84,14 +84,29 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
   const createDefaultTopic = async (): Promise<ChatTopic[]> => {
     console.log('正在创建默认话题');
 
-    // 创建一个默认话题
+    // 尝试获取当前助手ID，以便在创建时使用
+    let assistantIdForTopic = await getStorageItem<string>('currentAssistant');
+    if (!assistantIdForTopic) {
+      // 如果没有当前助手，可以考虑不创建默认话题，或者使用一个预定义的ID
+      // 为了通过类型检查，这里我们用一个占位符，但实际应用中应有更好处理
+      console.warn('创建默认话题时未找到当前助手ID，将使用占位符');
+      assistantIdForTopic = 'default_assistant_placeholder'; 
+    }
+
     const now = new Date();
     const formattedDate = formatDateForTopicTitle(now);
+    const currentTime = now.toISOString();
+    
     const defaultTopic: ChatTopic = {
       id: generateId(),
+      name: `新的对话 ${formattedDate}`,
       title: `新的对话 ${formattedDate}`,
-      lastMessageTime: now.toISOString(),
-      messages: []
+      createdAt: currentTime,
+      updatedAt: currentTime,
+      lastMessageTime: currentTime,
+      messages: [],
+      assistantId: assistantIdForTopic,
+      isNameManuallyEdited: false
     };
 
     console.log('默认话题创建成功:', defaultTopic);

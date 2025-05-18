@@ -28,10 +28,10 @@ import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import BuildIcon from '@mui/icons-material/Build';
 import ConstructionIcon from '@mui/icons-material/Construction';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
-import { cleanupOldDatabases, getDatabaseStatus } from '../../../../../shared/services/storageService';
+import { cleanupOldDatabases, getDatabaseStatus, type DatabaseStatus } from '../../../../../shared/services/storageService';
 import { TopicStatsService } from '../../../../../shared/services/TopicStatsService';
 import { AssistantService } from '../../../../../shared/services';
-import DexieStorageService from '../../../../../shared/services/DexieStorageService';
+import Dexie from 'dexie';
 
 interface DatabaseDiagnosticDialogProps {
   open: boolean;
@@ -49,15 +49,7 @@ const DatabaseDiagnosticDialog: React.FC<DatabaseDiagnosticDialogProps> = ({
   const [isRepairing, setIsRepairing] = useState(false);
   const [isCleaningTopics, setIsCleaningTopics] = useState(false);
   const [isFixingReferences, setIsFixingReferences] = useState(false);
-  const [diagnosticResult, setDiagnosticResult] = useState<{
-    databases: string[];
-    currentDB: string;
-    objectStores: string[];
-    topicsCount: number;
-    assistantsCount: number;
-    missingStores: string[];
-    dbVersion: number;
-  } | null>(null);
+  const [diagnosticResult, setDiagnosticResult] = useState<DatabaseStatus | null>(null);
   const [repairResult, setRepairResult] = useState<{
     found: number;
     cleaned: number;
@@ -166,12 +158,13 @@ const DatabaseDiagnosticDialog: React.FC<DatabaseDiagnosticDialogProps> = ({
       setIsRepairing(true);
       setError(null);
 
-      // 删除当前数据库
-      await DexieStorageService.deleteDatabase('aetherlink-db-new');
-      console.log('数据库已删除，准备重建');
-
-      // 等待300ms确保删除操作完成
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // 手动创建一个新的数据库实例用于删除操作
+      // const tempDb = new Dexie('aetherlink-db-new');
+      // await tempDb.delete();
+      // console.log('尝试删除 aetherlink-db-new 数据库');
+      // 改用 Dexie.delete()
+      await Dexie.delete('aetherlink-db-new');
+      console.log('已调用 Dexie.delete(\'aetherlink-db-new\')');
 
       // 重新获取数据库状态，这将触发数据库重建
       const status = await getDatabaseStatus();

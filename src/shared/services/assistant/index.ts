@@ -7,8 +7,11 @@ export * from './types';
 import { AssistantManager } from './AssistantManager';
 import { TopicManager } from './TopicManager';
 import { AssistantFactory } from './Factory';
-import type { Assistant } from '../../types/Assistant';
+import type { Assistant, ChatTopic } from '../../types/Assistant';
 import { dexieStorage } from '../DexieStorageService';
+import { uuid } from '../../utils';
+import { getDefaultTopic } from './types';
+import { DEFAULT_TOPIC_PROMPT } from '../../config/prompts';
 
 // 移除DataService引用
 // import { DataService } from '../DataService';
@@ -33,7 +36,6 @@ export class AssistantService {
   static getAssistantTopics = TopicManager.getAssistantTopics;
   static clearAssistantTopics = TopicManager.clearAssistantTopics;
   static ensureAssistantHasTopic = TopicManager.ensureAssistantHasTopic;
-  static createDefaultTopicForAssistant = TopicManager.createDefaultTopicForAssistant;
   static getDefaultTopic = TopicManager.getDefaultTopic;
   static validateAndFixAssistantTopicReferences = TopicManager.validateAndFixAssistantTopicReferences;
   static validateAndFixAllAssistantsTopicReferences = TopicManager.validateAndFixAllAssistantsTopicReferences;
@@ -46,40 +48,45 @@ export class AssistantService {
    * 创建新助手并完成所有相关设置
    * 该方法是创建助手的统一入口点，所有组件应该使用此方法
    * @param assistantData 助手基本数据
-   * @param createDefaultTopic 是否自动创建默认话题
    * @returns 创建的助手对象，如果创建失败则返回null
    */
   static async createNewAssistant(
-    assistantData: Partial<Assistant>,
-    createDefaultTopic: boolean = true
+    assistantData: Partial<Assistant>
   ): Promise<Assistant | null> {
     try {
       console.log('AssistantService: 开始创建新助手', assistantData.name);
 
-      // 1. 创建助手对象 - 使用正确的参数顺序
-      const newAssistant = AssistantFactory.createAssistant(
-        assistantData.name || '新助手',
-        assistantData.description || '',
-        assistantData.systemPrompt || ''
-      );
+      // 创建助手ID
+      const assistantId = uuid();
 
-      // 2. 保存助手到数据库
+      // 创建默认话题
+      const topic = getDefaultTopic(assistantId);
+
+      // 创建助手对象
+      const newAssistant: Assistant = {
+        ...assistantData,
+        id: assistantId,
+        name: assistantData.name || '新助手',
+        emoji: assistantData.emoji || '😀',
+        topics: [topic], // 直接包含话题对象
+        topicIds: [topic.id], // 保留兼容性
+        type: 'assistant',
+        isSystem: false,
+        systemPrompt: assistantData.systemPrompt || DEFAULT_TOPIC_PROMPT
+      };
+
+      // 保存话题到数据库
+      await dexieStorage.saveTopic(topic);
+
+      // 保存助手到数据库
       const success = await AssistantManager.addAssistant(newAssistant);
       if (!success) {
         console.error('AssistantService: 保存助手失败');
         return null;
       }
 
-      // 3. 如果需要，创建默认话题
-      if (createDefaultTopic) {
-        await TopicManager.createDefaultTopicForAssistant(newAssistant.id);
-
-        // 获取更新后的助手（包含话题ID）- 使用dexieStorage
-        const updatedAssistant = await dexieStorage.getAssistant(newAssistant.id);
-        if (updatedAssistant) {
-          return updatedAssistant;
-        }
-      }
+      // 添加助手消息到话题
+      await TopicManager.addAssistantMessagesToTopic({ assistant: newAssistant, topic });
 
       // 派发助手创建事件
       const event = new CustomEvent('assistantCreated', {
@@ -89,7 +96,10 @@ export class AssistantService {
 
       return newAssistant;
     } catch (error) {
-      console.error('AssistantService: 创建助手时出错', error);
+      const errorMessage = error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : String(error);
+      console.error(`AssistantService: 创建助手时出错: ${errorMessage}`);
       return null;
     }
   }
@@ -101,5 +111,12 @@ export class AssistantService {
    */
   static subscribeToAssistantEvents(eventType: string, callback: EventListener): () => void {
     return AssistantManager.subscribeToAssistantEvents(eventType, callback);
+  }
+
+  /**
+   * 向话题添加助手的初始消息
+   */
+  static async addAssistantMessagesToTopic({ assistant, topic }: { assistant: Assistant; topic: ChatTopic }): Promise<void> {
+    return TopicManager.addAssistantMessagesToTopic({ assistant, topic });
   }
 }

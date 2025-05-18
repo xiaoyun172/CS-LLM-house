@@ -1,4 +1,4 @@
-import type { Assistant } from '../../types/Assistant';
+import type { Assistant, ChatTopic } from '../../types/Assistant';
 import {
   deserializeAssistant,
   serializeAssistant
@@ -16,6 +16,30 @@ export class AssistantManager {
     try {
       // 直接从dexieStorage获取数据
       const assistants = await dexieStorage.getAllAssistants();
+
+      // 为每个助手加载话题
+      for (const assistant of assistants) {
+        const topicIds = assistant.topicIds || [];
+        const topics: ChatTopic[] = [];
+
+        // 加载关联的话题
+        for (const topicId of topicIds) {
+          const topic = await dexieStorage.getTopic(topicId);
+          if (topic) {
+            topics.push(topic);
+          }
+        }
+
+        // 按最后消息时间排序
+        topics.sort((a, b) => {
+          const timeA = new Date(a.lastMessageTime || 0).getTime();
+          const timeB = new Date(b.lastMessageTime || 0).getTime();
+          return timeB - timeA; // 降序排列，最新的在前面
+        });
+
+        // 设置话题数组
+        assistant.topics = topics;
+      }
 
       // 确保每个助手都有正确的图标
       return assistants.map(assistant => {
@@ -41,12 +65,33 @@ export class AssistantManager {
 
       // 获取助手详情
       const assistant = await dexieStorage.getAssistant(currentAssistantId);
-      // 确保返回的助手有正确的图标
-      if (assistant) {
-        const serializedAssistant = serializeAssistant(assistant);
-        return deserializeAssistant(serializedAssistant);
+      if (!assistant) return null;
+      
+      // 加载助手关联的话题
+      const topicIds = assistant.topicIds || [];
+      const topics: ChatTopic[] = [];
+      
+      // 加载每个话题
+      for (const topicId of topicIds) {
+        const topic = await dexieStorage.getTopic(topicId);
+        if (topic) {
+          topics.push(topic);
+        }
       }
-      return null;
+      
+      // 按最后消息时间排序
+      topics.sort((a, b) => {
+        const timeA = new Date(a.lastMessageTime || 0).getTime();
+        const timeB = new Date(b.lastMessageTime || 0).getTime();
+        return timeB - timeA; // 降序排列
+      });
+      
+      // 设置话题数组
+      assistant.topics = topics;
+      
+      // 确保返回的助手有正确的图标
+      const serializedAssistant = serializeAssistant(assistant);
+      return deserializeAssistant(serializedAssistant);
     } catch (error) {
       console.error('获取当前助手失败:', error);
       return null;
@@ -107,29 +152,44 @@ export class AssistantManager {
         return await this.updateAssistant(assistant);
       }
 
-      // 创建一个最小化的安全对象
-      const safeAssistant = {
-        id: assistant.id,
-        name: assistant.name,
-        description: assistant.description || '',
-        icon: null,
-        isSystem: !!assistant.isSystem,
-        topicIds: Array.isArray(assistant.topicIds) ? [...assistant.topicIds] : [],
-        systemPrompt: assistant.systemPrompt || ''
-      };
-
-      // 使用dexieStorage保存
-      const success = await dexieStorage.saveAssistant(safeAssistant);
-
-      if (success) {
-        console.log(`助手 ${assistant.id} 保存成功`);
-        return true;
-      } else {
-        console.error(`保存助手 ${assistant.id} 失败`);
-        return false;
+      // 序列化助手对象，确保可以保存到数据库
+      const assistantToSave = { ...assistant };
+      
+      // 处理icon字段，确保它可以被序列化
+      if (assistantToSave.icon && typeof assistantToSave.icon === 'object') {
+        assistantToSave.icon = null;
       }
+
+      // 保存助手到数据库
+      await dexieStorage.saveAssistant(assistantToSave);
+      
+      // 保存助手的话题到数据库
+      if (assistant.topics && assistant.topics.length > 0) {
+        for (const topic of assistant.topics) {
+          if (!topic.assistantId) {
+            topic.assistantId = assistant.id;
+          }
+          await dexieStorage.saveTopic(topic);
+        }
+      }
+      
+      // 更新Redux store
+      const event = new CustomEvent('assistantCreated', {
+        detail: { assistant: assistantToSave }
+      });
+      window.dispatchEvent(event);
+      
+      console.log(`助手 ${assistant.id} 保存成功`);
+      return true;
     } catch (error) {
-      console.error(`添加助手 ${assistant.id} 失败:`, error);
+      // 改进错误处理，显示详细信息
+      const errorMessage = error instanceof Error 
+        ? `${error.name}: ${error.message}` 
+        : String(error);
+      const errorDetails = error instanceof Error && error.stack 
+        ? `\n错误堆栈: ${error.stack}` 
+        : '';
+      console.error(`添加助手 ${assistant.id} 失败: ${errorMessage}${errorDetails}`);
       return false;
     }
   }
@@ -141,27 +201,53 @@ export class AssistantManager {
     try {
       console.log(`更新助手: ${assistant.id} (${assistant.name})`);
 
-      // 创建一个最小化的安全对象
-      const safeAssistant = {
+      // 创建一个符合 Assistant 接口的对象进行保存
+      // 确保所有 Assistant 接口中定义的字段都存在，可选字段可以来自 assistant 对象或者默认值
+      const assistantToSave: Assistant = {
         id: assistant.id,
         name: assistant.name,
-        description: assistant.description || '',
-        icon: null,
+        description: assistant.description,
+        avatar: assistant.avatar,
+        icon: assistant.icon === undefined ? null : assistant.icon,
+        tags: assistant.tags,
+        engine: assistant.engine,
+        model: assistant.model,
+        temperature: assistant.temperature,
+        maxTokens: assistant.maxTokens,
+        topP: assistant.topP,
+        frequencyPenalty: assistant.frequencyPenalty,
+        presencePenalty: assistant.presencePenalty,
+        systemPrompt: assistant.systemPrompt,
+        prompt: assistant.prompt,
+        maxMessagesInContext: assistant.maxMessagesInContext,
+        isDefault: assistant.isDefault,
         isSystem: !!assistant.isSystem,
+        archived: assistant.archived,
+        createdAt: assistant.createdAt,
+        updatedAt: assistant.updatedAt,
+        lastUsedAt: assistant.lastUsedAt,
         topicIds: Array.isArray(assistant.topicIds) ? [...assistant.topicIds] : [],
-        systemPrompt: assistant.systemPrompt || ''
+        topics: assistant.topics || [], // 添加 topics 字段
+        selectedSystemPromptId: assistant.selectedSystemPromptId,
+        mcpConfigId: assistant.mcpConfigId,
+        tools: assistant.tools,
+        tool_choice: assistant.tool_choice,
+        speechModel: assistant.speechModel,
+        speechVoice: assistant.speechVoice,
+        speechSpeed: assistant.speechSpeed,
+        responseFormat: assistant.responseFormat,
+        isLocal: assistant.isLocal,
+        localModelName: assistant.localModelName,
+        localModelPath: assistant.localModelPath,
+        localModelType: assistant.localModelType,
+        file_ids: assistant.file_ids,
       };
 
       // 使用dexieStorage保存
-      const success = await dexieStorage.saveAssistant(safeAssistant);
+      await dexieStorage.saveAssistant(assistantToSave);
 
-      if (success) {
-        console.log(`助手 ${assistant.id} 更新成功`);
-        return true;
-      } else {
-        console.error(`更新助手 ${assistant.id} 失败`);
-        return false;
-      }
+      console.log(`助手 ${assistant.id} 更新成功`);
+      return true;
     } catch (error) {
       console.error(`更新助手 ${assistant.id} 失败:`, error);
       return false;
@@ -176,22 +262,17 @@ export class AssistantManager {
       console.log(`删除助手: ${assistantId}`);
 
       // 从dexieStorage删除
-      const success = await dexieStorage.deleteAssistant(assistantId);
+      await dexieStorage.deleteAssistant(assistantId);
 
-      if (success) {
-        console.log(`助手 ${assistantId} 删除成功`);
+      console.log(`助手 ${assistantId} 删除成功`);
 
-        // 如果当前选中的助手被删除，清除当前选中状态
-        const currentAssistantId = await dexieStorage.getSetting('currentAssistant');
-        if (currentAssistantId === assistantId) {
-          await dexieStorage.saveSetting('currentAssistant', null);
-        }
-
-        return true;
-      } else {
-        console.error(`删除助手 ${assistantId} 失败`);
-        return false;
+      // 如果当前选中的助手被删除，清除当前选中状态
+      const currentAssistantId = await dexieStorage.getSetting('currentAssistant');
+      if (currentAssistantId === assistantId) {
+        await dexieStorage.saveSetting('currentAssistant', null);
       }
+
+      return true;
     } catch (error) {
       console.error(`删除助手 ${assistantId} 失败:`, error);
       return false;

@@ -2,8 +2,24 @@ import { Preferences } from '@capacitor/preferences';
 import type { Assistant } from '../types/Assistant';
 import type { ChatTopic, Message } from '../types';
 import { dexieStorage } from './DexieStorageService';
-import DexieStorageService from './DexieStorageService';
 import { DB_CONFIG } from '../types/DatabaseSchema';
+import Dexie from 'dexie';
+
+// 定义 DatabaseStatus 类型
+export interface DatabaseStatus {
+  databases: string[];
+  currentDB: string;
+  objectStores: string[];
+  topicsCount: number;
+  assistantsCount: number;
+  imagesCount: number;
+  settingsCount: number;
+  metadataCount: number;
+  missingStores: string[];
+  dbVersion?: number; // Dexie的原生verno是数字
+  isDBOpen: boolean;
+  error?: string;
+}
 
 // 导出Dexie实例，方便直接使用
 export { dexieStorage };
@@ -17,22 +33,12 @@ export async function initStorageService(): Promise<void> {
     // 清理旧数据库
     await cleanupOldDatabases();
 
-    // 初始化DexieStorageService, 这会确保数据库被打开并执行_ensureDatabaseInitialized
-    await dexieStorage.initialize();
-
-    // The call to dexieStorage.initialize() handles the necessary initialization checks and setup.
-    // Legacy migration and explicit isDatabaseInitialized checks are removed.
+    // Dexie会自动打开数据库，无需手动initialize
     // console.log('存储服务: 数据库初始化检查完成，或已通过initialize()处理。');
 
     // 初始化StorageService单例实例
     if (storageService) {
-      // 启用Dexie优先
       storageService.setUseDexiePriority(true);
-
-      // 初始化话题同步 - Removed as event system was removed from DexieStorageService
-      // storageService.initTopicSync(); 
-
-      // console.log('启用Dexie优先存储'); // Log adjusted
     }
 
     console.log('存储服务初始化成功');
@@ -46,12 +52,12 @@ export async function initStorageService(): Promise<void> {
     console.error(`存储服务初始化失败: ${errorMessage}${errorDetails}`);
     
     try {
-      const isOpen = dexieStorage.isOpen(); // Use Dexie's native isOpen()
+      const isOpen = dexieStorage.isOpen();
       console.error(`数据库状态: ${isOpen ? '已打开' : '未打开'}`);
       
       if (!isOpen) {
         console.log('尝试重新打开数据库...');
-        await dexieStorage.open(); // Use Dexie's native open()
+        await dexieStorage.open();
         console.log('数据库已重新打开');
       }
     } catch (dbError) {
@@ -72,11 +78,11 @@ export async function cleanupOldDatabases(): Promise<{
 }> {
   try {
     // 获取所有数据库
-    const databases = await DexieStorageService.getAllDatabases();
+    const databases = await Dexie.getDatabaseNames();
 
     // 筛选出旧版本的数据库名称
-    const oldDatabases = databases.filter(name =>
-      name.startsWith('aetherlink-db') &&
+    const oldDatabases = databases.filter((name: string) =>
+      name.startsWith('aetherlink-db-') &&
       name !== DB_CONFIG.NAME
     );
 
@@ -86,7 +92,7 @@ export async function cleanupOldDatabases(): Promise<{
     let cleanedCount = 0;
     for (const dbName of oldDatabases) {
       try {
-        await DexieStorageService.deleteDatabase(dbName);
+        await Dexie.delete(dbName);
         cleanedCount++;
       } catch (e) {
         console.error(`删除数据库 ${dbName} 失败:`, e);
@@ -111,45 +117,56 @@ export async function cleanupOldDatabases(): Promise<{
 /**
  * 获取数据库状态
  */
-export async function getDatabaseStatus(): Promise<{
-  databases: string[];
-  currentDB: string;
-  objectStores: string[];
-  topicsCount: number;
-  assistantsCount: number;
-  missingStores: string[];
-  dbVersion: number;
-}> {
+export async function getDatabaseStatus(): Promise<DatabaseStatus> { // 使用新的类型
+  console.log('storageService: 获取数据库状态...');
   try {
-    // 获取所有数据库
-    const databases = await DexieStorageService.getAllDatabases();
-
-    // 获取数据库状态
-    const status = await dexieStorage.getDatabaseStatus();
-
-    // 检查缺失的存储
-    const expectedStores = Object.values(DB_CONFIG.STORES);
-    const missingStores = expectedStores.filter(store => !status.tables.includes(store));
-
-    return {
+    const databases = await Dexie.getDatabaseNames();
+    const status: DatabaseStatus = {
       databases,
-      currentDB: DB_CONFIG.NAME,
-      objectStores: status.tables,
-      topicsCount: status.topicsCount,
-      assistantsCount: status.assistantsCount,
-      missingStores,
-      dbVersion: status.version
-    };
-  } catch (error) {
-    console.error('获取数据库状态失败:', error);
-    return {
-      databases: [],
       currentDB: DB_CONFIG.NAME,
       objectStores: [],
       topicsCount: 0,
       assistantsCount: 0,
+      imagesCount: 0,
+      settingsCount: 0,
+      metadataCount: 0,
       missingStores: [],
-      dbVersion: 0
+      dbVersion: 0,
+      isDBOpen: false
+    };
+
+    if (dexieStorage.isOpen()) {
+      status.isDBOpen = true;
+      status.objectStores = dexieStorage.tables.map(t => t.name);
+      status.dbVersion = dexieStorage.verno;
+      try { status.topicsCount = await dexieStorage.topics.count(); } catch(e) { console.warn('Failed to count topics', e); }
+      try { status.assistantsCount = await dexieStorage.assistants.count(); } catch(e) { console.warn('Failed to count assistants', e); }
+      try { status.imagesCount = await dexieStorage.images.count(); } catch(e) { console.warn('Failed to count images', e); }
+      try { status.settingsCount = await dexieStorage.settings.count(); } catch(e) { console.warn('Failed to count settings', e); }
+      try { status.metadataCount = await dexieStorage.metadata.count(); } catch(e) { console.warn('Failed to count metadata', e); }
+
+      const expectedStores = Object.values(DB_CONFIG.STORES);
+      status.missingStores = expectedStores.filter(storeName => !status.objectStores.includes(storeName));
+    } else {
+      console.warn('storageService: 数据库未打开，无法获取详细状态。');
+      status.missingStores = Object.values(DB_CONFIG.STORES);
+    }
+    return status;
+  } catch (error) {
+    console.error('获取数据库状态失败:', error);
+    return {
+      databases: await Dexie.getDatabaseNames().catch(() => []),
+      currentDB: DB_CONFIG.NAME,
+      objectStores: [],
+      topicsCount: 0,
+      assistantsCount: 0,
+      imagesCount: 0,
+      settingsCount: 0,
+      metadataCount: 0,
+      missingStores: Object.values(DB_CONFIG.STORES),
+      dbVersion: 0,
+      isDBOpen: false,
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }
@@ -227,14 +244,8 @@ class StorageService {
    * 保存助手
    * @param assistant 助手对象
    */
-  async saveAssistant(assistant: Assistant): Promise<boolean> {
-    try {
-      const result = await dexieStorage.saveAssistant(assistant);
-      return result;
-    } catch (error) {
-      console.error('StorageService: 保存助手失败', error);
-      return false;
-    }
+  async saveAssistant(assistant: Assistant): Promise<void> {
+    await dexieStorage.saveAssistant(assistant);
   }
 
   /**
@@ -256,8 +267,7 @@ class StorageService {
    */
   async getAllAssistants(): Promise<Assistant[]> {
     try {
-      const assistants = await dexieStorage.getAllAssistants();
-      return assistants;
+      return await dexieStorage.getAllAssistants();
     } catch (error) {
       console.error('StorageService: 获取所有助手失败', error);
       return [];
@@ -268,28 +278,16 @@ class StorageService {
    * 删除助手
    * @param id 助手ID
    */
-  async deleteAssistant(id: string): Promise<boolean> {
-    try {
-      const result = await dexieStorage.deleteAssistant(id);
-      return result;
-    } catch (error) {
-      console.error('StorageService: 删除助手失败', error);
-      return false;
-    }
+  async deleteAssistant(id: string): Promise<void> {
+    await dexieStorage.deleteAssistant(id);
   }
 
   /**
    * 保存话题
    * @param topic 话题对象
    */
-  async saveTopic(topic: ChatTopic): Promise<boolean> {
-    try {
-      const result = await dexieStorage.saveTopic(topic);
-      return result;
-    } catch (error) {
-      console.error('StorageService: 保存话题失败', error);
-      return false;
-    }
+  async saveTopic(topic: ChatTopic): Promise<void> {
+    await dexieStorage.saveTopic(topic);
   }
 
   /**
@@ -311,8 +309,7 @@ class StorageService {
    */
   async getAllTopics(): Promise<ChatTopic[]> {
     try {
-      const topics = await dexieStorage.getAllTopics();
-      return topics;
+      return await dexieStorage.getAllTopics();
     } catch (error) {
       console.error('StorageService: 获取所有话题失败', error);
       return [];
@@ -323,29 +320,17 @@ class StorageService {
    * 删除话题
    * @param id 话题ID
    */
-  async deleteTopic(id: string): Promise<boolean> {
-    try {
-      const result = await dexieStorage.deleteTopic(id);
-      return result;
-    } catch (error) {
-      console.error('StorageService: 删除话题失败', error);
-      return false;
-    }
+  async deleteTopic(id: string): Promise<void> {
+    await dexieStorage.deleteTopic(id);
   }
 
   /**
    * 添加消息到话题
    * @param topicId 话题ID
-   * @param message 消息
+   * @param message 消息对象
    */
-  async addMessageToTopic(topicId: string, message: Message): Promise<boolean> {
-    try {
-      const result = await dexieStorage.addMessageToTopic(topicId, message);
-      return result;
-    } catch (error) {
-      console.error('StorageService: 添加消息失败', error);
-      return false;
-    }
+  async addMessageToTopic(topicId: string, message: Message): Promise<void> {
+    await dexieStorage.addMessageToTopic(topicId, message);
   }
 
   /**
@@ -354,47 +339,48 @@ class StorageService {
    * @param messageId 消息ID
    * @param updatedMessage 更新后的消息
    */
-  async updateMessageInTopic(topicId: string, messageId: string, updatedMessage: Message): Promise<boolean> {
-    return await dexieStorage.updateMessageInTopic(topicId, messageId, updatedMessage);
+  async updateMessageInTopic(topicId: string, messageId: string, updatedMessage: Message): Promise<void> {
+    await dexieStorage.updateMessageInTopic(topicId, messageId, updatedMessage);
   }
 
   /**
-   * 删除话题中的消息
+   * 从话题中删除消息
    * @param topicId 话题ID
    * @param messageId 消息ID
    */
-  async deleteMessageFromTopic(topicId: string, messageId: string): Promise<boolean> {
-    return await dexieStorage.deleteMessageFromTopic(topicId, messageId);
+  async deleteMessageFromTopic(topicId: string, messageId: string): Promise<void> {
+    await dexieStorage.deleteMessageFromTopic(topicId, messageId);
   }
 
   /**
-   * 保存话题到数据库 - 兼容API方法
-   * @param topic 话题对象
+   * 保存设置 (原名 setSetting)
+   * @param key 设置的键
+   * @param value 设置的值
    */
-  async saveTopicToDB(topic: ChatTopic): Promise<void> {
-    try {
-      await dexieStorage.saveTopic(topic);
-    } catch (error) {
-      console.error('StorageService: 保存话题到数据库失败', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 保存设置
-   * @param key 设置键
-   * @param value 设置值
-   */
-  async setSetting(key: string, value: any): Promise<boolean> {
-    return await dexieStorage.saveSetting(key, value);
+  async saveSetting(key: string, value: any): Promise<void> {
+    await dexieStorage.saveSetting(key, value);
   }
 
   /**
    * 获取设置
-   * @param key 设置键
+   * @param key 设置的键
    */
   async getSetting(key: string): Promise<any> {
-    return await dexieStorage.getSetting(key);
+    try {
+      return await dexieStorage.getSetting(key);
+    } catch (error) {
+      console.error('StorageService: 获取设置失败', error);
+      return null;
+    }
+  }
+
+  /**
+   * 保存图片及其元数据
+   * @param blob 图片Blob数据
+   * @param metadata 图片元数据
+   */
+  async saveImage(blob: Blob, metadata: any): Promise<string> {
+    return await dexieStorage.saveImage(blob, metadata);
   }
 }
 

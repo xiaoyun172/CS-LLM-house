@@ -7,6 +7,7 @@ import * as siliconflowApi from './siliconflow';
 import * as volcengineApi from './volcengine';
 import * as deepseekApi from './deepseek';
 import { logApiRequest, logApiResponse } from '../services/LoggerService';
+import { getSettingFromDB } from '../services/storageService';
 
 // 获取实际的提供商类型
 function getActualProviderType(model: Model): string {
@@ -267,19 +268,19 @@ export const sendChatRequest = async (options: ChatRequest): Promise<{ success: 
 
 // 根据ID查找模型
 async function findModelById(modelId: string): Promise<Model | null> {
-  // 从LocalStorage获取设置
   try {
-    const settingsJson = localStorage.getItem('settings');
-    if (!settingsJson) {
+    // 从Dexie获取设置，而不是LocalStorage
+    const settings = await getSettingFromDB('settings');
+    
+    if (!settings) {
+      console.warn('未从Dexie中获取到settings对象');
       return null;
     }
     
-    const settings = JSON.parse(settingsJson);
-    
     // 从providers中查找模型
-    if (settings.providers) {
+    if (settings.providers && Array.isArray(settings.providers)) {
       for (const provider of settings.providers) {
-        if (provider.isEnabled && provider.models) {
+        if (provider.isEnabled && provider.models && Array.isArray(provider.models)) {
           for (const model of provider.models) {
             if (model.id === modelId && model.enabled) {
               // 合并provider的一些属性到model
@@ -293,16 +294,32 @@ async function findModelById(modelId: string): Promise<Model | null> {
           }
         }
       }
+    } else {
+      console.warn('Dexie中的settings对象没有providers数组或格式不正确', settings.providers);
     }
     
     // 从models中查找模型（兼容旧格式）
-    if (settings.models) {
+    if (settings.models && Array.isArray(settings.models)) {
       const model = settings.models.find((m: Model) => m.id === modelId);
-      if (model) return model;
+      if (model) {
+        // 旧格式模型数据可能不包含provider信息，
+        // 如果需要，这里可能需要做一些默认处理或确保数据完整性
+        // 例如，尝试从 model.provider 字段（如果存在）获取 providerType
+        // 或者根据 model.id 的特征推断 providerType
+        return {
+            ...model,
+            // 确保旧格式数据也能提供必要的字段，如果 findModelById 的调用者期望它们
+            // providerType: model.providerType || (model.id.startsWith('gpt-') ? 'openai' : undefined), // 示例
+        }; 
+      }
+    } else {
+        console.warn('Dexie中的settings对象没有models数组或格式不正确（旧格式兼容检查）', settings.models);
     }
+
   } catch (error) {
-    console.error('读取模型设置失败:', error);
+    console.error('从Dexie读取或解析模型设置失败:', error);
   }
   
+  console.warn(`在Dexie的settings中未找到ID为 "${modelId}" 的启用模型`);
   return null;
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import AddIcon from '@mui/icons-material/Add';
 import { TopicService } from '../../../shared/services/TopicService';
+import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventService';
 import type { ToolbarButtonProps } from './types';
 import ToolbarButton from './ToolbarButton';
 
@@ -13,6 +14,11 @@ const NewTopicButtonV2: React.FC<ToolbarButtonProps> = ({
 }) => {
   // 创建新话题 - 使用统一的TopicService
   const handleCreateTopic = async () => {
+    // 触发新建话题事件
+    EventEmitter.emit(EVENT_NAMES.ADD_NEW_TOPIC);
+    console.log('[NewTopicButtonV2] Emitted ADD_NEW_TOPIC event.');
+    
+    // 创建新话题
     await TopicService.createNewTopic();
   };
   

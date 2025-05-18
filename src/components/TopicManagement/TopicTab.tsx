@@ -40,8 +40,7 @@ import { SystemPromptService } from '../../shared/services/SystemPromptService';
 import type { SystemPromptTemplate } from '../../shared/services/SystemPromptService';
 
 interface TopicTabProps {
-  currentAssistant: { id: string; name: string; systemPrompt?: string; } | null;
-  topics: ChatTopic[];
+  currentAssistant: ({ id: string; name: string; systemPrompt?: string; topics: ChatTopic[] }) | null;
   currentTopic: ChatTopic | null;
   onSelectTopic: (topic: ChatTopic) => void;
   onCreateTopic: () => void;
@@ -51,7 +50,6 @@ interface TopicTabProps {
 
 export default function TopicTab({
   currentAssistant,
-  topics,
   currentTopic,
   onSelectTopic,
   onCreateTopic,
@@ -99,12 +97,16 @@ export default function TopicTab({
       .sort((a, b) => a.order - b.order);
   }, [groups]);
 
-  // 获取当前助手的话题
+  // 直接从currentAssistant获取话题列表
   const assistantTopics = useMemo(() => {
-    if (!currentAssistant) return [];
-    // 直接返回所有话题
-    return topics;
-  }, [currentAssistant, topics]);
+    return currentAssistant?.topics || [];
+  }, [currentAssistant]);
+
+  // 添加调试日志以便追踪问题
+  useEffect(() => {
+    console.log('[TopicTab] currentAssistant:', currentAssistant);
+    console.log('[TopicTab] assistantTopics:', assistantTopics);
+  }, [currentAssistant, assistantTopics]);
 
   // 获取未分组的话题
   const ungroupedTopics = useMemo(() => {
@@ -138,10 +140,28 @@ export default function TopicTab({
     setSearchQuery(event.target.value);
   };
 
-  // 过滤话题列表
-  const filteredTopics = assistantTopics.filter(
-    (topic) => !searchQuery || (topic.title && topic.title.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // 筛选话题
+  const filteredTopics = useMemo(() => {
+    if (!searchQuery) return assistantTopics;
+    return assistantTopics.filter(topic => {
+      // 检查标题
+      if (topic.title && topic.title.toLowerCase().includes(searchQuery.toLowerCase())) {
+        return true;
+      }
+      
+      // 检查消息内容
+      return topic.messages.some(message => {
+        const content = message.content;
+        if (typeof content === 'string') {
+          return content.toLowerCase().includes(searchQuery.toLowerCase());
+        } else if (content && typeof content === 'object') {
+          // 如果内容是对象，检查text属性
+          return content.text ? content.text.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+        }
+        return false;
+      });
+    });
+  }, [searchQuery, assistantTopics]);
 
   // 关闭菜单
   const handleCloseMenu = () => {
@@ -322,8 +342,11 @@ export default function TopicTab({
     const isSelected = currentTopic?.id === topic.id;
     const isPendingDelete = topicPendingDelete === topic.id;
 
-    const lastMessage = topic.messages.length > 0
-      ? new Date(topic.lastMessageTime).toLocaleString('zh-CN', {
+    // 获取最后消息时间，优先使用lastMessageTime，如果不存在则使用updatedAt
+    const lastMessageTime = topic.lastMessageTime || topic.updatedAt;
+    
+    const lastMessage = topic.messages.length > 0 && lastMessageTime
+      ? new Date(lastMessageTime).toLocaleString('zh-CN', {
           hour: '2-digit',
           minute: '2-digit',
           month: 'short',
@@ -579,7 +602,7 @@ export default function TopicTab({
       ) : (
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="subtitle1">
-            {currentAssistant?.name || '所有'} 话题
+            {currentAssistant ? `${currentAssistant.name}的话题` : '所有话题'}
           </Typography>
           <Box>
             <IconButton onClick={handleSearchClick} size="small" sx={{ mr: 1 }}>

@@ -214,22 +214,14 @@ export async function restoreTopics(topics: ChatTopic[]): Promise<number> {
     console.log(`开始恢复 ${topics.length} 个话题...`);
     let successCount = 0;
 
-    // 处理每个话题
     for (const topic of topics) {
-      // 确保话题有ID
       if (!topic.id) {
         console.warn('跳过无效话题: 缺少ID');
         continue;
       }
-
       try {
-        // 保存话题
-        const success = await dexieStorage.saveTopic(topic);
-        if (success) {
-          successCount++;
-        } else {
-          console.warn(`保存话题 ${topic.id} 失败`);
-        }
+        await dexieStorage.saveTopic(topic);
+        successCount++;
       } catch (error) {
         console.error(`保存话题 ${topic.id} 时出错:`, error);
       }
@@ -258,22 +250,14 @@ export async function restoreAssistants(assistants: Assistant[]): Promise<number
     console.log(`开始恢复 ${assistants.length} 个助手...`);
     let successCount = 0;
 
-    // 处理每个助手
     for (const assistant of assistants) {
-      // 确保助手有ID
       if (!assistant.id) {
         console.warn('跳过无效助手: 缺少ID');
         continue;
       }
-
       try {
-        // 保存助手
-        const success = await dexieStorage.saveAssistant(assistant);
-        if (success) {
-          successCount++;
-        } else {
-          console.warn(`保存助手 ${assistant.id} 失败`);
-        }
+        await dexieStorage.saveAssistant(assistant);
+        successCount++;
       } catch (error) {
         console.error(`保存助手 ${assistant.id} 时出错:`, error);
       }

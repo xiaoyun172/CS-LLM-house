@@ -1,10 +1,14 @@
 import { TopicService } from '../TopicService';
 import { TopicStatsService } from '../TopicStatsService';
-import type { ChatTopic } from '../../types';
+import type { ChatTopic } from '../../types/Assistant';
+import type { Assistant } from '../../types/Assistant';
+import type { Message } from '../../types';
 import { getDefaultTopic } from './types';
 import { AssistantManager } from './AssistantManager';
 import { DEFAULT_TOPIC_PROMPT } from '../../config/prompts';
 import { dexieStorage } from '../DexieStorageService';
+import { uuid } from '../../utils';
+import { EventEmitter, EVENT_NAMES } from '../EventService';
 
 /**
  * 话题关联管理服务 - 负责助手与话题之间的关联关系管理
@@ -218,7 +222,7 @@ export class TopicManager {
 
   /**
    * 确保助手至少有一个话题
-   * 如果没有话题，将自动创建一个默认话题
+   * 如果没有话题，将抛出错误
    */
   static async ensureAssistantHasTopic(assistantId: string): Promise<ChatTopic> {
     try {
@@ -246,7 +250,7 @@ export class TopicManager {
           const topic = await TopicService.getTopicById(firstTopicId);
 
           if (topic) {
-            console.log(`[TopicManager] 助手 ${assistant.name} 已有有效话题: ${topic.title} (${topic.id})`);
+            console.log(`[TopicManager] 助手 ${assistant.name} 已有有效话题: ${topic.title || topic.name} (${topic.id})`);
             return topic;
           } else {
             console.warn(`[TopicManager] 话题ID ${firstTopicId} 存在于助手的topicIds中，但无法获取话题数据`);
@@ -256,74 +260,16 @@ export class TopicManager {
         }
       }
 
-      // 移除自动创建话题的逻辑
-      console.log(`[TopicManager] 助手 ${assistant.name} 没有有效话题`);
-      throw new Error(`助手 ${assistant.name} 没有有效话题`);
+      // 助手没有有效话题，抛出错误
+      console.error(`[TopicManager] 助手 ${assistant.name} 没有有效话题`);
+      throw new Error(`助手 ${assistant.name} 没有有效话题，请使用 AssistantFactory.createAssistant 创建助手时自动创建默认话题`);
     } catch (error) {
       console.error(`[TopicManager] 获取助手话题失败:`, error);
       throw error;
     }
   }
 
-  /**
-   * 为助手创建默认话题
-   */
-  static async createDefaultTopicForAssistant(assistantId: string): Promise<ChatTopic> {
-    try {
-      console.log(`[TopicManager] 为助手 ${assistantId} 创建默认话题`);
 
-      // 创建话题
-      const defaultTopic = getDefaultTopic(assistantId);
-      console.log(`[TopicManager] 创建默认话题对象: ${defaultTopic.title} (${defaultTopic.id})`);
-
-      try {
-        // 保存话题到数据库
-        console.log(`[TopicManager] 尝试保存话题到数据库: ${defaultTopic.id}`);
-        await dexieStorage.saveTopic(defaultTopic);
-        console.log(`[TopicManager] 话题 ${defaultTopic.id} 已成功保存到数据库`);
-      } catch (saveError) {
-        console.error(`[TopicManager] 保存话题 ${defaultTopic.id} 到数据库失败:`, saveError);
-        throw new Error(`保存话题失败: ${saveError}`);
-      }
-
-      try {
-        // 关联话题到助手
-        console.log(`[TopicManager] 尝试将话题 ${defaultTopic.id} 关联到助手 ${assistantId}`);
-        const success = await this.addTopicToAssistant(assistantId, defaultTopic.id);
-
-        if (!success) {
-          console.error(`[TopicManager] 关联话题 ${defaultTopic.id} 到助手 ${assistantId} 失败`);
-          throw new Error(`关联话题到助手失败`);
-        }
-
-        console.log(`[TopicManager] 话题 ${defaultTopic.id} 已成功关联到助手 ${assistantId}`);
-      } catch (linkError) {
-        console.error(`[TopicManager] 关联话题到助手时出错:`, linkError);
-        // 即使关联失败，仍然返回创建的话题，以便UI可以显示
-        console.warn(`[TopicManager] 虽然关联失败，但话题已创建，将返回话题对象`);
-      }
-
-      // 派发话题创建事件
-      try {
-        const event = new CustomEvent('topicCreated', {
-          detail: {
-            topic: defaultTopic,
-            assistantId
-          }
-        });
-        window.dispatchEvent(event);
-        console.log(`[TopicManager] 已派发topicCreated事件`);
-      } catch (eventError) {
-        console.warn(`[TopicManager] 派发话题创建事件失败:`, eventError);
-      }
-
-      console.log(`[TopicManager] 成功为助手 ${assistantId} 创建默认话题 ${defaultTopic.id}`);
-      return defaultTopic;
-    } catch (error) {
-      console.error(`[TopicManager] 为助手创建默认话题失败:`, error);
-      throw error;
-    }
-  }
 
   /**
    * 获取助手的默认话题（如果存在）
@@ -460,6 +406,64 @@ export class TopicManager {
     } catch (error) {
       console.error('[TopicManager] 验证所有助手话题引用时出错:', error);
       return { assistantsFixed: 0, totalAssistants: 0, totalRemoved: 0 };
+    }
+  }
+
+  /**
+   * 向话题添加助手的初始消息
+   */
+  static async addAssistantMessagesToTopic({ assistant, topic }: { assistant: Assistant; topic: ChatTopic }): Promise<void> {
+    try {
+      console.log(`[TopicManager] 尝试向话题添加助手初始消息: ${topic.id}`);
+
+      // 如果话题已经有消息，则不添加
+      if (topic.messages && topic.messages.length > 0) {
+        console.log(`[TopicManager] 话题 ${topic.id} 已有消息，不添加初始消息`);
+        return;
+      }
+
+      // 获取助手的系统提示词
+      const systemPrompt = assistant.systemPrompt || DEFAULT_TOPIC_PROMPT;
+
+      // 创建系统消息
+      const systemMessage: Message = {
+        id: uuid(),
+        role: 'system',
+        content: systemPrompt,
+        timestamp: new Date().toISOString(),
+        status: 'complete'
+      };
+
+      // 创建助手欢迎消息
+      const assistantMessage: Message = {
+        id: uuid(),
+        role: 'assistant',
+        content: '您好！我是您的AI助手，有什么可以帮您的吗？',
+        timestamp: new Date().toISOString(),
+        status: 'complete'
+      };
+
+      // 更新话题消息
+      const messages = [systemMessage, assistantMessage];
+      const updatedTopic = {
+        ...topic,
+        messages,
+        lastMessageTime: assistantMessage.timestamp
+      };
+
+      // 保存到数据库
+      await dexieStorage.saveTopic(updatedTopic);
+
+      // 派发事件通知UI更新
+      EventEmitter.emit(EVENT_NAMES.TOPIC_CREATED, {
+        topic: updatedTopic,
+        assistantId: assistant.id
+      });
+
+      console.log(`[TopicManager] 成功向话题 ${topic.id} 添加助手初始消息`);
+
+    } catch (error) {
+      console.error(`[TopicManager] 添加助手消息到话题失败:`, error);
     }
   }
 }

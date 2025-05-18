@@ -33,6 +33,7 @@ export class AssistantFactory {
         icon: React.createElement(EmojiEmotionsIcon, { sx: { color: '#FFD700' } }),
         isSystem: true,
         topicIds: [],
+        topics: [],
         systemPrompt: systemPrompt
       },
       {
@@ -42,6 +43,7 @@ export class AssistantFactory {
         icon: React.createElement(AutoAwesomeIcon, { sx: { color: '#1E90FF' } }),
         isSystem: true,
         topicIds: [],
+        topics: [],
         systemPrompt: WEB_ANALYSIS_PROMPT
       }
     ];
@@ -50,6 +52,7 @@ export class AssistantFactory {
     for (const assistant of defaultAssistants) {
       const defaultTopic = getDefaultTopic(assistant.id);
       assistant.topicIds = [defaultTopic.id];
+      assistant.topics = [defaultTopic]; // 直接添加话题对象到助手
 
       // 保存话题到数据库
       try {
@@ -83,18 +86,72 @@ export class AssistantFactory {
    * 创建新助手
    */
   static createAssistant(name: string, description = '', systemPrompt = ''): Assistant {
-    // 如果没有提供系统提示词，使用当前系统提示词或默认值
-    const activePrompt = promptService.getActiveSystemPrompt() || DEFAULT_SYSTEM_PROMPT;
-    const finalPrompt = systemPrompt || activePrompt;
-
-    return {
-      id: uuid(),
-      name,
-      description: description || `助手 ${name}`,
-      icon: React.createElement(EmojiEmotionsIcon, { sx: { color: '#4CAF50' } }),
-      isSystem: false,
-      topicIds: [],
-      systemPrompt: finalPrompt
-    };
+    try {
+      // 如果没有提供系统提示词，使用当前系统提示词或默认值
+      const activePrompt = promptService.getActiveSystemPrompt() || DEFAULT_SYSTEM_PROMPT;
+      const finalPrompt = systemPrompt || activePrompt;
+      
+      // 创建助手ID
+      const assistantId = uuid();
+      
+      // 创建默认话题
+      const defaultTopic = getDefaultTopic(assistantId);
+      
+      return {
+        id: assistantId,
+        name: name || '新助手',
+        description: description || `助手 ${name || '新助手'}`,
+        icon: null, // 设置为null，避免序列化问题
+        emoji: '😀', // 添加emoji字段，与电脑版保持一致
+        isSystem: false,
+        topicIds: [defaultTopic.id],
+        topics: [defaultTopic],
+        systemPrompt: finalPrompt,
+        type: 'assistant', // 添加type字段，与电脑版保持一致
+        // 确保其他必需的字段都有默认值
+        avatar: undefined,
+        tags: [],
+        engine: undefined,
+        model: undefined,
+        temperature: undefined,
+        maxTokens: undefined,
+        topP: undefined,
+        frequencyPenalty: undefined,
+        presencePenalty: undefined,
+        prompt: undefined,
+        maxMessagesInContext: undefined,
+        isDefault: false,
+        archived: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastUsedAt: new Date().toISOString(),
+        selectedSystemPromptId: null,
+        mcpConfigId: null,
+        tools: [],
+        tool_choice: undefined,
+        speechModel: undefined,
+        speechVoice: undefined,
+        speechSpeed: undefined,
+        responseFormat: undefined,
+        isLocal: false,
+        localModelName: undefined,
+        localModelPath: undefined,
+        localModelType: undefined,
+        file_ids: []
+      };
+    } catch (error) {
+      console.error('创建助手对象失败:', error instanceof Error ? error.message : JSON.stringify(error));
+      // 提供一个最小的有效助手对象
+      return {
+        id: uuid(),
+        name: name || '新助手(恢复)',
+        description: '创建过程中发生错误，这是恢复的助手',
+        icon: null,
+        isSystem: false,
+        topicIds: [],
+        topics: [],
+        systemPrompt: DEFAULT_SYSTEM_PROMPT
+      };
+    }
   }
 }

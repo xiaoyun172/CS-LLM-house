@@ -13,7 +13,6 @@ export interface MessagesState {
   loadingByTopic: Record<string, boolean>;
   streamingByTopic: Record<string, boolean>;
   error: string | null;
-  forceUpdateCounter: number; // 添加一个计数器来触发强制更新
 }
 
 // 初始状态
@@ -24,7 +23,6 @@ const initialState: MessagesState = {
   loadingByTopic: {},
   streamingByTopic: {},
   error: null,
-  forceUpdateCounter: 0, // 初始化计数器
 };
 
 // 话题加载处理函数
@@ -183,10 +181,6 @@ const messagesSlice = createSlice({
       // 设置为当前主题
       state.currentTopic = newTopic;
       
-      // 递增强制更新计数器
-      state.forceUpdateCounter += 1;
-      console.log(`话题创建后增加forceUpdateCounter: ${state.forceUpdateCounter}`);
-      
       // 保存到数据库
       saveTopicToDB(newTopic).catch(error => {
         console.error('保存新主题到数据库失败:', error);
@@ -227,17 +221,6 @@ const messagesSlice = createSlice({
       }
     },
 
-    // 强制更新话题列表
-    forceTopicsUpdate: (state) => {
-      // 增加计数器触发关联组件的重新渲染
-      state.forceUpdateCounter += 1;
-      console.log('强制更新话题列表，计数器:', state.forceUpdateCounter);
-      
-      // 记录更新时间
-      const timestamp = new Date().toISOString();
-      console.log(`强制更新触发时间: ${timestamp}`);
-    },
-    
     // 接收成功加载的话题数据
     loadTopicsSuccess: (state, action: PayloadAction<ChatTopic[]>) => {
       const uniqueTopics = action.payload;
@@ -305,7 +288,6 @@ export const {
   updateTopic,
   setTopicMessages,
   loadTopicsSuccess,
-  forceTopicsUpdate
 } = messagesSlice.actions;
 
 // 异步action creator

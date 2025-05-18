@@ -1,13 +1,17 @@
 import { storageService } from './storageService';
 import { AssistantService } from './assistant';
 import { DB_CONFIG } from '../types/DatabaseSchema';
-import DexieStorageService, { dexieStorage } from './DexieStorageService';
+import { dexieStorage } from './DexieStorageService';
+import { EventEmitter, EVENT_NAMES } from './EventService';
+import Dexie from 'dexie';
 
 // 导出所有服务
 export {
   storageService,
   AssistantService,
-  dexieStorage
+  dexieStorage,
+  EventEmitter,
+  EVENT_NAMES
 };
 
 // 导出数据管理工具函数
@@ -26,7 +30,7 @@ export const DataManager = {
       console.log('DataManager: 检查数据库版本');
 
       // 使用Dexie获取所有数据库
-      const databases = await DexieStorageService.getAllDatabases();
+      const databases = await Dexie.getDatabaseNames();
 
       // 检查目标数据库是否存在
       const targetDB = databases.includes(DB_CONFIG.NAME);
@@ -56,7 +60,7 @@ export const DataManager = {
       console.warn(`DataManager: 数据库版本不匹配，当前: v${currentVersion}，期望: v${DB_CONFIG.VERSION}`);
 
       // 使用Dexie删除旧数据库
-      await DexieStorageService.deleteDatabase(DB_CONFIG.NAME);
+      await Dexie.delete(DB_CONFIG.NAME);
       console.log('DataManager: 成功删除旧版本数据库');
 
       // 等待300ms确保删除操作完成

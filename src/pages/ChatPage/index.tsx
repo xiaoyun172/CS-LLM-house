@@ -18,6 +18,7 @@ import { addMessage, updateMessage, setTopicStreaming } from '../../shared/store
 import { generateId, createMessage } from '../../shared/utils';
 import WebSearchService from '../../shared/services/WebSearchService';
 import FirecrawlService from '../../shared/services/FirecrawlService';
+import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventService';
 
 const ChatPage: React.FC = () => {
   const navigate = useNavigate();
@@ -44,32 +45,44 @@ const ChatPage: React.FC = () => {
     setDrawerOpen(!isMobile);
   }, [isMobile]);
 
-  // 监听自定义事件
+  // 监听事件 (修改为 EventEmitter)
   useEffect(() => {
-    console.log('ChatPage: 设置事件监听器');
+    console.log('ChatPage: 设置事件监听器 (EventEmitter)');
 
-    const handleTopicCreated = (event: CustomEvent) => {
-      console.log('ChatPage: 接收到topicCreated事件', event.detail);
-      // 强制刷新当前状态
-      dispatch({ type: 'FORCE_TOPICS_UPDATE' });
+    const handleTopicCreated = (data: any) => {
+      console.log('ChatPage: 接收到TOPIC_CREATED事件', data);
+      // 强制刷新当前状态或执行其他必要更新
+      // 这里的 dispatch 类型可能需要根据实际的 reducer 调整
+      // 话题创建后，SidebarTabs 会自动更新，用户点击新话题时，
+      // currentTopic 状态会通过 Redux 更新，ChatPage 会自动响应 currentTopic 的变化
     };
 
-    const handleTopicCleared = (event: CustomEvent) => {
-      console.log('ChatPage: 接收到topicCleared事件', event.detail);
+    const handleTopicCleared = (data: any) => {
+      console.log('ChatPage: 接收到CLEAR_MESSAGES事件', data);
       // 强制刷新当前状态
-      dispatch({ type: 'FORCE_MESSAGES_UPDATE' });
+      // 确保 messagesSlice 中有对应的 reducer 处理 FORCE_MESSAGES_UPDATE 或类似 action
+      // 或者直接 dispatch 清空消息的 action，如果 CLEAR_MESSAGES 事件的 data 包含 topicId
+      if (data && data.topicId && currentTopic && data.topicId === currentTopic.id) {
+         dispatch({ type: 'messages/setTopicMessages', payload: { topicId: data.topicId, messages: [] } });
+      } else {
+        // 如果不匹配当前话题，或者没有 topicId，可能需要一个更通用的更新
+        // dispatch({ type: 'FORCE_MESSAGES_UPDATE' }); 
+      }
     };
 
     // 添加事件监听
-    window.addEventListener('topicCreated', handleTopicCreated as EventListener);
-    window.addEventListener('topicCleared', handleTopicCleared as EventListener);
+    const unsubTopicCreated = EventEmitter.on(EVENT_NAMES.TOPIC_CREATED, handleTopicCreated);
+    const unsubTopicCleared = EventEmitter.on(EVENT_NAMES.CLEAR_MESSAGES, handleTopicCleared);
+    // 根据 .md，旧的事件是 topicCleared，对应新的可能是 CLEAR_MESSAGES
+    // 如果还有其他自定义DOM事件需要迁移，也应在此处处理
 
     // 清理事件监听
     return () => {
-      window.removeEventListener('topicCreated', handleTopicCreated as EventListener);
-      window.removeEventListener('topicCleared', handleTopicCleared as EventListener);
+      console.log('ChatPage: 清理事件监听器 (EventEmitter)');
+      unsubTopicCreated();
+      unsubTopicCleared();
     };
-  }, [dispatch]);
+  }, [dispatch, currentTopic]); // 添加 currentTopic 到依赖项，确保 handleTopicCleared 中能获取最新值
 
   // 移除了自动创建话题的逻辑
   // 当没有当前话题时，不再自动创建新话题

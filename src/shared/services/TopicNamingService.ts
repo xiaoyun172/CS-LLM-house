@@ -20,22 +20,25 @@ export class TopicNamingService {
     const userMessages = topic.messages?.filter(m => m.role === 'user') || [];
     const assistantMessages = topic.messages?.filter(m => m.role === 'assistant' && m.status === 'complete') || [];
     
+    // 获取话题名称（优先使用name字段，兼容旧版本使用title字段）
+    const topicName = topic.name || topic.title || '';
+    
     // 添加调试日志
     console.log('自动命名检查:', {
       topicId: topic.id,
-      topicTitle: topic.title,
+      topicName,
       titleMatches: 
-        topic.title.includes('新话题') || 
-        topic.title.includes('New Topic') || 
-        topic.title.includes('新的对话') ||
-        topic.title.includes('新对话'),
+        topicName.includes('新话题') || 
+        topicName.includes('New Topic') || 
+        topicName.includes('新的对话') ||
+        topicName.includes('新对话'),
       userMsgCount: userMessages.length,
       assistantMsgCount: assistantMessages.length,
       matchesCondition: 
-        (topic.title.includes('新话题') || 
-         topic.title.includes('New Topic') || 
-         topic.title.includes('新的对话') ||
-         topic.title.includes('新对话')) && 
+        (topicName.includes('新话题') || 
+         topicName.includes('New Topic') || 
+         topicName.includes('新的对话') ||
+         topicName.includes('新对话')) && 
         userMessages.length >= 2 && 
         assistantMessages.length >= 2
     });
@@ -44,10 +47,10 @@ export class TopicNamingService {
     // 1. 标题符合默认格式（包含"新话题"、"New Topic"、"新的对话"或"新对话"）
     // 2. 用户消息和助手消息的数量都大于等于2（与电脑版保持一致）
     return (
-      (topic.title.includes('新话题') || 
-       topic.title.includes('New Topic') || 
-       topic.title.includes('新的对话') ||
-       topic.title.includes('新对话')) && 
+      (topicName.includes('新话题') || 
+       topicName.includes('New Topic') || 
+       topicName.includes('新的对话') ||
+       topicName.includes('新对话')) && 
       userMessages.length >= 2 && 
       assistantMessages.length >= 2
     );
@@ -104,13 +107,18 @@ export class TopicNamingService {
           newTitle = newTitle.slice(1, -1).trim();
         }
 
+        // 获取当前话题名称
+        const currentName = topic.name || topic.title || '';
+
         // 新标题与旧标题不同且有意义
-        if (newTitle && newTitle !== topic.title && newTitle.length > 0) {
+        if (newTitle && newTitle !== currentName && newTitle.length > 0) {
           // 更新话题标题
           console.log(`生成新标题: "${newTitle}"`);
           const updatedTopic = {
             ...topic,
-            title: newTitle
+            name: newTitle,
+            title: newTitle,
+            isNameManuallyEdited: true
           };
 
           // 在Redux中更新话题
