@@ -6,7 +6,6 @@ import {
   IconButton,
   List,
   ListItemButton,
-  ListItemIcon,
   ListItemText,
   Dialog,
   DialogTitle,
@@ -26,7 +25,6 @@ import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ForumIcon from '@mui/icons-material/Forum';
 import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
@@ -40,7 +38,13 @@ import { SystemPromptService } from '../../shared/services/SystemPromptService';
 import type { SystemPromptTemplate } from '../../shared/services/SystemPromptService';
 
 interface TopicTabProps {
-  currentAssistant: ({ id: string; name: string; systemPrompt?: string; topics: ChatTopic[] }) | null;
+  currentAssistant: ({
+    id: string;
+    name: string;
+    systemPrompt?: string;
+    topics: ChatTopic[];
+    topicIds?: string[]; // 添加可选的 topicIds 字段
+  }) | null;
   currentTopic: ChatTopic | null;
   onSelectTopic: (topic: ChatTopic) => void;
   onCreateTopic: () => void;
@@ -56,12 +60,27 @@ export default function TopicTab({
   onDeleteTopic,
   onUpdateTopic
 }: TopicTabProps) {
+  // 组件初始化时打印详细日志
+  console.log('[TopicTab] 组件渲染', {
+    currentAssistantId: currentAssistant?.id,
+    currentAssistantName: currentAssistant?.name,
+    topicsFromProps: currentAssistant?.topics?.length || 0,
+    topicIdsFromProps: currentAssistant?.topicIds?.length || 0, 
+    currentTopicId: currentTopic?.id
+  });
+  
+  // 如果助手存在但没有话题，记录错误
+  if (currentAssistant && (!currentAssistant.topics || currentAssistant.topics.length === 0)) {
+    console.error('[TopicTab] 警告: 当前助手没有话题数组或话题数组为空', {
+      assistant: currentAssistant.id,
+      hasTopic: !!currentAssistant.topics,
+      topicIdsLength: currentAssistant.topicIds?.length || 0
+    });
+  }
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const dispatch = useDispatch();
-
-  // 新增：添加删除确认状态，存储正在准备删除的话题ID
-  const [topicPendingDelete, setTopicPendingDelete] = useState<string | null>(null);
 
   // 话题菜单相关状态
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -97,15 +116,50 @@ export default function TopicTab({
       .sort((a, b) => a.order - b.order);
   }, [groups]);
 
-  // 直接从currentAssistant获取话题列表
+  // 从Redux状态获取话题列表
   const assistantTopics = useMemo(() => {
-    return currentAssistant?.topics || [];
+    if (!currentAssistant) return [];
+
+    // 如果currentAssistant.topics存在且有内容，则使用它
+    if (currentAssistant.topics && currentAssistant.topics.length > 0) {
+      console.log('[TopicTab] 使用currentAssistant.topics，数量:', currentAssistant.topics.length);
+      return currentAssistant.topics;
+    }
+
+    // 否则，尝试从topicIds加载话题
+    if (currentAssistant.topicIds && currentAssistant.topicIds.length > 0) {
+      console.log('[TopicTab] currentAssistant.topics为空，但有topicIds，数量:', currentAssistant.topicIds.length);
+      console.warn('[TopicTab] 话题数据不一致，请检查useAssistant钩子是否正确加载话题');
+    }
+
+    return [];
   }, [currentAssistant]);
 
   // 添加调试日志以便追踪问题
   useEffect(() => {
     console.log('[TopicTab] currentAssistant:', currentAssistant);
     console.log('[TopicTab] assistantTopics:', assistantTopics);
+
+    // 检查 topics 和 topicIds 是否同步
+    if (currentAssistant) {
+      console.log('[TopicTab] currentAssistant.name:', currentAssistant.name);
+      console.log('[TopicTab] currentAssistant.id:', currentAssistant.id);
+      console.log('[TopicTab] currentAssistant.topics.length:', currentAssistant.topics?.length || 0);
+
+      // 检查是否有 topicIds 中的 ID 不在 topics 中
+      if (currentAssistant.topicIds && currentAssistant.topics) {
+        console.log('[TopicTab] currentAssistant.topicIds:', currentAssistant.topicIds);
+
+        const missingTopics = currentAssistant.topicIds.filter(
+          (id: string) => !currentAssistant.topics.some(topic => topic.id === id)
+        );
+        if (missingTopics.length > 0) {
+          console.warn('[TopicTab] 发现 topicIds 中存在但 topics 中不存在的话题:', missingTopics);
+        }
+      }
+    } else {
+      console.warn('[TopicTab] currentAssistant 为 null 或 undefined');
+    }
   }, [currentAssistant, assistantTopics]);
 
   // 获取未分组的话题
@@ -148,7 +202,7 @@ export default function TopicTab({
       if (topic.title && topic.title.toLowerCase().includes(searchQuery.toLowerCase())) {
         return true;
       }
-      
+
       // 检查消息内容
       return topic.messages.some(message => {
         const content = message.content;
@@ -257,16 +311,16 @@ export default function TopicTab({
     handleCloseAddToGroupMenu();
   };
 
-  // 从分组中移除话题
-  const handleRemoveFromGroup = (event: React.MouseEvent, topic: ChatTopic) => {
-    event.stopPropagation();
-    event.preventDefault();
-
-    dispatch(removeItemFromGroup({
-      itemId: topic.id,
-      type: 'topic'
-    }));
-  };
+  // handleRemoveFromGroup未使用但预留，暂时添加注释以避免TypeScript警告
+  // const handleRemoveFromGroup = (event: React.MouseEvent, topic: ChatTopic) => {
+  //   event.stopPropagation();
+  //   if (topicGroupMap[topic.id]) {
+  //     dispatch(removeItemFromGroup({
+  //       itemId: topic.id,
+  //       type: 'topic'
+  //     }));
+  //   }
+  // };
 
   // 添加话题到新分组
   const handleAddToNewGroup = () => {
@@ -274,24 +328,19 @@ export default function TopicTab({
     handleCloseAddToGroupMenu();
   };
 
-  // 新增：处理话题删除按钮点击
-  const handleDeleteClick = (event: React.MouseEvent, topicId: string) => {
-    event.stopPropagation();
-
-    if (topicPendingDelete === topicId) {
-      // 如果是第二次点击同一个话题，执行删除
-      onDeleteTopic(topicId, event);
-      setTopicPendingDelete(null); // 重置删除状态
-    } else {
-      // 第一次点击，标记为准备删除状态
-      setTopicPendingDelete(topicId);
-
-      // 添加5秒后自动重置删除状态的计时器
-      setTimeout(() => {
-        setTopicPendingDelete(current => current === topicId ? null : current);
-      }, 5000);
-    }
-  };
+  // handleDeleteClick未使用但预留，暂时添加注释以避免TypeScript警告
+  // const handleDeleteClick = (event: React.MouseEvent, topicId: string) => {
+  //   event.stopPropagation();
+  //   event.preventDefault();
+  //   setTopicPendingDelete(topicId);
+  //   // 设置2秒后清除状态，如果用户没确认删除
+  //   setTimeout(() => {
+  //     // 防止清除后来设置的其他topicPendingDelete
+  //     if (topicPendingDelete === topicId) {
+  //       setTopicPendingDelete(null);
+  //     }
+  //   }, 2000);
+  // };
 
   // 编辑话题名称
   const handleEditTopicName = () => {
@@ -325,14 +374,14 @@ export default function TopicTab({
   const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const templateId = e.target.value;
     setSelectedTemplateId(templateId);
-    
+
     if (templateId) {
       const template = templates.find(t => t.id === templateId);
       if (template) {
         setTopicPrompt(template.content);
       }
     }
-    
+
     // 如果选择了模板，关闭使用助手提示词的选项
     setUseAssistantPrompt(false);
   };
@@ -340,31 +389,32 @@ export default function TopicTab({
   // 渲染单个话题项
   const renderTopicItem = (topic: ChatTopic, index: number, inGroup: boolean = false) => {
     const isSelected = currentTopic?.id === topic.id;
-    const isPendingDelete = topicPendingDelete === topic.id;
 
-    // 获取最后消息时间，优先使用lastMessageTime，如果不存在则使用updatedAt
-    const lastMessageTime = topic.lastMessageTime || topic.updatedAt;
-    
-    const lastMessage = topic.messages.length > 0 && lastMessageTime
-      ? new Date(lastMessageTime).toLocaleString('zh-CN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          month: 'short',
-          day: 'numeric'
-        })
-      : '';
+    // 添加触发点击话题的处理函数，带详细日志
+    const handleTopicClick = () => {
+      console.log('[TopicTab] 话题被点击:', {
+        topicId: topic.id,
+        topicName: topic.name,
+        isSelected,
+        currentTopicId: currentTopic?.id,
+        assistantId: currentAssistant?.id,
+        topicAssistantId: topic.assistantId
+      });
+      onSelectTopic(topic);
+    };
 
     return (
       <Box key={topic.id} sx={{ position: 'relative' }}>
         {inGroup ? (
           <DraggableItem id={topic.id} index={index}>
             <ListItemButton
-              onClick={() => onSelectTopic(topic)}
+              onClick={handleTopicClick}
               selected={isSelected}
               sx={{
                 borderRadius: '8px',
                 mb: 1,
                 pl: 2,
+                height: '40px',
                 '&.Mui-selected': {
                   backgroundColor: 'rgba(25, 118, 210, 0.08)',
                 },
@@ -373,54 +423,50 @@ export default function TopicTab({
                 }
               }}
             >
-              <ListItemIcon sx={{ minWidth: 40 }}>
-                <ForumIcon fontSize="small" color={isSelected ? "primary" : "action"} />
-              </ListItemIcon>
               <ListItemText
-                primary={topic.title || '新对话'}
-                secondary={lastMessage}
+                primary={topic.name || topic.title}
                 primaryTypographyProps={{
                   variant: 'body2',
                   fontWeight: isSelected ? 600 : 400,
-                  noWrap: true
-                }}
-                secondaryTypographyProps={{
-                  variant: 'caption',
-                  noWrap: true
+                  sx: {
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }
                 }}
               />
-
-              {/* 删除图标 */}
-              <IconButton
-                size="small"
-                onClick={(e) => handleDeleteClick(e, topic.id)}
-                sx={{ mr: 0.5 }}
-              >
-                <DeleteIcon
-                  fontSize="small"
-                  sx={{
-                    color: isPendingDelete ? 'error.main' : 'action.disabled',
-                    transition: 'color 0.2s'
+              {isSelected && (
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteTopic(topic.id, e);
                   }}
-                />
-              </IconButton>
-
-              <IconButton
-                size="small"
-                onClick={(e) => handleRemoveFromGroup(e, topic)}
-                sx={{ mr: -1 }}
-              >
-                <CloseIcon fontSize="small" />
-              </IconButton>
+                  sx={{ ml: 1, p: 0 }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              )}
+              {!isSelected && (
+                <IconButton
+                  size="small"
+                  onClick={(e) => handleAddToGroupMenu(e, topic)}
+                  sx={{ ml: 1, opacity: 0.6 }}
+                >
+                  <MoreVertIcon fontSize="small" />
+                </IconButton>
+              )}
             </ListItemButton>
           </DraggableItem>
         ) : (
           <ListItemButton
-            onClick={() => onSelectTopic(topic)}
+            onClick={handleTopicClick}
             selected={isSelected}
             sx={{
               borderRadius: '8px',
               mb: 1,
+              pl: 2,
+              height: '40px',
               '&.Mui-selected': {
                 backgroundColor: 'rgba(25, 118, 210, 0.08)',
               },
@@ -429,49 +475,39 @@ export default function TopicTab({
               }
             }}
           >
-            <ListItemIcon sx={{ minWidth: 40 }}>
-              <ForumIcon fontSize="small" color={isSelected ? "primary" : "action"} />
-            </ListItemIcon>
             <ListItemText
-              primary={topic.title || '新对话'}
-              secondary={lastMessage}
+              primary={topic.name || topic.title}
               primaryTypographyProps={{
                 variant: 'body2',
                 fontWeight: isSelected ? 600 : 400,
-                noWrap: true
-              }}
-              secondaryTypographyProps={{
-                variant: 'caption',
-                noWrap: true
+                sx: {
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }
               }}
             />
-
-            {/* 删除图标 */}
-            <IconButton
-              size="small"
-              onClick={(e) => handleDeleteClick(e, topic.id)}
-              sx={{ mr: 0.5 }}
-            >
-              <DeleteIcon
-                fontSize="small"
-                sx={{
-                  color: isPendingDelete ? 'error.main' : 'action.disabled',
-                  transition: 'color 0.2s'
+            {isSelected && (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteTopic(topic.id, e);
                 }}
-              />
-            </IconButton>
-
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                setContextTopic(topic);
-                setMenuAnchorEl(e.currentTarget);
-              }}
-              sx={{ mr: -1 }}
-            >
-              <MoreVertIcon fontSize="small" />
-            </IconButton>
+                sx={{ ml: 1, p: 0 }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            )}
+            {!isSelected && (
+              <IconButton
+                size="small"
+                onClick={(e) => handleAddToGroupMenu(e, topic)}
+                sx={{ ml: 1, opacity: 0.6 }}
+              >
+                <MoreVertIcon fontSize="small" />
+              </IconButton>
+            )}
           </ListItemButton>
         )}
       </Box>
@@ -602,7 +638,7 @@ export default function TopicTab({
       ) : (
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="subtitle1">
-            {currentAssistant ? `${currentAssistant.name}的话题` : '所有话题'}
+            {currentAssistant?.name ? `${currentAssistant.name}的话题` : '所有话题'}
           </Typography>
           <Box>
             <IconButton onClick={handleSearchClick} size="small" sx={{ mr: 1 }}>
@@ -705,7 +741,7 @@ export default function TopicTab({
               label="使用提示词模板"
             />
           </Box>
-          
+
           {useTemplate && (
             <FormControl fullWidth margin="dense" sx={{ mb: 2 }}>
               <InputLabel>选择提示词模板</InputLabel>

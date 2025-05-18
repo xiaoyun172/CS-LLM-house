@@ -407,57 +407,84 @@ export class TopicManager {
   }
 
   /**
-   * 向话题添加助手的初始消息
+   * 向话题添加助手的初始消息，并确保话题与助手正确关联
    */
   static async addAssistantMessagesToTopic({ assistant, topic }: { assistant: Assistant; topic: ChatTopic }): Promise<void> {
     try {
       console.log(`[TopicManager] 尝试向话题添加助手初始消息: ${topic.id}`);
 
-      // 如果话题已经有消息，则不添加
-      if (topic.messages && topic.messages.length > 0) {
-        console.log(`[TopicManager] 话题 ${topic.id} 已有消息，不添加初始消息`);
-        return;
+      // 确保话题的assistantId正确
+      if (topic.assistantId !== assistant.id) {
+        console.warn(`[TopicManager] 话题 ${topic.id} 的assistantId (${topic.assistantId}) 与助手ID (${assistant.id}) 不匹配，正在修正`);
+        topic.assistantId = assistant.id;
       }
 
-      // 获取助手的系统提示词
-      const systemPrompt = assistant.systemPrompt || DEFAULT_TOPIC_PROMPT;
+      // 确保助手的topicIds包含此话题
+      let assistantNeedsUpdate = false;
+      const topicIds = Array.isArray(assistant.topicIds) ? [...assistant.topicIds] : [];
 
-      // 创建系统消息
-      const systemMessage: Message = {
-        id: uuid(),
-        role: 'system',
-        content: systemPrompt,
-        timestamp: new Date().toISOString(),
-        status: 'complete'
-      };
+      if (!topicIds.includes(topic.id)) {
+        console.log(`[TopicManager] 助手 ${assistant.id} 的topicIds不包含话题 ${topic.id}，正在添加`);
+        topicIds.push(topic.id);
+        assistantNeedsUpdate = true;
+      }
 
-      // 创建助手欢迎消息
-      const assistantMessage: Message = {
-        id: uuid(),
-        role: 'assistant',
-        content: '您好！我是您的AI助手，有什么可以帮您的吗？',
-        timestamp: new Date().toISOString(),
-        status: 'complete'
-      };
+      // 如果话题已经有消息，则不添加新消息，但仍然确保关联关系正确
+      if (topic.messages && topic.messages.length > 0) {
+        console.log(`[TopicManager] 话题 ${topic.id} 已有消息，不添加初始消息，但确保关联关系正确`);
+      } else {
+        // 获取助手的系统提示词
+        const systemPrompt = assistant.systemPrompt || DEFAULT_TOPIC_PROMPT;
 
-      // 更新话题消息
-      const messages = [systemMessage, assistantMessage];
-      const updatedTopic = {
-        ...topic,
-        messages,
-        lastMessageTime: assistantMessage.timestamp
-      };
+        // 创建系统消息
+        const systemMessage: Message = {
+          id: uuid(),
+          role: 'system',
+          content: systemPrompt,
+          timestamp: new Date().toISOString(),
+          status: 'complete'
+        };
 
-      // 保存到数据库
-      await dexieStorage.saveTopic(updatedTopic);
+        // 创建助手欢迎消息
+        const assistantMessage: Message = {
+          id: uuid(),
+          role: 'assistant',
+          content: '您好！我是您的AI助手，有什么可以帮您的吗？',
+          timestamp: new Date().toISOString(),
+          status: 'complete'
+        };
+
+        // 更新话题消息
+        topic.messages = [systemMessage, assistantMessage];
+        topic.lastMessageTime = assistantMessage.timestamp;
+      }
+
+      // 保存话题到数据库
+      await dexieStorage.saveTopic(topic);
+      console.log(`[TopicManager] 已保存话题 ${topic.id} 到数据库`);
+
+      // 如果需要更新助手，保存助手到数据库
+      if (assistantNeedsUpdate) {
+        const updatedAssistant = {
+          ...assistant,
+          topicIds
+        };
+
+        const success = await AssistantManager.updateAssistant(updatedAssistant);
+        if (success) {
+          console.log(`[TopicManager] 已更新助手 ${assistant.id} 的topicIds`);
+        } else {
+          console.error(`[TopicManager] 更新助手 ${assistant.id} 的topicIds失败`);
+        }
+      }
 
       // 派发事件通知UI更新
       EventEmitter.emit(EVENT_NAMES.TOPIC_CREATED, {
-        topic: updatedTopic,
+        topic,
         assistantId: assistant.id
       });
 
-      console.log(`[TopicManager] 成功向话题 ${topic.id} 添加助手初始消息`);
+      console.log(`[TopicManager] 成功向话题 ${topic.id} 添加助手初始消息并确保关联关系正确`);
 
     } catch (error) {
       console.error(`[TopicManager] 添加助手消息到话题失败:`, error);

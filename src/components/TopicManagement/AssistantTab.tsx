@@ -42,6 +42,7 @@ import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import FolderIcon from '@mui/icons-material/Folder';
 import EditOffIcon from '@mui/icons-material/EditOff';
 import EditAttributesIcon from '@mui/icons-material/EditAttributes';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { type Assistant } from '../../shared/types/Assistant';
 import { useDispatch, useSelector } from 'react-redux';
 import type { RootState } from '../../shared/store';
@@ -391,16 +392,16 @@ export default function AssistantTab({
     handleCloseAddToGroupMenu();
   };
 
-  // 从分组中移除助手
-  const handleRemoveFromGroup = (event: React.MouseEvent, assistant: Assistant) => {
-    event.stopPropagation();
-    event.preventDefault();
-
-    dispatch(removeItemFromGroup({
-      itemId: assistant.id,
-      type: 'assistant'
-    }));
-  };
+  // handleRemoveFromGroup未使用但预留，暂时添加注释以避免TypeScript警告
+  // const handleRemoveFromGroup = (event: React.MouseEvent, assistant: Assistant) => {
+  //   event.stopPropagation();
+  //   if (assistantGroupMap[assistant.id]) {
+  //     dispatch(removeItemFromGroup({
+  //       itemId: assistant.id,
+  //       type: 'assistant'
+  //     }));
+  //   }
+  // };
 
   // 关闭编辑对话框
   const handleCloseEditDialog = () => {
@@ -453,6 +454,7 @@ export default function AssistantTab({
                 borderRadius: '8px',
                 mb: 1,
                 pl: 2,
+                height: '40px',
                 '&.Mui-selected': {
                   backgroundColor: 'rgba(25, 118, 210, 0.08)',
                 },
@@ -466,7 +468,25 @@ export default function AssistantTab({
               </ListItemIcon>
               <ListItemText
                 primary={assistant.name}
-                secondary={`${assistant.topicIds?.length || 0}个话题`}
+                secondary={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="caption">
+                      {`${assistant.topicIds?.length || 0}个话题`}
+                    </Typography>
+                    {isSelected && (
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
+                        }}
+                        sx={{ ml: 1, p: 0 }}
+                      >
+                        <ArrowForwardIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                }
                 primaryTypographyProps={{
                   variant: 'body2',
                   fontWeight: isSelected ? 600 : 400
@@ -475,20 +495,11 @@ export default function AssistantTab({
                   variant: 'caption'
                 }}
               />
-
-              {isGroupEditMode ? (
-                <IconButton
-                  size="small"
-                  onClick={(e) => handleRemoveFromGroup(e, assistant)}
-                  sx={{ mr: -1 }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              ) : (
+              {!isSelected && (
                 <IconButton
                   size="small"
                   onClick={(e) => handleOpenMenu(e, assistant)}
-                  sx={{ mr: -1 }}
+                  sx={{ ml: 1, opacity: 0.6 }}
                 >
                   <MoreVertIcon fontSize="small" />
                 </IconButton>
@@ -502,6 +513,8 @@ export default function AssistantTab({
             sx={{
               borderRadius: '8px',
               mb: 1,
+              pl: 2,
+              height: '40px',
               '&.Mui-selected': {
                 backgroundColor: 'rgba(25, 118, 210, 0.08)',
               },
@@ -515,7 +528,25 @@ export default function AssistantTab({
             </ListItemIcon>
             <ListItemText
               primary={assistant.name}
-              secondary={`${assistant.topicIds?.length || 0}个话题`}
+              secondary={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Typography variant="caption">
+                    {`${assistant.topicIds?.length || 0}个话题`}
+                  </Typography>
+                  {isSelected && (
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
+                      }}
+                      sx={{ ml: 1, p: 0 }}
+                    >
+                      <ArrowForwardIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
+              }
               primaryTypographyProps={{
                 variant: 'body2',
                 fontWeight: isSelected ? 600 : 400
@@ -524,14 +555,15 @@ export default function AssistantTab({
                 variant: 'caption'
               }}
             />
-
-            <IconButton
-              size="small"
-              onClick={(e) => handleOpenMenu(e, assistant)}
-              sx={{ mr: -1 }}
-            >
-              <MoreVertIcon fontSize="small" />
-            </IconButton>
+            {!isSelected && (
+              <IconButton
+                size="small"
+                onClick={(e) => handleOpenMenu(e, assistant)}
+                sx={{ ml: 1, opacity: 0.6 }}
+              >
+                <MoreVertIcon fontSize="small" />
+              </IconButton>
+            )}
           </ListItemButton>
         )}
       </Box>

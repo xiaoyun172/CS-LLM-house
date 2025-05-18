@@ -44,37 +44,58 @@ export class TopicService {
    */
   static async createNewTopic(): Promise<ChatTopic | null> {
     try {
+      console.log('[TopicService] 开始创建新话题');
+
       const currentAssistantId = await this.getCurrentAssistantId();
       if (!currentAssistantId) {
         console.error('[TopicService] 无法创建话题，未找到当前助手ID');
         return null;
       }
-      
+
+      console.log('[TopicService] 当前助手ID:', currentAssistantId);
+
       // 获取当前助手
       const assistant = await AssistantService.getCurrentAssistant();
       if (!assistant) {
         console.error('[TopicService] 无法创建话题，未找到当前助手');
         return null;
       }
-      
+
+      console.log('[TopicService] 当前助手:', assistant.name);
+
       // 创建默认话题
       const topic = await import('./assistant/types').then(module => module.getDefaultTopic(currentAssistantId));
-      
+      console.log('[TopicService] 创建默认话题:', topic.id);
+
+      // 确保话题的assistantId正确
+      if (topic.assistantId !== currentAssistantId) {
+        console.warn(`[TopicService] 话题的assistantId (${topic.assistantId}) 与当前助手ID (${currentAssistantId}) 不匹配，正在修正`);
+        topic.assistantId = currentAssistantId;
+      }
+
       // 保存话题到数据库
       await dexieStorage.saveTopic(topic);
-      
+      console.log('[TopicService] 已保存话题到数据库');
+
+      // 添加话题到助手的topicIds
+      await AssistantService.addTopicToAssistant(currentAssistantId, topic.id);
+      console.log('[TopicService] 已添加话题到助手的topicIds');
+
       // 添加助手消息到话题
       await AssistantService.addAssistantMessagesToTopic({ assistant, topic });
-      
+      console.log('[TopicService] 已添加助手消息到话题');
+
       // 添加话题到Redux store
       store.dispatch(addTopic({ assistantId: currentAssistantId, topic }));
-      
+      console.log('[TopicService] 已添加话题到Redux store');
+
       // 发送事件通知其他组件
       EventEmitter.emit(EVENT_NAMES.TOPIC_CREATED, {
         topic,
         assistantId: currentAssistantId
       });
-      
+      console.log('[TopicService] 已发送话题创建事件');
+
       return topic;
     } catch (error) {
       console.error('[TopicService] 创建新话题失败:', error);
@@ -189,7 +210,7 @@ export class TopicService {
     try {
       // 保存到数据库
       await dexieStorage.saveTopic(topic);
-      
+
       // 如果话题有关联的助手ID，更新 Redux store 中的话题
       if (topic.assistantId) {
         store.dispatch(updateTopic({
@@ -212,19 +233,19 @@ export class TopicService {
       // 在删除话题之前，获取话题信息以确定其关联的助手
       const topic = await this.getTopicById(id);
       const assistantId = topic?.assistantId;
-      
+
       // 删除话题
       await dexieStorage.deleteTopic(id);
-      
+
       // 如果找到关联的助手ID，更新 Redux store 中的助手状态
       if (assistantId) {
         // 更新助手的 topicIds 数组（通过 AssistantService）
         await AssistantService.removeTopicFromAssistant(assistantId, id);
-        
+
         // 更新 Redux store 中的助手话题数组
         store.dispatch(removeTopic({ assistantId, topicId: id }));
       }
-      
+
       // 发送删除话题事件
       EventEmitter.emit(EVENT_NAMES.TOPIC_DELETED, { topicId: id, assistantId });
     } catch (error) {
@@ -246,14 +267,14 @@ export class TopicService {
         EventEmitter.emit(EVENT_NAMES.SERVICE_ERROR, { serviceName: 'TopicService', error: new Error(errorMessage), message: errorMessage });
         throw new Error(errorMessage);
       }
-      
+
       // 将消息添加到话题
       topic.messages.push(message);
       topic.lastMessageTime = message.timestamp;
-      
+
       // 保存话题到数据库
       await dexieStorage.saveTopic(topic);
-      
+
       // 如果话题有关联的助手ID，更新 Redux store 中的话题
       if (topic.assistantId) {
         store.dispatch(updateTopic({

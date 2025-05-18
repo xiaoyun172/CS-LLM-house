@@ -16,6 +16,7 @@ import type { RootState } from '../../shared/store';
 import { TopicService } from '../../shared/services/TopicService';
 import { getStorageItem, setStorageItem } from '../../shared/utils/storage';
 import { useAssistant } from '../../shared/hooks'; // 导入新的钩子
+import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventService';
 
 // 导入子组件
 import AssistantTab from './AssistantTab';
@@ -48,10 +49,14 @@ function TabPanel(props: TabPanelProps) {
       hidden={value !== index}
       id={`sidebar-tabpanel-${index}`}
       aria-labelledby={`sidebar-tab-${index}`}
-      style={{ height: 'calc(100% - 48px)', overflow: 'auto' }}
+      style={{
+        height: 'calc(100% - 48px)',
+        overflow: 'auto',
+        padding: '10px',
+      }}
       {...other}
     >
-      {value === index && <Box sx={{ p: 1 }}>{children}</Box>}
+      {value === index && <Box>{children}</Box>}
     </div>
   );
 }
@@ -76,13 +81,28 @@ export default function SidebarTabs() {
   const {
     assistant: assistantWithTopics,
     updateTopic: updateAssistantTopic,
+    refreshTopics, // 添加refreshTopics函数
   } = useAssistant(currentAssistant?.id || null);
 
   // 添加调试日志以便追踪问题
   useEffect(() => {
-    console.log('[SidebarTabs] currentAssistant:', currentAssistant);
-    console.log('[SidebarTabs] assistantWithTopics:', assistantWithTopics);
-  }, [currentAssistant, assistantWithTopics]);
+    console.log('[SidebarTabs] currentAssistant:', currentAssistant?.name, currentAssistant?.id);
+    console.log('[SidebarTabs] assistantWithTopics:', assistantWithTopics?.name, assistantWithTopics?.id);
+
+    // 检查assistantWithTopics是否有话题
+    if (assistantWithTopics) {
+      console.log('[SidebarTabs] assistantWithTopics.topics:', assistantWithTopics.topics?.length || 0);
+      console.log('[SidebarTabs] assistantWithTopics.topicIds:', assistantWithTopics.topicIds?.length || 0);
+
+      if (!assistantWithTopics.topics || assistantWithTopics.topics.length === 0) {
+        console.warn('[SidebarTabs] assistantWithTopics没有话题，尝试刷新话题');
+        refreshTopics(); // 刷新话题
+      }
+    } else if (currentAssistant) {
+      console.warn('[SidebarTabs] assistantWithTopics为null，但currentAssistant存在，尝试刷新话题');
+      refreshTopics(); // 刷新话题
+    }
+  }, [currentAssistant, assistantWithTopics, refreshTopics]);
 
   const { currentTopic } = useSelector((state: RootState) => ({
     currentTopic: state.messages.currentTopic
@@ -108,20 +128,42 @@ export default function SidebarTabs() {
   // 加载助手列表
   const loadAssistants = async () => {
     try {
+      console.log('[SidebarTabs] 开始加载助手列表');
       const assistants = await AssistantService.getUserAssistants();
+      console.log('[SidebarTabs] 获取到助手列表:', assistants.length);
       setUserAssistants(assistants);
 
-      const cachedAssistantId = await getStorageItem<string>(CURRENT_ASSISTANT_ID_KEY);
+      // 获取当前助手ID
+      const currentAssistant = await AssistantService.getCurrentAssistant();
+      console.log('[SidebarTabs] 获取到当前助手:', currentAssistant?.name);
 
-      if (cachedAssistantId && assistants.length > 0) {
-        const cachedAssistant = assistants.find(assistant => assistant.id === cachedAssistantId);
-        if (cachedAssistant) {
-          setCurrentAssistant(cachedAssistant);
-        } else {
+      if (currentAssistant) {
+        // 如果有当前助手，直接使用
+        setCurrentAssistant(currentAssistant);
+      } else {
+        // 否则，尝试从缓存中获取
+        const cachedAssistantId = await getStorageItem<string>(CURRENT_ASSISTANT_ID_KEY);
+        console.log('[SidebarTabs] 从缓存获取到助手ID:', cachedAssistantId);
+
+        if (cachedAssistantId && assistants.length > 0) {
+          const cachedAssistant = assistants.find(assistant => assistant.id === cachedAssistantId);
+          if (cachedAssistant) {
+            console.log('[SidebarTabs] 从缓存找到助手:', cachedAssistant.name);
+            setCurrentAssistant(cachedAssistant);
+            // 设置当前助手到数据库
+            await AssistantService.setCurrentAssistant(cachedAssistant.id);
+          } else if (assistants.length > 0) {
+            console.log('[SidebarTabs] 缓存助手不存在，使用第一个助手:', assistants[0].name);
+            setCurrentAssistant(assistants[0]);
+            // 设置当前助手到数据库
+            await AssistantService.setCurrentAssistant(assistants[0].id);
+          }
+        } else if (assistants.length > 0) {
+          console.log('[SidebarTabs] 没有缓存助手，使用第一个助手:', assistants[0].name);
           setCurrentAssistant(assistants[0]);
+          // 设置当前助手到数据库
+          await AssistantService.setCurrentAssistant(assistants[0].id);
         }
-      } else if (assistants.length > 0) {
-        setCurrentAssistant(assistants[0]);
       }
 
       // setLoading(false); // setLoading 将在 initializeData 中处理
@@ -188,19 +230,76 @@ export default function SidebarTabs() {
     }
   }, [currentAssistant?.id, persistCurrentAssistantId]);
 
+  // 监听SHOW_TOPIC_SIDEBAR事件，切换到话题标签页
+  useEffect(() => {
+    const unsubscribe = EventEmitter.on(EVENT_NAMES.SHOW_TOPIC_SIDEBAR, () => {
+      setValue(1); // 切换到话题标签页（索引为1）
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   // 标签页切换
   const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
+    console.log(`[SidebarTabs] 标签页切换: ${value} -> ${newValue}`, {
+      currentAssistant: currentAssistant?.id,
+      assistantWithTopics: assistantWithTopics?.id,
+      topicsCount: assistantWithTopics?.topics?.length || 0,
+      topicIds: assistantWithTopics?.topicIds?.length || 0,
+      currentTopic: currentTopic?.id
+    });
+
+    if (newValue === 1) { // 切换到话题标签页
+      console.log('[SidebarTabs] 切换到话题标签页，话题详情:',
+        assistantWithTopics?.topics?.map((t: ChatTopic) => ({id: t.id, name: t.name})) || []);
+    }
+
     setValue(newValue);
   };
 
   // 选择助手
   const handleSelectAssistant = async (assistant: Assistant) => {
+    console.log('[SidebarTabs] 选择助手:', assistant.name, assistant.id);
+
+    // 设置当前助手
     setCurrentAssistant(assistant);
+
+    // 设置当前助手到数据库
+    await AssistantService.setCurrentAssistant(assistant.id);
+
+    // 如果当前话题不属于选中的助手，清除当前话题
     if (currentTopic && currentTopic.assistantId !== assistant.id) {
       dispatch(setCurrentTopic(null));
     }
-    // 添加自动切换到话题标签页的逻辑
-    setValue(1); // 切换到话题标签页（索引1）
+
+    // 确保助手有话题
+    try {
+      // 检查助手是否有话题
+      const topicIds = await AssistantService.getAssistantTopics(assistant.id);
+      console.log('[SidebarTabs] 助手话题IDs:', topicIds);
+
+      if (topicIds.length === 0) {
+        console.warn('[SidebarTabs] 助手没有话题，尝试创建默认话题');
+        // 创建默认话题
+        const newTopic = await TopicService.createNewTopic();
+        if (newTopic) {
+          console.log('[SidebarTabs] 成功创建默认话题:', newTopic.id);
+
+          // 刷新话题列表
+          refreshTopics();
+        }
+      } else {
+        // 刷新话题列表
+        refreshTopics();
+      }
+    } catch (error) {
+      console.error('[SidebarTabs] 检查助手话题时出错:', error);
+    }
+
+    // 触发显示话题侧边栏事件
+    EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
   };
 
   // 添加助手
@@ -302,65 +401,101 @@ export default function SidebarTabs() {
     updateAssistantTopic(topic); // 来自 useAssistant
   };
 
-  // 渲染加载状态
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ width: '100%', height: '100%', bgcolor: 'background.paper' }}>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs
-          value={value}
-          onChange={handleChange}
-          aria-label="sidebar tabs"
-          variant="fullWidth"
-          sx={{ minHeight: '48px' }}
-        >
-          <Tab label="助手" {...a11yProps(0)} sx={{ minHeight: '48px' }} />
-          <Tab label="话题" {...a11yProps(1)} sx={{ minHeight: '48px' }} />
-          <Tab label="设置" {...a11yProps(2)} sx={{ minHeight: '48px', color: value === 2 ? 'primary.main' : 'inherit' }} />
-        </Tabs>
-      </Box>
+    <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs
+              value={value}
+              onChange={handleChange}
+              aria-label="sidebar tabs"
+              variant="fullWidth"
+              sx={{
+                minHeight: '48px',
+                margin: '0 10px',
+                padding: '10px 0',
+                '& .MuiTabs-indicator': {
+                  display: 'none', // 隐藏底部指示器
+                },
+                '& .MuiTab-root': {
+                  minHeight: '32px',
+                  borderRadius: '8px',
+                  transition: 'background-color 0.3s',
+                  '&.Mui-selected': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.06)', // 选中标签的背景色
+                  },
+                },
+              }}
+            >
+              <Tab
+                label="助手"
+                {...a11yProps(0)}
+                sx={{
+                  minHeight: '32px',
+                  borderRadius: '8px',
+                }}
+              />
+              <Tab
+                label="话题"
+                {...a11yProps(1)}
+                sx={{
+                  minHeight: '32px',
+                  borderRadius: '8px',
+                }}
+              />
+              <Tab
+                label="设置"
+                {...a11yProps(2)}
+                sx={{
+                  minHeight: '32px',
+                  borderRadius: '8px',
+                  color: value === 2 ? 'primary.main' : 'inherit'
+                }}
+              />
+            </Tabs>
+          </Box>
 
-      <TabPanel value={value} index={0}>
-        <AssistantTab
-          userAssistants={userAssistants}
-          currentAssistant={currentAssistant}
-          onSelectAssistant={handleSelectAssistant}
-          onAddAssistant={handleAddAssistant}
-          onUpdateAssistant={handleUpdateAssistant}
-          onDeleteAssistant={handleDeleteAssistant}
-        />
-      </TabPanel>
+          <TabPanel value={value} index={0}>
+            <AssistantTab
+              userAssistants={userAssistants}
+              currentAssistant={currentAssistant}
+              onSelectAssistant={handleSelectAssistant}
+              onAddAssistant={handleAddAssistant}
+              onUpdateAssistant={handleUpdateAssistant}
+              onDeleteAssistant={handleDeleteAssistant}
+            />
+          </TabPanel>
 
-      <TabPanel value={value} index={1}>
-        <TopicTab
-          currentAssistant={assistantWithTopics}
-          currentTopic={currentTopic}
-          onSelectTopic={handleSelectTopic}
-          onCreateTopic={handleCreateTopic}
-          onDeleteTopic={handleDeleteTopic}
-          onUpdateTopic={handleUpdateTopic}
-        />
-      </TabPanel>
+          <TabPanel value={value} index={1}>
+            <TopicTab
+              currentAssistant={assistantWithTopics || currentAssistant}
+              currentTopic={currentTopic}
+              onSelectTopic={handleSelectTopic}
+              onCreateTopic={handleCreateTopic}
+              onDeleteTopic={handleDeleteTopic}
+              onUpdateTopic={handleUpdateTopic}
+            />
+          </TabPanel>
 
-      <TabPanel value={value} index={2}>
-        <SettingsTab
-          settings={settingsArray}
-          onSettingChange={handleSettingChange}
-          onContextLengthChange={handleContextLengthChange}
-          onContextCountChange={handleContextCountChange}
-          onMathRendererChange={handleMathRendererChange}
-          initialContextLength={settings.contextLength}
-          initialContextCount={settings.contextCount}
-          initialMathRenderer={settings.mathRenderer}
-        />
-      </TabPanel>
+          <TabPanel value={value} index={2}>
+            <SettingsTab
+              settings={settingsArray}
+              onSettingChange={handleSettingChange}
+              initialContextLength={settings.contextLength}
+              onContextLengthChange={handleContextLengthChange}
+              initialContextCount={settings.contextCount}
+              onContextCountChange={handleContextCountChange}
+              initialMathRenderer={settings.mathRenderer}
+              onMathRendererChange={handleMathRendererChange}
+            />
+          </TabPanel>
+        </>
+      )}
     </Box>
   );
 }

@@ -69,18 +69,21 @@ const assistantsSlice = createSlice({
       const assistant = state.assistants.find((a: Assistant) => a.id === assistantId);
       if (assistant) {
         assistant.topics = topics;
+        // 同步更新 topicIds，确保两者保持一致
+        assistant.topicIds = topics.map(topic => topic.id);
+        console.log(`[assistantsSlice] 更新助手 ${assistantId} 的话题，数量: ${topics.length}，topicIds: ${assistant.topicIds.join(', ')}`);
       }
     },
     // 其他 reducers...
   }
 });
 
-export const { 
-  setAssistants, 
-  setCurrentAssistant, 
-  addTopic, 
-  removeTopic, 
-  updateTopic, 
-  updateAssistantTopics 
+export const {
+  setAssistants,
+  setCurrentAssistant,
+  addTopic,
+  removeTopic,
+  updateTopic,
+  updateAssistantTopics
 } = assistantsSlice.actions;
-export default assistantsSlice.reducer; 
+export default assistantsSlice.reducer;
