@@ -1,5 +1,7 @@
 # AetherLink 移动应用开发文档
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/1600822305/CS-LLM-house)
+
 ## 项目概述
 
 官方交流群Q群 点击链接加入群聊【AetherLink 官方群】：http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=V-b46WoBNLIM4oc34JMULwoyJ3hyrKac&authKey=q%2FSwCcxda4e55ygtwp3h9adQXhqBLZ9wJdvM0QxTjXQkbxAa2tHoraOGy2fiibyY&noverify=0&group_code=930126592

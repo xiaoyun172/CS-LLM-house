@@ -102,12 +102,6 @@ const DevToolsPage: React.FC = () => {
     };
     addLog(initLog);
 
-    // 触发一些测试日志
-    LoggerService.log('INFO', '[开发者工具] 测试日志');
-    LoggerService.log('INFO', '[开发者工具] 测试信息');
-    LoggerService.log('WARN', '[开发者工具] 测试警告');
-    LoggerService.log('ERROR', '[开发者工具] 测试错误');
-
     // 定期刷新日志
     const intervalId = setInterval(() => {
       const updatedLogs = LoggerService.getRecentLogs();

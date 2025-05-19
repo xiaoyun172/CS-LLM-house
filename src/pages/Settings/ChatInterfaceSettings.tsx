@@ -24,6 +24,9 @@ const ChatInterfaceSettings: React.FC = () => {
   
   // 获取当前工具栏显示样式设置
   const toolbarDisplayStyle = settings.toolbarDisplayStyle || 'both';
+  
+  // 获取系统提示词气泡显示设置
+  const showSystemPromptBubble = settings.showSystemPromptBubble !== false;
 
   const handleBack = () => {
     navigate('/settings/appearance');
@@ -40,6 +43,13 @@ const ChatInterfaceSettings: React.FC = () => {
   const handleToolbarStyleChange = (event: { target: { value: any } }) => {
     dispatch(updateSettings({ 
       toolbarDisplayStyle: event.target.value
+    }));
+  };
+
+  // 处理系统提示词气泡显示设置变更
+  const handleSystemPromptBubbleChange = (event: { target: { value: any } }) => {
+    dispatch(updateSettings({ 
+      showSystemPromptBubble: event.target.value === 'show'
     }));
   };
 
@@ -113,6 +123,29 @@ const ChatInterfaceSettings: React.FC = () => {
           
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             设置聊天界面顶部工具栏的显示方式。可以选择同时显示图标和文字，或仅显示图标，或仅显示文字。
+          </Typography>
+        </Paper>
+        
+        <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            系统提示词气泡设置
+          </Typography>
+          
+          <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+            <InputLabel id="prompt-bubble-style-label">系统提示词气泡显示</InputLabel>
+            <Select
+              labelId="prompt-bubble-style-label"
+              value={showSystemPromptBubble ? 'show' : 'hide'}
+              onChange={handleSystemPromptBubbleChange}
+              label="系统提示词气泡显示"
+            >
+              <MenuItem value="show">显示</MenuItem>
+              <MenuItem value="hide">隐藏</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            控制是否在聊天界面顶部显示系统提示词气泡。系统提示词气泡可以帮助您查看和编辑当前会话的系统提示词。
           </Typography>
         </Paper>
       </Box>

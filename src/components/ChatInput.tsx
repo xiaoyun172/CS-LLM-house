@@ -82,7 +82,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
 
-    if ((!message.trim() && images.length === 0 && files.length === 0 && !parsedContent) || isLoading) return;
+    if ((!message.trim() && images.length === 0 && files.length === 0 && !parsedContent) || isLoading) {
+      console.log('无内容或正在加载，不发送消息');
+      return;
+    }
 
     let processedMessage = message.trim();
 
@@ -98,6 +101,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
     // 如果是图像生成模式，则调用生成图像的回调
     if (imageGenerationMode && onSendImagePrompt) {
+      console.log('调用图像生成回调');
       onSendImagePrompt(processedMessage);
       setMessage('');
       return;
@@ -127,14 +131,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
       }
     }
 
+    // 调用父组件的回调
+    console.log('发送消息:', processedMessage, formattedImages.length > 0 ? '包含图片' : '不包含图片');
+    onSendMessage(processedMessage, formattedImages.length > 0 ? formattedImages : undefined);
+
     // 重置状态
     setMessage('');
     setImages([]);
     setFiles([]);
     setUploadingMedia(false);
-
-    // 添加到消息列表
-    onSendMessage(processedMessage, formattedImages);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {

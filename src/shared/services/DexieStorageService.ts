@@ -1,12 +1,14 @@
 import Dexie from 'dexie';
 import { v4 as uuid } from 'uuid';
 import type { Assistant } from '../types/Assistant';
-import type { ChatTopic, Message } from '../types';
+import type { ChatTopic } from '../types';
+import type { MessageBlock } from '../types';
+import type { Message } from '../types/newMessage.ts';
 import { DB_CONFIG } from '../types/DatabaseSchema';
 
 /**
  * 基于Dexie.js的统一存储服务
- * 简化版本
+ * 升级版本
  */
 class DexieStorageService extends Dexie {
   assistants!: Dexie.Table<Assistant, string>;
@@ -15,6 +17,8 @@ class DexieStorageService extends Dexie {
   images!: Dexie.Table<Blob, string>;
   imageMetadata!: Dexie.Table<any, string>;
   metadata!: Dexie.Table<any, string>;
+  message_blocks!: Dexie.Table<MessageBlock, string>;
+  messages!: Dexie.Table<Message, string>;
 
   private static instance: DexieStorageService;
 
@@ -28,7 +32,88 @@ class DexieStorageService extends Dexie {
       [DB_CONFIG.STORES.IMAGES]: 'id',
       [DB_CONFIG.STORES.IMAGE_METADATA]: 'id, topicId, created',
       [DB_CONFIG.STORES.METADATA]: 'id',
-    });
+      [DB_CONFIG.STORES.MESSAGE_BLOCKS]: 'id, messageId',
+      [DB_CONFIG.STORES.MESSAGES]: 'id, topicId, assistantId',
+    }).upgrade(() => this.upgradeToV4());
+  }
+
+  private async upgradeToV4(): Promise<void> {
+    console.log('开始升级到数据库版本4: 规范化消息存储...');
+    
+    try {
+      // 获取所有话题
+      const topics = await this.topics.toArray();
+      console.log(`找到 ${topics.length} 个话题需要迁移`);
+      
+      // 逐个处理话题中的消息
+      for (const topic of topics) {
+        // 跳过没有messages数组的话题
+        if (!topic.messages || !Array.isArray(topic.messages) || topic.messages.length === 0) {
+          console.log(`话题 ${topic.id} 没有消息，跳过`);
+          // 初始化空的messageIds数组
+          topic.messageIds = [];
+          await this.topics.put(topic);
+          continue;
+        }
+        
+        console.log(`开始处理话题 ${topic.id} 的 ${topic.messages.length} 条消息`);
+        
+        // 初始化messageIds数组
+        topic.messageIds = [];
+        
+        // 逐个处理消息
+        for (const message of topic.messages) {
+          if (!message.id) {
+            console.log('跳过无效消息（没有ID）');
+            continue;
+          }
+          
+          // 将消息ID添加到messageIds数组
+          topic.messageIds.push(message.id);
+          
+          // 保存消息到messages表
+          try {
+            await this.messages.put(message);
+            console.log(`保存消息 ${message.id} 到messages表成功`);
+            
+            // 处理消息块
+            if (message.blocks && Array.isArray(message.blocks)) {
+              try {
+                // 检查blocks数组的第一个元素类型
+                const firstBlock = message.blocks[0];
+                if (firstBlock && typeof firstBlock === 'object' && 'type' in firstBlock) {
+                  // blocks是对象数组（旧格式）
+                  for (const block of message.blocks) {
+                    if (block && typeof block === 'object' && 'id' in block) {
+                      await this.message_blocks.put(block as any);
+                      console.log(`保存消息块 ${(block as any).id} 到message_blocks表成功`);
+                    }
+                  }
+                } else {
+                  // blocks是ID字符串数组（新格式），块已经在message_blocks表中
+                  console.log(`消息 ${message.id} 使用新格式，blocks是ID数组`);
+                }
+              } catch (blockError) {
+                console.error(`处理消息 ${message.id} 的块时出错:`, blockError);
+              }
+            }
+          } catch (error) {
+            console.error(`保存消息 ${message.id} 失败:`, error);
+          }
+        }
+        
+        // 保存更新后的话题
+        await this.topics.put(topic);
+        console.log(`话题 ${topic.id} 处理完成`);
+      }
+      
+      console.log('数据库迁移完成: 所有消息已规范化存储');
+    } catch (error) {
+      console.error('数据库升级失败:', error);
+      throw error;
+    }
+    
+    console.log('数据库升级到版本4完成');
   }
 
   public static getInstance(): DexieStorageService {
@@ -38,7 +123,6 @@ class DexieStorageService extends Dexie {
     return DexieStorageService.instance;
   }
 
-  // ============= 助手相关操作 =============
   async getAllAssistants(): Promise<Assistant[]> {
     return this.assistants.toArray();
   }
@@ -62,19 +146,15 @@ class DexieStorageService extends Dexie {
         assistant.id = uuid();
       }
       
-      // 创建一个可序列化的副本
       const assistantToSave = { ...assistant };
       
-      // 处理不可序列化的字段
       if (assistantToSave.icon && typeof assistantToSave.icon === 'object') {
         assistantToSave.icon = null;
       }
       
-      // 确保topics数组的序列化是安全的
       if (assistantToSave.topics) {
         assistantToSave.topics = assistantToSave.topics.map(topic => ({
           ...topic,
-          // 移除可能导致序列化问题的字段
           icon: null
         }));
       }
@@ -99,7 +179,6 @@ class DexieStorageService extends Dexie {
     await this.assistants.delete(id);
   }
 
-  // ============= 话题相关操作 =============
   async getAllTopics(): Promise<ChatTopic[]> {
     const topicsFromDb = await this.topics.toArray();
     return topicsFromDb.map(t => { const { _lastMessageTimeNum, ...topic } = t; return topic as ChatTopic; });
@@ -113,22 +192,59 @@ class DexieStorageService extends Dexie {
   }
 
   async saveTopic(topic: ChatTopic): Promise<void> {
-    if (!topic.id) {
-      topic.id = uuid();
+    try {
+      if (!topic.id) {
+        topic.id = uuid();
+      }
+      
+      // 确保topic有messageIds字段
+      if (!topic.messageIds) {
+        topic.messageIds = [];
+        
+        // 兼容性处理：如果有旧的messages字段，转换为messageIds
+        if (topic.messages && Array.isArray(topic.messages)) {
+          // 保存消息到messages表
+          for (const message of topic.messages) {
+            if (message.id) {
+              await this.saveMessage(message);
+              if (!topic.messageIds.includes(message.id)) {
+                topic.messageIds.push(message.id);
+              }
+            }
+          }
+        }
+      }
+      
+      // 设置lastMessageTime字段
+      const lastMessageTime = topic.lastMessageTime || topic.updatedAt || new Date().toISOString();
+      
+      // 创建一个克隆用于存储，避免修改原始对象
+      const topicToStore = {
+        ...topic,
+        _lastMessageTimeNum: new Date(lastMessageTime).getTime()
+      };
+      
+      // 删除旧的messages字段，避免数据冗余存储
+      delete (topicToStore as any).messages;
+      
+      await this.topics.put(topicToStore);
+    } catch (error) {
+      console.error(`[DexieStorageService] 保存话题失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
     }
-    
-    // 处理lastMessageTime可能为undefined的情况
-    const lastMessageTime = topic.lastMessageTime || topic.updatedAt || new Date().toISOString();
-    
-    const topicToStore = {
-      ...topic,
-      _lastMessageTimeNum: new Date(lastMessageTime).getTime()
-    };
-    await this.topics.put(topicToStore);
   }
 
   async deleteTopic(id: string): Promise<void> {
-    await this.topics.delete(id);
+    try {
+      // 删除关联的消息和消息块
+      await this.deleteMessagesByTopicId(id);
+      
+      // 删除主题
+      await this.topics.delete(id);
+    } catch (error) {
+      console.error(`[DexieStorageService] 删除话题失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   }
 
   async getRecentTopics(limit: number = 10): Promise<ChatTopic[]> {
@@ -148,49 +264,163 @@ class DexieStorageService extends Dexie {
   }
 
   async updateMessageInTopic(topicId: string, messageId: string, updatedMessage: Message): Promise<void> {
-    const topic = await this.getTopic(topicId);
-    if (!topic) return;
-    const messageIndex = topic.messages.findIndex(m => m.id === messageId);
-    if (messageIndex === -1) return;
-    topic.messages[messageIndex] = updatedMessage;
-    await this.saveTopic(topic);
+    try {
+      // 直接更新消息表中的消息
+      await this.updateMessage(messageId, updatedMessage);
+      
+      // 获取话题并更新兼容字段
+      const topic = await this.getTopic(topicId);
+      if (!topic) return;
+      
+      // 更新消息数组（如果存在）
+      if (topic.messages) {
+        const messageIndex = topic.messages.findIndex(m => m.id === messageId);
+        if (messageIndex !== -1) {
+          topic.messages[messageIndex] = updatedMessage;
+        }
+      }
+      
+      await this.saveTopic(topic);
+    } catch (error) {
+      console.error(`[DexieStorageService] 更新话题消息失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   }
 
   async deleteMessageFromTopic(topicId: string, messageId: string): Promise<void> {
-    const topic = await this.getTopic(topicId);
-    if (!topic) return;
-    topic.messages = topic.messages.filter(m => m.id !== messageId);
-    if (topic.messages.length > 0) {
-      topic.lastMessageTime = topic.messages[topic.messages.length - 1].timestamp;
-    } else {
-      topic.lastMessageTime = new Date().toISOString();
+    try {
+      // 删除消息及其关联的块
+      await this.deleteMessage(messageId);
+      
+      // 更新主题的messageIds数组
+      const topic = await this.getTopic(topicId);
+      if (!topic) return;
+      
+      // 更新messageIds数组
+      if (topic.messageIds) {
+        topic.messageIds = topic.messageIds.filter(id => id !== messageId);
+      }
+      
+      // 为了兼容性，同时更新messages数组
+      if (topic.messages) {
+        topic.messages = topic.messages.filter(m => m.id !== messageId);
+      }
+      
+      // 更新lastMessageTime
+      if (topic.messageIds && topic.messageIds.length > 0) {
+        const lastMessageId = topic.messageIds[topic.messageIds.length - 1];
+        const lastMessage = await this.getMessage(lastMessageId);
+        if (lastMessage) {
+          topic.lastMessageTime = lastMessage.createdAt || lastMessage.updatedAt || new Date().toISOString();
+        }
+      } else {
+        topic.lastMessageTime = new Date().toISOString();
+      }
+      
+      await this.saveTopic(topic);
+    } catch (error) {
+      console.error(`[DexieStorageService] 从话题中删除消息失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
     }
-    await this.saveTopic(topic);
   }
 
   async addMessageToTopic(topicId: string, message: Message): Promise<void> {
-    const topic = await this.getTopic(topicId);
-    if (!topic) return;
-    topic.messages.push(message);
-    topic.lastMessageTime = message.timestamp;
-    await this.saveTopic(topic);
+    try {
+      // 保存消息到messages表
+      await this.saveMessage(message);
+      
+      // 更新主题的messageIds数组
+      const topic = await this.getTopic(topicId);
+      if (!topic) return;
+      
+      if (!topic.messageIds) {
+        topic.messageIds = [];
+      }
+      
+      if (!topic.messageIds.includes(message.id)) {
+        topic.messageIds.push(message.id);
+      }
+      
+      // 为了兼容性，同时更新messages数组
+      const messages = topic.messages || [];
+      
+      const messageIndex = messages.findIndex(m => m.id === message.id);
+      if (messageIndex >= 0) {
+        messages[messageIndex] = message;
+      } else {
+        messages.push(message);
+      }
+      
+      // 更新topic.messages
+      topic.messages = messages;
+      
+      topic.lastMessageTime = message.createdAt || message.updatedAt || new Date().toISOString();
+      await this.saveTopic(topic);
+    } catch (error) {
+      console.error(`[DexieStorageService] 添加消息到话题失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   }
 
-  // ============= 设置相关操作 =============
+  async saveMessageBlock(block: MessageBlock): Promise<void> {
+    if (!block.id) {
+      block.id = uuid();
+    }
+    await this.message_blocks.put(block);
+  }
+  
+  async getMessageBlock(id: string): Promise<MessageBlock | null> {
+    return await this.message_blocks.get(id) || null;
+  }
+  
+  async getMessageBlocksByMessageId(messageId: string): Promise<MessageBlock[]> {
+    return await this.message_blocks.where('messageId').equals(messageId).toArray();
+  }
+  
+  async deleteMessageBlock(id: string): Promise<void> {
+    await this.message_blocks.delete(id);
+  }
+  
+  async deleteMessageBlocksByMessageId(messageId: string): Promise<void> {
+    const blocks = await this.getMessageBlocksByMessageId(messageId);
+    await Promise.all(blocks.map(block => this.deleteMessageBlock(block.id)));
+  }
+  
+  async bulkSaveMessageBlocks(blocks: MessageBlock[]): Promise<void> {
+    for (const block of blocks) {
+      if (!block.id) {
+        block.id = uuid();
+      }
+    }
+    await this.message_blocks.bulkPut(blocks);
+  }
+
+  async updateMessageBlock(blockId: string, updates: Partial<MessageBlock>): Promise<void> {
+    const existingBlock = await this.getMessageBlock(blockId);
+    if (!existingBlock) return;
+    
+    const updatedBlock = {
+      ...existingBlock,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await this.message_blocks.update(blockId, updatedBlock);
+  }
+
   async saveSetting(key: string, value: any): Promise<void> {
     await this.settings.put({ id: key, value });
   }
 
   async getSetting(key: string): Promise<any> {
     const setting = await this.settings.get(key);
-    return setting ? setting.value : undefined;
+    return setting ? setting.value : null;
   }
 
   async deleteSetting(key: string): Promise<void> {
     await this.settings.delete(key);
   }
 
-  // ============= 图片相关操作 (简化) =============
   async saveImage(blob: Blob, metadata: any): Promise<string> {
     const id = metadata.id || uuid();
     await this.images.put(blob, id);
@@ -205,9 +435,9 @@ class DexieStorageService extends Dexie {
   async getImageMetadata(id: string): Promise<any> {
     return this.imageMetadata.get(id);
   }
-  
+
   async getImageMetadataByTopicId(topicId: string): Promise<any[]> {
-    return this.imageMetadata.where('topicId').equals(topicId).sortBy('created');
+    return this.imageMetadata.where('topicId').equals(topicId).toArray();
   }
 
   async getRecentImageMetadata(limit: number = 20): Promise<any[]> {
@@ -218,38 +448,287 @@ class DexieStorageService extends Dexie {
     await this.images.delete(id);
     await this.imageMetadata.delete(id);
   }
-  
+
   async saveBase64Image(_base64Data: string, _metadata: any = {}): Promise<string> {
-    console.warn("DexieStorageService.saveBase64Image is simplified and effectively deprecated for direct base64 string input. Please use saveImage with a Blob directly.");
-    throw new Error("saveBase64Image no longer processes base64 strings. Convert to Blob and use saveImage, or update a new/different method for base64 handling if still required.");
+    throw new Error('未实现的方法 saveBase64Image');
   }
 
-  // ============= 通用元数据操作 (简化) =============
   async saveMetadata(key: string, value: any): Promise<void> {
     await this.metadata.put({ id: key, value });
   }
 
   async getMetadata(key: string): Promise<any> {
-    const meta = await this.metadata.get(key);
-    return meta ? meta.value : undefined;
+    const metadata = await this.metadata.get(key);
+    return metadata ? metadata.value : null;
   }
 
   async deleteMetadata(key: string): Promise<void> {
     await this.metadata.delete(key);
   }
-  
-  // ============= 数据库级别操作 (简化/移除) =============
+
+  async deleteAllMessages(): Promise<void> {
+    await this.message_blocks.clear();
+
+    const topics = await this.getAllTopics();
+    
+    for (const topic of topics) {
+      topic.messages = [];
+      await this.saveTopic(topic);
+    }
+  }
+
+  async deleteAllTopics(): Promise<void> {
+    await this.message_blocks.clear();
+    
+    await this.topics.clear();
+    
+    const assistants = await this.getAllAssistants();
+    for (const assistant of assistants) {
+      assistant.topicIds = [];
+      await this.saveAssistant(assistant);
+    }
+  }
+
+  async createMessageBlocksTable(): Promise<void> {
+    if (!this.message_blocks) {
+      console.log('创建消息块表...');
+      this.version(DB_CONFIG.VERSION).stores({
+        [DB_CONFIG.STORES.MESSAGE_BLOCKS]: 'id, messageId'
+      });
+      console.log('消息块表创建完成');
+    } else {
+      console.log('消息块表已存在');
+    }
+  }
+
   async clearDatabase(): Promise<void> {
-    await Promise.all([
-      this.assistants.clear(),
-      this.topics.clear(),
-      this.settings.clear(),
-      this.images.clear(),
-      this.imageMetadata.clear(),
-      this.metadata.clear(),
-    ]);
+    await this.message_blocks.clear();
+    await this.topics.clear();
+    await this.assistants.clear();
+    await this.settings.clear();
+    await this.images.clear();
+    await this.imageMetadata.clear();
+    await this.metadata.clear();
+  }
+
+  async getTopicMessages(topicId: string): Promise<Message[]> {
+    try {
+      const topic = await this.getTopic(topicId);
+      if (!topic) return [];
+      
+      // 优先使用messageIds字段
+      if (topic.messageIds && Array.isArray(topic.messageIds)) {
+        const messages: Message[] = [];
+        for (const messageId of topic.messageIds) {
+          const message = await this.getMessage(messageId);
+          if (message) messages.push(message);
+        }
+        return messages;
+      }
+      
+      // 兼容性处理：如果没有messageIds字段，尝试使用旧的messages字段
+      if (topic.messages && Array.isArray(topic.messages)) {
+        // 迁移：将消息存储到messages表，并更新topic.messageIds
+        const messageIds: string[] = [];
+        for (const message of topic.messages) {
+          if (message.id) {
+            await this.saveMessage(message);
+            messageIds.push(message.id);
+          }
+        }
+        
+        // 更新topic
+        topic.messageIds = messageIds;
+        await this.saveTopic(topic);
+        
+        return topic.messages;
+      }
+      
+      // 如果都没有，从messages表查询
+      return await this.getMessagesByTopicId(topicId);
+    } catch (error) {
+      console.error(`[DexieStorageService] 获取话题消息失败: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
+  async saveMessage(message: Message): Promise<void> {
+    if (!message.id) {
+      message.id = uuid();
+    }
+    await this.messages.put(message);
+  }
+
+  async bulkSaveMessages(messages: Message[]): Promise<void> {
+    for (const message of messages) {
+      if (!message.id) {
+        message.id = uuid();
+      }
+    }
+    await this.messages.bulkPut(messages);
+  }
+
+  async getMessage(id: string): Promise<Message | null> {
+    return await this.messages.get(id) || null;
+  }
+
+  async getMessagesByTopicId(topicId: string): Promise<Message[]> {
+    return await this.messages.where('topicId').equals(topicId).toArray();
+  }
+
+  async deleteMessage(id: string): Promise<void> {
+    const message = await this.getMessage(id);
+    if (!message) return;
+
+    if (message.blocks && message.blocks.length > 0) {
+      await this.deleteMessageBlocksByIds(message.blocks);
+    }
+
+    await this.messages.delete(id);
+  }
+
+  async deleteMessagesByTopicId(topicId: string): Promise<void> {
+    const messages = await this.getMessagesByTopicId(topicId);
+    
+    for (const message of messages) {
+      if (message.blocks && message.blocks.length > 0) {
+        await this.deleteMessageBlocksByIds(message.blocks);
+      }
+    }
+    
+    await this.messages.where('topicId').equals(topicId).delete();
+  }
+
+  async updateMessage(id: string, updates: Partial<Message>): Promise<void> {
+    const message = await this.getMessage(id);
+    if (!message) return;
+    
+    const updatedMessage = {
+      ...message,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await this.messages.update(id, updatedMessage);
+  }
+
+  async deleteMessageBlocksByIds(blockIds: string[]): Promise<void> {
+    await Promise.all(blockIds.map((id: string) => this.deleteMessageBlock(id)));
+  }
+
+  // 迁移主题消息数据
+  async migrateTopicMessages(topicId: string): Promise<void> {
+    try {
+      const topic = await this.topics.get(topicId);
+      if (!topic) return;
+      
+      // 如果存在旧的messages数组，迁移到独立的messages表
+      if ((topic as any).messages && Array.isArray((topic as any).messages)) {
+        const messages = (topic as any).messages;
+        const messageIds: string[] = [];
+        
+        // 保存消息到messages表
+        for (const message of messages) {
+          if (message.id) {
+            await this.saveMessage(message);
+            messageIds.push(message.id);
+          }
+        }
+        
+        // 更新topic，使用messageIds替代messages
+        topic.messageIds = messageIds;
+        delete (topic as any).messages;
+        
+        // 保存更新后的topic
+        await this.topics.put(topic);
+      }
+    } catch (error) {
+      console.error(`[DexieStorageService] 迁移话题消息数据失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }
+
+  // 批量迁移所有主题消息数据
+  async migrateAllTopicMessages(): Promise<{ migrated: number, total: number }> {
+    try {
+      const topics = await this.topics.toArray();
+      let migratedCount = 0;
+      
+      for (const topic of topics) {
+        // 检查是否需要迁移
+        if ((topic as any).messages && Array.isArray((topic as any).messages)) {
+          await this.migrateTopicMessages(topic.id);
+          migratedCount++;
+        }
+      }
+      
+      return { migrated: migratedCount, total: topics.length };
+    } catch (error) {
+      console.error(`[DexieStorageService] 批量迁移话题消息数据失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 修复消息数据，确保所有消息都正确保存到 messages 表
+   */
+  async repairMessagesData(): Promise<void> {
+    console.log('[DexieStorageService] 开始修复消息数据...');
+    
+    try {
+      // 获取所有话题
+      const topics = await this.topics.toArray();
+      console.log(`[DexieStorageService] 找到 ${topics.length} 个话题需要检查`);
+      
+      let totalRepaired = 0;
+      
+      // 逐个处理话题中的消息
+      for (const topic of topics) {
+        // 跳过没有messages数组的话题
+        if (!topic.messages || !Array.isArray(topic.messages) || topic.messages.length === 0) {
+          console.log(`[DexieStorageService] 话题 ${topic.id} 没有消息，跳过`);
+          continue;
+        }
+        
+        console.log(`[DexieStorageService] 检查话题 ${topic.id} 的 ${topic.messages.length} 条消息`);
+        
+        // 确保messageIds数组存在
+        if (!topic.messageIds) {
+          topic.messageIds = [];
+        }
+        
+        // 逐个处理消息
+        for (const message of topic.messages) {
+          if (!message.id) {
+            console.log('[DexieStorageService] 跳过无效消息（没有ID）');
+            continue;
+          }
+          
+          // 检查消息是否已存在于messages表
+          const existingMessage = await this.messages.get(message.id);
+          if (!existingMessage) {
+            // 将消息保存到messages表
+            await this.messages.put(message);
+            console.log(`[DexieStorageService] 修复：保存消息 ${message.id} 到messages表`);
+            totalRepaired++;
+            
+            // 将消息ID添加到messageIds数组（如果不存在）
+            if (!topic.messageIds.includes(message.id)) {
+              topic.messageIds.push(message.id);
+            }
+          }
+        }
+        
+        // 保存更新后的话题
+        await this.topics.put(topic);
+      }
+      
+      console.log(`[DexieStorageService] 消息数据修复完成，共修复 ${totalRepaired} 条消息`);
+    } catch (error) {
+      console.error('[DexieStorageService] 修复消息数据失败:', error);
+      throw error;
+    }
   }
 }
 
 export const dexieStorage = DexieStorageService.getInstance();
-export default DexieStorageService;

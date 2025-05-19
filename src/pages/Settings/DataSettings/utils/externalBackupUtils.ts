@@ -2,7 +2,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { ChatTopic } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
-import type { Message } from '../../../../shared/types';
 
 /**
  * Chatboxai备份数据结构
@@ -52,6 +51,7 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
         updatedAt: new Date().toISOString(),
         lastMessageTime: new Date().toISOString(),
         messages: [],
+        messageIds: [],
         prompt: '',
         assistantId: assistantIdForImportedTopics, // 使用预先生成的助手 ID
         isNameManuallyEdited: false
@@ -65,29 +65,40 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
             continue;
           }
           
-          const newMessage: Message = {
+          const newMsg = {
             id: chatboxMsg.id || uuidv4(),
             role: chatboxMsg.role === 'user' ? 'user' : 'assistant',
-            content: chatboxMsg.contentParts?.[0]?.text || '',
-            status: chatboxMsg.generating ? 'pending' : 'complete',
-            timestamp: new Date(chatboxMsg.timestamp).toISOString(),
-            modelId: '',
-            version: 1,
-            isCurrentVersion: true,
-            alternateVersions: []
-          };
+            assistantId: assistantIdForImportedTopics,
+            topicId: newTopic.id,
+            createdAt: new Date(chatboxMsg.datetime || Date.now()).toISOString(),
+            status: chatboxMsg.generating ? 'pending' : 'success',
+            blocks: [{
+              id: uuidv4(),
+              messageId: chatboxMsg.id || uuidv4(),
+              type: 'main_text',
+              content: chatboxMsg.contentParts?.[0]?.text || '',
+              createdAt: new Date(chatboxMsg.datetime || Date.now()).toISOString(),
+              status: 'success'
+            }]
+          } as any; // 使用类型断言避免类型检查错误
           
           if (chatboxMsg.model) {
-            newMessage.modelId = chatboxMsg.model;
+            newMsg.modelId = chatboxMsg.model;
           }
-          newTopic.messages.push(newMessage);
+          
+          // 确保messages是数组
+          if (!newTopic.messages) {
+            newTopic.messages = [];
+          }
+          newTopic.messages.push(newMsg);
         }
       }
       
-      if (newTopic.messages.length > 0) {
-        if (newTopic.messages.length > 0) {
-          const lastMsg = newTopic.messages[newTopic.messages.length - 1];
-          newTopic.lastMessageTime = lastMsg.timestamp;
+      // 添加安全检查，确保messages是数组
+      if (newTopic.messages && newTopic.messages.length > 0) {
+        const lastMsg = newTopic.messages[newTopic.messages.length - 1];
+        if (lastMsg) {
+          newTopic.lastMessageTime = lastMsg.createdAt;
         }
         convertedTopics.push(newTopic);
       }

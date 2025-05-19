@@ -13,7 +13,7 @@ export default function Sidebar({ mobileOpen = false, onMobileToggle }: SidebarP
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [localMobileOpen, setLocalMobileOpen] = useState(false);
   
-  const drawerWidth = 280;
+  const drawerWidth = 308;
   
   const handleDrawerToggle = () => {
     if (onMobileToggle) {

@@ -18,13 +18,17 @@ import {
   DialogActions,
   Switch,
   Divider,
-  FormControlLabel
+  FormControlLabel,
+  CircularProgress,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import AutofpsSelectIcon from '@mui/icons-material/AutofpsSelect';
+import VerifiedIcon from '@mui/icons-material/Verified';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../shared/store';
 import {
@@ -36,6 +40,8 @@ import { isValidUrl } from '../../shared/utils';
 import { alpha } from '@mui/material/styles';
 import ModelManagementDialog from '../../components/ModelManagementDialog';
 import SimpleModelDialog from '../../components/settings/SimpleModelDialog';
+import { testApiConnection } from '../../shared/api';
+import { sendChatRequest } from '../../shared/api';
 
 const ModelProviderSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -57,6 +63,10 @@ const ModelProviderSettings: React.FC = () => {
   const [newModelValue, setNewModelValue] = useState('');
   const [baseUrlError, setBaseUrlError] = useState('');
   const [openModelManagementDialog, setOpenModelManagementDialog] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testingModelId, setTestingModelId] = useState<string | null>(null);
+  const [testResultDialogOpen, setTestResultDialogOpen] = useState(false);
 
   // 当provider加载完成后初始化状态
   useEffect(() => {
@@ -268,6 +278,113 @@ const ModelProviderSettings: React.FC = () => {
     }
   };
 
+  // API测试功能
+  const handleTestConnection = async () => {
+    if (provider) {
+      // 先保存当前配置
+      const configSaved = saveApiConfig();
+      if (!configSaved) {
+        // 如果保存失败（例如URL无效），提示用户
+        if (baseUrlError) {
+          setTestResult({ success: false, message: '请输入有效的基础URL' });
+          return;
+        }
+      }
+
+      // 开始测试
+      setIsTesting(true);
+      setTestResult(null);
+
+      try {
+        // 创建一个模拟模型对象，包含当前输入的API配置
+        const testModel = {
+          id: provider.models.length > 0 ? provider.models[0].id : 'gpt-3.5-turbo',
+          name: provider.name,
+          provider: provider.id,
+          providerType: provider.providerType,
+          apiKey: apiKey,
+          baseUrl: baseUrl,
+          enabled: true
+        };
+
+        // 调用测试连接API
+        const success = await testApiConnection(testModel);
+        
+        if (success) {
+          setTestResult({ success: true, message: '连接成功！API配置有效。' });
+        } else {
+          setTestResult({ success: false, message: '连接失败，请检查API密钥和基础URL是否正确。' });
+        }
+      } catch (error) {
+        console.error('测试API连接时出错:', error);
+        setTestResult({ 
+          success: false, 
+          message: `连接错误: ${error instanceof Error ? error.message : String(error)}`
+        });
+      } finally {
+        setIsTesting(false);
+      }
+    }
+  };
+
+  // 增强的测试单个模型的函数
+  const handleTestModelConnection = async (model: Model) => {
+    if (!provider) return;
+
+    // 保存当前测试的模型ID
+    setTestingModelId(model.id);
+    setTestResult(null);
+
+    try {
+      // 创建测试模型对象，使用当前保存的API配置
+      const testModel = {
+        ...model,
+        apiKey: apiKey,
+        baseUrl: baseUrl,
+        enabled: true
+      };
+
+      // 直接发送真实的API请求，而不仅仅是测试连接
+      const testResponse = await sendChatRequest({
+        messages: [{
+          role: 'user',
+          content: '这是一条API测试消息，请简短回复以验证连接。'
+        }],
+        modelId: testModel.id
+      });
+      
+      if (testResponse.success) {
+        // 显示成功信息和API响应内容
+        setTestResult({ 
+          success: true, 
+          message: `模型 ${model.name} 连接成功!\n\n响应内容: "${testResponse.content?.substring(0, 100)}${testResponse.content && testResponse.content.length > 100 ? '...' : ''}"` 
+        });
+      } else {
+        // 显示失败信息和错误原因
+        setTestResult({ 
+          success: false, 
+          message: `模型 ${model.name} 连接失败：${testResponse.error || '未知错误'}` 
+        });
+      }
+    } catch (error) {
+      console.error('测试模型连接时出错:', error);
+      setTestResult({ 
+        success: false, 
+        message: `连接错误: ${error instanceof Error ? error.message : String(error)}`
+      });
+    } finally {
+      setTestingModelId(null);
+    }
+  };
+
+  // 更新原有的Snackbar处理
+  useEffect(() => {
+    // 当有测试结果时，如果内容较长则自动打开详细对话框
+    if (testResult && testResult.message && testResult.message.length > 80) {
+      setTestResultDialogOpen(true);
+    }
+  }, [testResult]);
+
   // 如果没有找到对应的提供商，显示错误信息
   if (!provider) {
     return (
@@ -355,6 +472,7 @@ const ModelProviderSettings: React.FC = () => {
           },
         }}
       >
+        {/* API配置部分 */}
         <Paper
           elevation={0}
           sx={{
@@ -486,6 +604,27 @@ const ModelProviderSettings: React.FC = () => {
               }}
             />
           </Box>
+          
+          {/* 添加API测试按钮 */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={isTesting ? <CircularProgress size={16} /> : <VerifiedIcon />}
+              onClick={handleTestConnection}
+              disabled={isTesting || !apiKey}
+              sx={{
+                borderRadius: 2,
+                borderColor: (theme) => alpha(theme.palette.info.main, 0.5),
+                color: 'info.main',
+                '&:hover': {
+                  borderColor: 'info.main',
+                  bgcolor: (theme) => alpha(theme.palette.info.main, 0.1),
+                },
+              }}
+            >
+              {isTesting ? '测试中...' : '测试连接'}
+            </Button>
+          </Box>
         </Paper>
 
         <Paper
@@ -509,6 +648,13 @@ const ModelProviderSettings: React.FC = () => {
               }}
             >
               可用模型
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="text.secondary"
+              sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}
+            >
+              点击✓测试单个模型
             </Typography>
             <Button
               variant="outlined"
@@ -565,7 +711,20 @@ const ModelProviderSettings: React.FC = () => {
                   secondaryAction={
                     <Box>
                       <IconButton
-                        edge="end"
+                        aria-label="test"
+                        onClick={() => handleTestModelConnection(model)}
+                        disabled={testingModelId !== null}
+                        sx={{
+                          mr: 1,
+                          bgcolor: (theme) => alpha(theme.palette.success.main, 0.1),
+                          '&:hover': {
+                            bgcolor: (theme) => alpha(theme.palette.success.main, 0.2),
+                          }
+                        }}
+                      >
+                        {testingModelId === model.id ? <CircularProgress size={16} color="success" /> : <VerifiedIcon color="success" />}
+                      </IconButton>
+                      <IconButton
                         aria-label="edit"
                         onClick={() => openModelEditDialog(model)}
                         sx={{
@@ -579,7 +738,6 @@ const ModelProviderSettings: React.FC = () => {
                         <EditIcon color="info" />
                       </IconButton>
                       <IconButton
-                        edge="end"
                         aria-label="delete"
                         onClick={() => handleDeleteModel(model.id)}
                         sx={{
@@ -636,6 +794,67 @@ const ModelProviderSettings: React.FC = () => {
             )}
           </List>
         </Paper>
+
+        {/* 修改Snackbar，简短显示结果并添加查看详情按钮 */}
+        <Snackbar
+          open={testResult !== null && !testResultDialogOpen}
+          autoHideDuration={6000}
+          onClose={() => setTestResult(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          action={
+            <Button color="inherit" size="small" onClick={() => setTestResultDialogOpen(true)}>
+              查看详情
+            </Button>
+          }
+        >
+          <Alert 
+            onClose={() => setTestResult(null)} 
+            severity={testResult?.success ? "success" : "error"}
+            variant="filled"
+            sx={{ width: '100%' }}
+          >
+            {testResult?.success ? '连接测试成功!' : '连接测试失败'}
+          </Alert>
+        </Snackbar>
+
+        {/* 添加测试结果详细对话框 */}
+        <Dialog
+          open={testResultDialogOpen}
+          onClose={() => setTestResultDialogOpen(false)}
+          maxWidth="md"
+          PaperProps={{
+            sx: {
+              width: '100%',
+              maxWidth: 500,
+              borderRadius: 2
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            fontWeight: 600, 
+            color: testResult?.success ? 'success.main' : 'error.main',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            {testResult?.success ? <VerifiedIcon sx={{mr: 1}}/> : null}
+            API测试结果
+          </DialogTitle>
+          <DialogContent>
+            <Typography sx={{ whiteSpace: 'pre-wrap' }}>
+              {testResult?.message || ''}
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button 
+              onClick={() => setTestResultDialogOpen(false)}
+              variant="contained"
+              color={testResult?.success ? 'success' : 'primary'}
+              sx={{ borderRadius: 2 }}
+            >
+              确定
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
 
       {/* 添加模型对话框 */}

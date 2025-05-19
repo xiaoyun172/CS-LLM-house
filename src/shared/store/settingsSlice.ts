@@ -33,6 +33,7 @@ interface SettingsState {
   modelSelectorStyle: 'dialog' | 'dropdown';
   thinkingDisplayStyle: string;
   toolbarDisplayStyle: 'icon' | 'text' | 'both'; // 工具栏显示样式：仅图标、仅文字、图标+文字
+  showSystemPromptBubble: boolean; // 是否显示系统提示词气泡
   isLoading: boolean; // 添加加载状态以处理异步操作
 }
 
@@ -139,6 +140,7 @@ const getInitialState = (): SettingsState => {
     modelSelectorStyle: 'dialog' as 'dialog' | 'dropdown',
     thinkingDisplayStyle: ThinkingDisplayStyle.COMPACT,
     toolbarDisplayStyle: 'both' as 'icon' | 'text' | 'both',
+    showSystemPromptBubble: true, // 默认显示系统提示词气泡
     isLoading: true // 初始时设为加载中状态
   };
 
@@ -171,6 +173,11 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
       // 如果没有工具栏显示样式设置，使用默认值
       if (!savedSettings.toolbarDisplayStyle) {
         savedSettings.toolbarDisplayStyle = 'both';
+      }
+      
+      // 如果没有系统提示词气泡显示设置，使用默认值
+      if (savedSettings.showSystemPromptBubble === undefined) {
+        savedSettings.showSystemPromptBubble = true;
       }
 
       return {

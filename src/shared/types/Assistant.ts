@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Message } from '.'; // 从当前目录的 index.ts 导入 Message
+import type { Message as NewMessage } from './newMessage.ts'; // 从 newMessage.ts 导入 NewMessage
 
 export interface Assistant {
   id: string;
@@ -52,12 +53,15 @@ export interface ChatTopic {
   lastMessageTime?: string;
   assistantId: string;
   prompt?: string;
-  messages: Message[];
+  messageIds: string[]; // 消息ID数组，替代原来的messages数组
+  messages?: Message[]; // 保留作为兼容字段，但标记为可选
   messageCount?: number;
   tokenCount?: number;
   inputTemplate?: string;
   isDefault?: boolean;
   isNameManuallyEdited: boolean;
+  pinned?: boolean; // 新增：是否置顶
+  newMessages?: NewMessage[]; // 新增：新的消息类型，用于逐步迁移
 }
 
 // 用于持久化存储的助手类型，不包含无法序列化的React元素

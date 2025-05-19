@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import {
-  createTopic,
   setCurrentTopic,
+  addTopic,
   setTopicMessages
 } from '../../../shared/store/slices/messagesSlice';
 import type { ChatTopic } from '../../../shared/types';
@@ -12,6 +12,7 @@ import { TopicService } from '../../../shared/services/TopicService';
 import { getStorageItem } from '../../../shared/utils/storage';
 import { formatDateForTopicTitle } from '../../../shared/utils';
 import { dexieStorage } from '../../../shared/services/DexieStorageService';
+import { v4 as uuid } from 'uuid';
 
 export function useTopicManagement(currentTopic: ChatTopic | null) {
   const dispatch = useDispatch();
@@ -53,10 +54,19 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
         // 加载每个话题的消息到Redux
         for (const topic of validTopics) {
           if (topic.messages && topic.messages.length > 0) {
-            // dexieStorage已经对消息进行了去重，可以直接使用
+            // 为主题准备数据
+            const processedTopic = processTopic(topic);
+            dispatch(setTopicMessages({
+              topicId: processedTopic.id,
+              messages: processedTopic.messages || []
+            }));
+          } else {
+            console.log(`话题${topic.id}仍使用旧消息格式，将在后续迁移`);
+            
+            // 此处应该不会执行，因为messagesSlice中的loadTopicsFromStorage应已处理转换
             dispatch(setTopicMessages({
               topicId: topic.id,
-              messages: topic.messages
+              messages: [] // 传递空数组，避免类型错误
             }));
           }
         }
@@ -95,16 +105,16 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
     const now = new Date();
     const formattedDate = formatDateForTopicTitle(now);
-    const currentTime = now.toISOString();
     
     const defaultTopic: ChatTopic = {
-      id: generateId(),
+      id: uuid(),
       name: `新的对话 ${formattedDate}`,
       title: `新的对话 ${formattedDate}`,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-      lastMessageTime: currentTime,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      lastMessageTime: now.toISOString(),
       messages: [],
+      messageIds: [],
       assistantId: assistantIdForTopic,
       isNameManuallyEdited: false
     };
@@ -120,7 +130,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
     }
 
     // 仍然使用Redux操作，保持状态一致性
-    dispatch(createTopic(defaultTopic));
+    dispatch(addTopic(defaultTopic));
     dispatch(setCurrentTopic(defaultTopic));
 
     // 获取当前助手ID
@@ -193,9 +203,17 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
       });
   };
 
-  // 生成唯一ID
-  const generateId = (): string => {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  // 修复加载主题数据的代码
+  const processTopic = (topic: ChatTopic) => {
+    // 检查是否有消息
+    if (topic.messages && topic.messages.length > 0) {
+      // 为主题准备数据
+      return {
+        ...topic,
+        messages: topic.messages
+      };
+    }
+    return topic;
   };
 
   return {

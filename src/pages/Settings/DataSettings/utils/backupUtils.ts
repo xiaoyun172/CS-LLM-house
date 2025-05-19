@@ -5,6 +5,7 @@ import type { ChatTopic } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
 import { dexieStorage } from '../../../../shared/services/DexieStorageService';
 import { getStorageItem, getAllStorageKeys } from '../../../../shared/utils/storage';
+import { getMainTextContent } from '../../../../shared/utils/messageUtils';
 
 // 默认备份目录
 export const DEFAULT_BACKUP_DIRECTORY = 'AetherLink/backups';
@@ -242,27 +243,31 @@ function processTopics(topics: ChatTopic[]): ChatTopic[] {
     if (Array.isArray(processedTopic.messages)) {
       // 处理消息数组
       processedTopic.messages = processedTopic.messages.map(msg => {
-        // 处理消息状态
-        if (msg.status === 'error' || msg.status === 'pending') {
-          return {
-            ...msg,
-            status: 'complete',
-            // 如果是error状态且没有内容或内容是错误信息，提供友好默认内容
-            content: (msg.role === 'assistant' && (!msg.content || 
-                     typeof msg.content === 'string' && (
-                       msg.content === '很抱歉，请求处理失败，请稍后再试。' || 
-                       msg.content === '网络连接问题，请检查网络并重试' || 
-                       msg.content === 'API密钥无效或已过期，请更新API密钥' ||
-                       msg.content === '请求超时，服务器响应时间过长' ||
-                       msg.content.includes('请求失败') ||
-                       msg.content.includes('错误')
-                     ))) 
-              ? '您好！有什么我可以帮助您的吗？ (Hello! Is there anything I can assist you with?)'
-              : msg.content
-          };
-        }
-        
-        return msg;
+        const mainTextContent = getMainTextContent(msg);
+        return {
+          ...msg,
+          status: 'success',
+          // 使用blocks系统检查消息内容，不再直接引用content
+          blocks: msg.blocks || [{
+            id: Math.random().toString(36).substring(2, 15),
+            messageId: msg.id,
+            type: 'main_text',
+            content: 
+              (msg.role === 'assistant' && (
+                !mainTextContent ||
+                mainTextContent === '很抱歉，请求处理失败，请稍后再试。' ||
+                mainTextContent === '网络连接问题，请检查网络并重试' ||
+                mainTextContent === 'API密钥无效或已过期，请更新API密钥' ||
+                mainTextContent === '请求超时，服务器响应时间过长' ||
+                mainTextContent.includes('请求失败') ||
+                mainTextContent.includes('错误')
+              ))
+                ? '您好！有什么我可以帮助您的吗？ (Hello! Is there anything I can assist you with?)'
+                : mainTextContent,
+            createdAt: msg.createdAt || (msg as any).timestamp || new Date().toISOString(),
+            status: 'success'
+          }]
+        } as any;
       });
     } else {
       // 如果消息数组不存在，初始化为空数组

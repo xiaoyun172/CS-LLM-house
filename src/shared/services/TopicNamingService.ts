@@ -4,6 +4,7 @@ import store from '../store';
 import type { ChatTopic } from '../types';
 import { getStorageItem, setStorageItem } from '../utils/storage';
 import { saveTopicToDB } from './storageService';
+import { getMainTextContent } from '../utils/messageUtils';
 
 /**
  * 话题命名服务
@@ -18,7 +19,7 @@ export class TopicNamingService {
   static shouldNameTopic(topic: ChatTopic): boolean {
     // 获取用户和助手消息的数量
     const userMessages = topic.messages?.filter(m => m.role === 'user') || [];
-    const assistantMessages = topic.messages?.filter(m => m.role === 'assistant' && m.status === 'complete') || [];
+    const assistantMessages = topic.messages?.filter(m => m.role === 'assistant' && m.status === 'success') || [];
     
     // 获取话题名称（优先使用name字段，兼容旧版本使用title字段）
     const topicName = topic.name || topic.title || '';
@@ -80,7 +81,7 @@ export class TopicNamingService {
 
       // 提取前6条消息的内容作为命名依据
       const contentSummary = messages.slice(0, 6).map(msg => {
-        return `${msg.role === 'user' ? '用户' : 'AI'}: ${typeof msg.content === 'string' ? msg.content.slice(0, 100) : ''}`;
+        return `${msg.role === 'user' ? '用户' : 'AI'}: ${getMainTextContent(msg).slice(0, 100)}`;
       }).join('\n');
 
       // 准备系统提示
@@ -122,7 +123,14 @@ export class TopicNamingService {
           };
 
           // 在Redux中更新话题
-          store.dispatch(updateTopic(updatedTopic));
+          store.dispatch(updateTopic({
+            id: updatedTopic.id, 
+            updates: {
+              name: newTitle,
+              title: newTitle,
+              isNameManuallyEdited: true
+            }
+          }));
 
           // 同时更新数据库中的话题
           try {

@@ -1,10 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit';
 import messagesReducer from './slices/messagesSlice';
+import normalizedMessagesReducer from './slices/newMessagesSlice';
 import settingsReducer, { settingsMiddleware, loadSettings } from './settingsSlice';
 import groupsReducer from './slices/groupsSlice';
 import webSearchReducer from './slices/webSearchSlice';
 import systemPromptsReducer from './slices/systemPromptsSlice';
 import assistantsReducer from './slices/assistantsSlice';
+import messageBlocksReducer from './slices/messageBlocksSlice';
 import { useDispatch, useSelector } from 'react-redux';
 import type { TypedUseSelectorHook } from 'react-redux';
 
@@ -12,11 +14,13 @@ import type { TypedUseSelectorHook } from 'react-redux';
 const store = configureStore({
   reducer: {
     messages: messagesReducer,
+    normalizedMessages: normalizedMessagesReducer,
     settings: settingsReducer,
     groups: groupsReducer,
     webSearch: webSearchReducer,
     systemPrompts: systemPromptsReducer,
     assistants: assistantsReducer,
+    messageBlocks: messageBlocksReducer,
   },
   middleware: (getDefaultMiddleware) => 
     getDefaultMiddleware({

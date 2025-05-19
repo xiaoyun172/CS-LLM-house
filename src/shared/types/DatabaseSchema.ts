@@ -1,18 +1,21 @@
 import type { DBSchema } from 'idb';
 import type { Assistant } from './Assistant';
 import type { ChatTopic } from '../types';
+import type { Message, MessageBlock } from '../types/newMessage.ts';
 
 // 统一的数据库配置
 export const DB_CONFIG = {
   NAME: 'aetherlink-db-new',
-  VERSION: 2,
+  VERSION: 4,
   STORES: {
     TOPICS: 'topics' as const,
     ASSISTANTS: 'assistants' as const,
     SETTINGS: 'settings' as const,
     IMAGES: 'images' as const,
     IMAGE_METADATA: 'imageMetadata' as const,
-    METADATA: 'metadata' as const
+    METADATA: 'metadata' as const,
+    MESSAGE_BLOCKS: 'message_blocks' as const,
+    MESSAGES: 'messages' as const
   }
 };
 
@@ -53,6 +56,23 @@ export interface AetherLinkDB extends DBSchema {
     indexes: {
       'by-assistant': string;
       'by-last-time': number;
+    };
+  };
+
+  messages: {
+    key: string;
+    value: Message;
+    indexes: {
+      'by-topic': string;
+      'by-assistant': string;
+    };
+  };
+
+  message_blocks: {
+    key: string;
+    value: MessageBlock;
+    indexes: {
+      'by-message': string;
     };
   };
 

@@ -16,7 +16,7 @@ const loadFromStorage = async (): Promise<WebSearchSettings> => {
   } catch (error) {
     console.error('Failed to load webSearchSettings from IndexedDB', error);
   }
-  
+
   // 默认初始状态
   return {
     enabled: false,
@@ -49,12 +49,11 @@ loadFromStorage().then(settings => {
   // 此处暂时无法直接修改initialState
   // 但Redux初始化后会调用setWebSearchSettings来更新状态
   if (typeof window !== 'undefined') {
-    setTimeout(() => {
-      // 使用动态导入代替require
-      import('../../store').then(moduleExports => {
-        const store = moduleExports.default;
-        store.dispatch(setWebSearchSettings(settings));
-      }).catch(err => console.error('导入store模块失败:', err));
+    setTimeout(async () => {
+      // 使用动态ESM导入替代require
+      const storeModule = await import('../../store');
+      const store = storeModule.default;
+      store.dispatch(setWebSearchSettings(settings));
     }, 0);
   }
 }).catch(err => console.error('加载网络搜索设置失败:', err));
@@ -125,7 +124,7 @@ const webSearchSlice = createSlice({
         saveToStorage(state);
         return;
       }
-      
+
       const index = state.customProviders.findIndex(p => p.id === action.payload.id);
       if (index !== -1) {
         state.customProviders[index] = action.payload;
@@ -141,7 +140,7 @@ const webSearchSlice = createSlice({
     },
     toggleCustomProviderEnabled: (state, action: PayloadAction<string>) => {
       if (!state.customProviders) return;
-      
+
       const index = state.customProviders.findIndex(p => p.id === action.payload);
       if (index !== -1) {
         state.customProviders[index].enabled = !state.customProviders[index].enabled;
@@ -151,7 +150,7 @@ const webSearchSlice = createSlice({
   }
 });
 
-export const { 
+export const {
   setWebSearchSettings,
   toggleWebSearchEnabled,
   setWebSearchProvider,
@@ -168,4 +167,4 @@ export const {
   toggleCustomProviderEnabled
 } = webSearchSlice.actions;
 
-export default webSearchSlice.reducer; 
+export default webSearchSlice.reducer;

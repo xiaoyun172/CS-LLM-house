@@ -4,9 +4,11 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import ImageIcon from '@mui/icons-material/Image';
 import SearchIcon from '@mui/icons-material/Search';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../shared/store';
 import { TopicService } from '../shared/services/TopicService';
+import { EventEmitter, EVENT_NAMES } from '../shared/services/EventService';
+import { setCurrentTopic } from '../shared/store/slices/messagesSlice';
 
 interface ChatToolbarProps {
   onClearTopic?: () => void;
@@ -34,18 +36,42 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const [scrollLeft, setScrollLeft] = useState(0);
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
-  
+  const dispatch = useDispatch();
+
   // 从Redux获取网络搜索设置
   const webSearchEnabled = useSelector((state: RootState) => state.webSearch?.enabled || false);
-  
+
   // 获取工具栏显示样式设置
-  const toolbarDisplayStyle = useSelector((state: RootState) => 
+  const toolbarDisplayStyle = useSelector((state: RootState) =>
     (state.settings as any).toolbarDisplayStyle || 'both'
   );
 
   // 创建新话题 - 使用统一的TopicService
   const handleCreateTopic = async () => {
-    await TopicService.createNewTopic();
+    // 触发新建话题事件
+    EventEmitter.emit(EVENT_NAMES.ADD_NEW_TOPIC);
+    console.log('[ChatToolbar] Emitted ADD_NEW_TOPIC event.');
+
+    // 创建新话题
+    const newTopic = await TopicService.createNewTopic();
+
+    // 如果成功创建话题，自动跳转到新话题
+    if (newTopic) {
+      console.log('[ChatToolbar] 成功创建新话题，自动跳转:', newTopic.id);
+
+      // 设置当前话题 - 立即选择新创建的话题
+      dispatch(setCurrentTopic(newTopic));
+
+      // 确保话题侧边栏显示并选中新话题
+      setTimeout(() => {
+        EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
+
+        // 再次确保新话题被选中，防止其他逻辑覆盖
+        setTimeout(() => {
+          dispatch(setCurrentTopic(newTopic));
+        }, 50);
+      }, 100);
+    }
   };
 
   // 处理拖动滑动
@@ -116,7 +142,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
       bgColor: imageGenerationMode ? (isDarkMode ? '#424242' : '#9C27B0') : isDarkMode ? '#1E1E1E' : '#FFFFFF' // 激活时背景色变深
     }
   ];
-  
+
   // 如果网络搜索已启用，添加网络搜索按钮
   if (webSearchEnabled && toggleWebSearch) {
     buttons.push({
@@ -219,4 +245,4 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   );
 };
 
-export default ChatToolbar; 
+export default ChatToolbar;

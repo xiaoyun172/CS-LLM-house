@@ -15,6 +15,9 @@ import { initializeTopics } from './shared/store/slices/messagesSlice';
 import { initGroups } from './shared/store/slices/groupsSlice';
 import { useSelector } from 'react-redux';
 import { DataManager } from './shared/services';
+import { DataRepairService } from './shared/services/DataRepairService';
+import { DatabaseCleanupService } from './shared/services/DatabaseCleanupService';
+import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from '@mui/material';
 
 // 初始化日志拦截器
 LoggerService.log('INFO', '应用初始化');
@@ -26,6 +29,7 @@ function App() {
   // 应用初始化状态
   const [appInitialized, setAppInitialized] = useState(false);
   const [mode, setMode] = useState<'light' | 'dark'>('light');
+  const [showResetNotice, setShowResetNotice] = useState(false);
 
   // 从Redux状态获取主题设置
   const themePreference = useSelector((state: any) => state.settings.theme);
@@ -190,6 +194,25 @@ function App() {
     // 调用状态栏初始化
     setupStatusBar();
 
+    // 清理旧数据并准备新系统
+    const prepareDatabase = async () => {
+      try {
+        if (DatabaseCleanupService.needsCleanup()) {
+          console.log('[App] 检测到需要清理旧数据，准备迁移到块系统');
+          await DatabaseCleanupService.cleanupDatabase();
+          setShowResetNotice(true);
+          console.log('[App] 数据清理完成，已准备好使用块系统');
+        } else {
+          console.log('[App] 已迁移到块系统，无需清理');
+        }
+      } catch (error) {
+        console.error('[App] 数据库准备失败:', error);
+      }
+    };
+
+    // 执行数据库准备
+    prepareDatabase();
+
     // 检查并修复数据库版本
     DataManager.ensureDatabaseVersion()
       .then(result => {
@@ -206,6 +229,27 @@ function App() {
         console.error('[App] 数据库版本检查出错:', error);
       });
 
+    // 执行数据修复，确保助手和话题关联正确
+    const repairData = async () => {
+      try {
+        // 先检查数据一致性
+        const hasIssues = await DataRepairService.checkDataConsistency();
+
+        if (hasIssues) {
+          console.log('[App] 检测到数据一致性问题，开始修复...');
+          await DataRepairService.repairAllAssistantsAndTopics();
+          console.log('[App] 数据修复完成');
+        } else {
+          console.log('[App] 数据一致性检查通过，无需修复');
+        }
+      } catch (error) {
+        console.error('[App] 数据修复过程发生错误:', error);
+      }
+    };
+
+    // 执行数据修复
+    repairData();
+
     // 加载话题数据并修复重复话题 - 使用标记避免重复加载
     const hasLoadedTopics = sessionStorage.getItem('_topicsLoaded');
 
@@ -216,7 +260,7 @@ function App() {
       console.log('[App] 初始化时加载话题数据');
       // 使用新的异步加载方法
       store.dispatch(initializeTopics());
-      
+
       // 加载分组数据
       store.dispatch(initGroups());
 
@@ -244,11 +288,9 @@ function App() {
       console.log('[App] Redux Store已初始化');
       setAppInitialized(true);
 
-      // 设置性能监控定时器
-      const performanceTimer = setInterval(monitorPerformance, 30000); // 每30秒监控一次
+      // 性能监控定时器已禁用
 
       cleanup = () => {
-        clearInterval(performanceTimer);
         clearTimeout(initTimer);
       };
     }, 100);
@@ -282,14 +324,6 @@ function App() {
     };
   }, [theme, mode]); // 只依赖主题变化
 
-  // 性能监控函数
-  const monitorPerformance = () => {
-    if ('performance' in window && 'memory' in window.performance) {
-      const memory = (window.performance as any).memory;
-      LoggerService.log('INFO', `内存使用: ${Math.round(memory.usedJSHeapSize / 1048576)}MB / ${Math.round(memory.jsHeapSizeLimit / 1048576)}MB`);
-    }
-  };
-
   // 基于初始化状态决定是否展示全部内容
   return (
     <ThemeProvider theme={theme}>
@@ -318,6 +352,28 @@ function App() {
           </div>
         )}
       </HashRouter>
+
+      {/* 数据重置通知对话框 */}
+      <Dialog
+        open={showResetNotice}
+        onClose={() => setShowResetNotice(false)}
+        aria-labelledby="reset-dialog-title"
+        aria-describedby="reset-dialog-description"
+      >
+        <DialogTitle id="reset-dialog-title">
+          应用已升级
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="reset-dialog-description">
+            应用已升级到全新的消息系统，提供更好的性能和用户体验。为确保兼容性，您之前的聊天记录已重置。现在您可以开始使用全新的系统了！
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowResetNotice(false)} color="primary" autoFocus>
+            我知道了
+          </Button>
+        </DialogActions>
+      </Dialog>
     </ThemeProvider>
   );
 }

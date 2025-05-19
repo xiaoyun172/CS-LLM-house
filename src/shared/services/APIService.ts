@@ -1,9 +1,9 @@
 import type { Model } from '../types';
 import { logApiRequest, logApiResponse } from './LoggerService';
-import { generateImage as siliconflowGenerateImage } from '../api/siliconflow';
 import type { ImageGenerationParams, GeneratedImage } from '../types';
 import { ModelType } from '../types';
 import { log } from './LoggerService';
+import { generateImage as openaiGenerateImage } from '../api/openai';
 
 // 获取模型的基本URL
 function getBaseUrl(provider: any): string {
@@ -516,7 +516,7 @@ async function fetchDeepSeekModels(provider: any): Promise<any[]> {
         // 转换为标准格式
         return data.data.map((model: any) => ({
           id: model.id,
-          name: model.id === 'deepseek-chat' ? 'DeepSeek-V3' : 
+          name: model.id === 'deepseek-chat' ? 'DeepSeek-V3' :
                 model.id === 'deepseek-reasoner' ? 'DeepSeek-R1' : model.id,
           description: model.description || getDeepSeekModelDescription(model.id),
           object: 'model',
@@ -528,7 +528,7 @@ async function fetchDeepSeekModels(provider: any): Promise<any[]> {
 
         return data.map((model: any) => ({
           id: model.id,
-          name: model.id === 'deepseek-chat' ? 'DeepSeek-V3' : 
+          name: model.id === 'deepseek-chat' ? 'DeepSeek-V3' :
                 model.id === 'deepseek-reasoner' ? 'DeepSeek-R1' : model.id,
           description: model.description || getDeepSeekModelDescription(model.id),
           object: 'model',
@@ -551,15 +551,15 @@ async function fetchDeepSeekModels(provider: any): Promise<any[]> {
 // 获取默认DeepSeek模型列表
 function getDefaultDeepSeekModels(): any[] {
   return [
-    { 
-      id: 'deepseek-chat', 
-      name: 'DeepSeek-V3', 
+    {
+      id: 'deepseek-chat',
+      name: 'DeepSeek-V3',
       description: 'DeepSeek最新的大型语言模型，具有优秀的中文和代码能力。',
       owned_by: 'DeepSeek'
     },
-    { 
-      id: 'deepseek-reasoner', 
-      name: 'DeepSeek-R1', 
+    {
+      id: 'deepseek-reasoner',
+      name: 'DeepSeek-R1',
       description: 'DeepSeek的推理模型，擅长解决复杂推理问题。',
       owned_by: 'DeepSeek'
     }
@@ -580,31 +580,31 @@ function getDeepSeekModelDescription(modelId: string): string {
 
 // 添加图像生成方法
 export async function generateImage(
-  model: Model, 
+  model: Model,
   params: ImageGenerationParams
 ): Promise<GeneratedImage> {
   try {
     log('INFO', `开始生成图像，使用模型: ${model.name}`);
-    
+
     // 检查模型是否支持图像生成
-    const isImageGenerationModel = 
-      model.imageGeneration || 
-      model.capabilities?.imageGeneration || 
+    const isImageGenerationModel =
+      model.imageGeneration ||
+      model.capabilities?.imageGeneration ||
       (model.modelTypes && model.modelTypes.includes(ModelType.ImageGen)) ||
-      model.id.toLowerCase().includes('flux') || 
+      model.id.toLowerCase().includes('flux') ||
       model.id.toLowerCase().includes('black-forest') ||
       model.id.toLowerCase().includes('stable-diffusion') ||
       model.id.toLowerCase().includes('sd') ||
       model.id.toLowerCase().includes('dalle') ||
       model.id.toLowerCase().includes('midjourney');
-    
+
     if (!isImageGenerationModel) {
       throw new Error(`模型 ${model.name} 不支持图像生成`);
     }
-    
-    // 调用硅基流动API生成图像
-    const imageUrls = await siliconflowGenerateImage(model, params);
-    
+
+    // 调用OpenAI兼容API生成图像
+    const imageUrls = await openaiGenerateImage(model, params);
+
     // 创建图像生成结果
     const generatedImage: GeneratedImage = {
       url: imageUrls[0], // 取第一个生成的图像
@@ -612,9 +612,9 @@ export async function generateImage(
       timestamp: new Date().toISOString(),
       modelId: model.id
     };
-    
+
     log('INFO', `图像生成成功: ${generatedImage.url.substring(0, 50)}...`);
-    
+
     return generatedImage;
   } catch (error: any) {
     log('ERROR', `图像生成失败: ${error.message || '未知错误'}`);
@@ -655,35 +655,51 @@ export async function fetchModels(provider: any): Promise<Model[]> {
       console.warn(`[fetchModels] 警告: 未提供API密钥，可能导致请求失败`);
     }
 
+    // 使用供应商工厂获取模型
     let models: any[] = [];
 
-    // 根据提供商类型获取模型
-    switch (providerType.toLowerCase()) {
-      case 'openai':
-        models = await fetchOpenAIModels(provider);
-        break;
-      case 'anthropic':
-        models = await fetchAnthropicModels(provider);
-        break;
-      case 'gemini':
-      case 'google':
-        models = await fetchGeminiModels(provider);
-        break;
-      case 'grok':
-        models = await fetchGrokModels(provider);
-        break;
-      case 'deepseek':
-        models = await fetchDeepSeekModels(provider);
-        break;
-      default:
-        // 对于未知类型，尝试使用OpenAI兼容API
-        console.log(`[fetchModels] 未知提供商类型 "${providerType}"，尝试使用OpenAI兼容API`);
-        try {
+    try {
+      // 导入供应商工厂
+      const { fetchModels: factoryFetchModels } = await import('./ProviderFactory');
+
+      // 使用供应商工厂获取模型
+      models = await factoryFetchModels(provider);
+
+      console.log(`[fetchModels] 使用供应商工厂成功获取 ${models.length} 个模型`);
+    } catch (e) {
+      console.warn(`[fetchModels] 供应商工厂获取模型失败:`, e);
+
+      // 回退到原始方法
+      console.log(`[fetchModels] 回退到原始方法获取模型`);
+
+      // 根据提供商类型获取模型
+      switch (providerType.toLowerCase()) {
+        case 'openai':
           models = await fetchOpenAIModels(provider);
-        } catch (e) {
-          console.warn(`[fetchModels] OpenAI兼容API尝试失败:`, e);
-          throw new Error(`不支持的提供商类型: ${providerType}`);
-        }
+          break;
+        case 'anthropic':
+          models = await fetchAnthropicModels(provider);
+          break;
+        case 'gemini':
+        case 'google':
+          models = await fetchGeminiModels(provider);
+          break;
+        case 'grok':
+          models = await fetchGrokModels(provider);
+          break;
+        case 'deepseek':
+          models = await fetchDeepSeekModels(provider);
+          break;
+        default:
+          // 对于未知类型，尝试使用OpenAI兼容API
+          console.log(`[fetchModels] 未知提供商类型 "${providerType}"，尝试使用OpenAI兼容API`);
+          try {
+            models = await fetchOpenAIModels(provider);
+          } catch (e) {
+            console.warn(`[fetchModels] OpenAI兼容API尝试失败:`, e);
+            throw new Error(`不支持的提供商类型: ${providerType}`);
+          }
+      }
     }
 
     // 转换为应用模型格式

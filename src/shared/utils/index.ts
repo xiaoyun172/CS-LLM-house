@@ -1,6 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
 import { approximateTokenSize } from 'tokenx';
-import type { Message, MessageContent, SiliconFlowImageFormat } from '../types';
 
 /**
  * 生成UUID
@@ -57,57 +56,6 @@ export function formatDateForTopicTitle(date: Date): string {
   return `${month}-${day} ${hours}:${minutes}`;
 }
 
-/**
- * 创建一个新的消息对象
- * @param options 消息选项
- * @returns 新的消息对象
- */
-export function createMessage(options: {
-  content: MessageContent;
-  role: 'user' | 'assistant' | 'system';
-  status?: 'pending' | 'complete' | 'error';
-  modelId?: string;
-  id?: string;
-  parentMessageId?: string;
-  version?: number;
-  alternateVersions?: string[];
-  isCurrentVersion?: boolean;
-  reasoning?: string;
-  reasoningTime?: number;
-  images?: SiliconFlowImageFormat[];
-}): Message {
-  const {
-    content,
-    role,
-    status = 'complete',
-    modelId,
-    id = uuid(),
-    parentMessageId,
-    version = 1,
-    alternateVersions = [],
-    isCurrentVersion = true,
-    reasoning,
-    reasoningTime,
-    images
-  } = options;
-
-  return {
-    id,
-    content,
-    role,
-    timestamp: new Date().toISOString(),
-    status,
-    modelId,
-    parentMessageId,
-    version,
-    alternateVersions,
-    isCurrentVersion,
-    reasoning,
-    reasoningTime,
-    images
-  };
-}
-
 // 创建新主题
 export function createTopic(title: string): any {
   const now = new Date();
@@ -134,23 +82,18 @@ export function getApiModelId(model: any): string {
     return model.presetModelId;
   }
 
-  // 然后尝试使用name
-  if (model.name && model.name.includes('gpt-') ||
-      model.name.includes('claude-') ||
-      model.name.includes('gemini-')) {
-    return model.name;
-  }
-
-  // 最后尝试使用id，但仅当它看起来像有效的API模型名称
-  if (model.id && (
-      model.id.includes('gpt-') ||
-      model.id.includes('claude-') ||
-      model.id.includes('gemini-'))) {
+  // 直接使用模型ID，不进行复杂匹配
+  // 这样可以确保传递原始模型ID到API
+  if (model.id) {
     return model.id;
   }
 
-  // 默认回退
-  return model.name || model.id || '';
+  // 如果没有ID，尝试使用name
+  if (model.name) {
+    return model.name;
+  }
+
+  return '';
 }
 
 /**

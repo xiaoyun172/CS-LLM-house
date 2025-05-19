@@ -2,11 +2,13 @@ import { TopicService } from '../TopicService';
 import { TopicStatsService } from '../TopicStatsService';
 import type { ChatTopic } from '../../types/Assistant';
 import type { Assistant } from '../../types/Assistant';
-import type { Message } from '../../types';
+// 当需要创建消息时再导入
+// import type { Message } from '../../types';
 import { AssistantManager } from './AssistantManager';
 import { DEFAULT_TOPIC_PROMPT } from '../../config/prompts';
 import { dexieStorage } from '../DexieStorageService';
-import { uuid } from '../../utils';
+// 当需要生成UUID时再导入
+// import { uuid } from '../../utils';
 import { EventEmitter, EVENT_NAMES } from '../EventService';
 
 /**
@@ -429,34 +431,16 @@ export class TopicManager {
         assistantNeedsUpdate = true;
       }
 
+      // 获取助手的系统提示词并存储在话题的prompt字段中
+      topic.prompt = assistant.systemPrompt || DEFAULT_TOPIC_PROMPT;
+
       // 如果话题已经有消息，则不添加新消息，但仍然确保关联关系正确
       if (topic.messages && topic.messages.length > 0) {
         console.log(`[TopicManager] 话题 ${topic.id} 已有消息，不添加初始消息，但确保关联关系正确`);
       } else {
-        // 获取助手的系统提示词
-        const systemPrompt = assistant.systemPrompt || DEFAULT_TOPIC_PROMPT;
-
-        // 创建系统消息
-        const systemMessage: Message = {
-          id: uuid(),
-          role: 'system',
-          content: systemPrompt,
-          timestamp: new Date().toISOString(),
-          status: 'complete'
-        };
-
-        // 创建助手欢迎消息
-        const assistantMessage: Message = {
-          id: uuid(),
-          role: 'assistant',
-          content: '您好！我是您的AI助手，有什么可以帮您的吗？',
-          timestamp: new Date().toISOString(),
-          status: 'complete'
-        };
-
-        // 更新话题消息
-        topic.messages = [systemMessage, assistantMessage];
-        topic.lastMessageTime = assistantMessage.timestamp;
+        console.log(`[TopicManager] 话题 ${topic.id} 没有消息，不添加初始欢迎消息，由用户首次发送消息触发助手响应`);
+        // 创建空的消息数组，不添加欢迎消息
+        topic.messages = [];
       }
 
       // 保存话题到数据库

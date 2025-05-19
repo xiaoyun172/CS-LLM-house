@@ -1,17 +1,21 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import type { Message, ChatTopic, Model } from '../../types';
+import type { ChatTopic, Model } from '../../types';
 import type { RootState } from '../../store';
 import { 
   addMessage, 
   updateMessage, 
-  setTopicLoading, 
-  setTopicStreaming, 
   setError,
   setCurrentTopic,
   initializeTopics
 } from '../../store/slices/messagesSlice';
 import { handleChatRequest, saveTopics } from './messageService';
 import { TopicService } from '../TopicService';
+import { createUserMessage, createAssistantMessage } from '../../utils/messageUtils';
+import { addManyBlocks, updateOneBlock } from '../../store/slices/messageBlocksSlice';
+import { dexieStorage } from '../DexieStorageService';
+import { MessageBlockStatus, AssistantMessageStatus } from '../../types/newMessage.ts';
+import store from '../../store';
+import { EventService, EVENT_NAMES } from '../EventService';
 
 /**
  * 发送消息的异步action
@@ -31,71 +35,195 @@ export const sendMessage = createAsyncThunk(
     { dispatch, getState }
   ) => {
     try {
+      // 获取当前助手ID
       const state = getState() as RootState;
+      const currentTopic = state.messages.topics.find(t => t.id === topicId);
+      const assistantId = currentTopic?.assistantId || '';
 
-      // 创建用户消息
-      const userMessage: Message = {
-        id: `user-${Date.now()}`,
+      // 创建用户消息和块
+      const { message: userMessage, blocks: userBlocks } = createUserMessage({
         content,
-        role: 'user',
-        timestamp: new Date().toISOString(),
+        assistantId,
+        topicId,
         modelId: model.id,
-      };
+        model
+      });
 
+      // 保存消息块到数据库
+      for (const block of userBlocks) {
+        await dexieStorage.saveMessageBlock(block);
+      }
+      
+      // 添加块到Redux
+      dispatch(addManyBlocks(userBlocks));
+      
       // 添加用户消息
       dispatch(addMessage({ topicId, message: userMessage }));
 
+      // 发送消息创建事件
+      EventService.emit(EVENT_NAMES.MESSAGE_CREATED, { 
+        topicId, 
+        messageId: userMessage.id,
+        message: userMessage
+      });
+
       // 设置加载状态
-      dispatch(setTopicLoading({ topicId, loading: true }));
+      store.dispatch({
+        type: 'messages/setTopicLoading',
+        payload: { topicId, loading: true }
+      });
 
-      // 创建助手消息
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        content: '',
-        role: 'assistant',
-        timestamp: new Date().toISOString(),
-        status: 'pending',
+      // 创建助手消息和块
+      const { message: assistantMessage, blocks: assistantBlocks } = createAssistantMessage({
+        assistantId,
+        topicId,
         modelId: model.id,
-      };
+        model,
+        askId: userMessage.id
+      });
 
+      // 保存消息块到数据库
+      for (const block of assistantBlocks) {
+        await dexieStorage.saveMessageBlock(block);
+      }
+      
+      // 添加块到Redux
+      dispatch(addManyBlocks(assistantBlocks));
+      
       // 添加助手消息
       dispatch(addMessage({ topicId, message: assistantMessage }));
 
+      // 发送消息创建事件
+      EventService.emit(EVENT_NAMES.MESSAGE_CREATED, { 
+        topicId, 
+        messageId: assistantMessage.id,
+        message: assistantMessage
+      });
+
       // 设置流式响应状态
-      dispatch(setTopicStreaming({ topicId, streaming: true }));
+      store.dispatch({
+        type: 'messages/setTopicStreaming',
+        payload: { topicId, streaming: true }
+      });
+
+      // 发送流式开始事件
+      EventService.emit(EVENT_NAMES.STREAMING_STARTED, { topicId });
 
       // 获取当前主题的所有消息
       const messages = state.messages.messagesByTopic[topicId] || [];
+
+      // 获取主文本块ID
+      const mainTextBlockId = assistantBlocks.length > 0 ? assistantBlocks[0].id : '';
 
       // 发送聊天请求
       const response = await handleChatRequest({
         messages,
         model,
         onChunk: (chunk: string) => {
-          // 更新流式响应内容
+          if (mainTextBlockId) {
+            // 更新块内容
+            const currentBlock = state.messageBlocks.entities[mainTextBlockId];
+            if (currentBlock) {
+              // 获取现有内容并附加新内容
+              const existingContent = currentBlock.type === 'main_text' ? 
+                (currentBlock as any).content || '' : '';
+              
+              // 更新块内容
+              dispatch(updateOneBlock({ 
+                id: mainTextBlockId, 
+                changes: { 
+                  content: existingContent + chunk,
+                  status: MessageBlockStatus.STREAMING
+                }
+              }));
+              
+              // 保存更新后的块
+              dexieStorage.updateMessageBlock(mainTextBlockId, {
+                content: existingContent + chunk,
+                status: MessageBlockStatus.STREAMING
+              });
+              
+              // 触发块更新事件
+              EventService.emit(EVENT_NAMES.BLOCK_UPDATED, { 
+                blockId: mainTextBlockId,
+                messageId: assistantMessage.id,
+                topicId
+              });
+            }
+          }
+          
+          // 更新消息状态
           dispatch(updateMessage({
             topicId,
             messageId: assistantMessage.id,
-            updates: { content: assistantMessage.content + chunk, status: 'pending' },
+            updates: { 
+              status: AssistantMessageStatus.STREAMING
+            }
           }));
+
+          // 发送消息更新事件
+          EventService.emit(EVENT_NAMES.MESSAGE_UPDATED, {
+            topicId,
+            messageId: assistantMessage.id,
+            status: AssistantMessageStatus.STREAMING
+          });
         }
       });
 
-      // 更新最终响应
+      // 更新最终响应状态
+      if (mainTextBlockId) {
+        // 更新块状态
+        dispatch(updateOneBlock({ 
+          id: mainTextBlockId, 
+          changes: { 
+            status: MessageBlockStatus.SUCCESS
+          }
+        }));
+        
+        // 保存更新后的块
+        dexieStorage.updateMessageBlock(mainTextBlockId, {
+          status: MessageBlockStatus.SUCCESS
+        });
+
+        // 发送块更新事件
+        EventService.emit(EVENT_NAMES.BLOCK_UPDATED, {
+          blockId: mainTextBlockId,
+          messageId: assistantMessage.id,
+          topicId,
+          status: MessageBlockStatus.SUCCESS
+        });
+      }
+      
+      // 更新消息状态
       dispatch(updateMessage({
         topicId,
         messageId: assistantMessage.id,
         updates: { 
-          content: response.content || '响应为空', 
-          status: 'complete' 
-        },
+          status: AssistantMessageStatus.SUCCESS
+        }
       }));
 
+      // 发送消息更新事件
+      EventService.emit(EVENT_NAMES.MESSAGE_UPDATED, {
+        topicId,
+        messageId: assistantMessage.id,
+        status: AssistantMessageStatus.SUCCESS
+      });
+
       // 清除流式响应状态
-      dispatch(setTopicStreaming({ topicId, streaming: false }));
+      store.dispatch({
+        type: 'messages/setTopicStreaming',
+        payload: { topicId, streaming: false }
+      });
+
+      // 发送流式结束事件
+      EventService.emit(EVENT_NAMES.STREAMING_ENDED, { topicId });
 
       // 清除加载状态
-      dispatch(setTopicLoading({ topicId, loading: false }));
+      store.dispatch({
+        type: 'messages/setTopicLoading',
+        payload: { topicId, loading: false }
+      });
 
       return response;
     } catch (error) {
@@ -105,10 +233,25 @@ export const sendMessage = createAsyncThunk(
       dispatch(setError(errorMessage));
 
       // 清除流式响应状态
-      dispatch(setTopicStreaming({ topicId, streaming: false }));
+      store.dispatch({
+        type: 'messages/setTopicStreaming',
+        payload: { topicId, streaming: false }
+      });
+
+      // 发送流式结束事件
+      EventService.emit(EVENT_NAMES.STREAMING_ENDED, { topicId });
 
       // 清除加载状态
-      dispatch(setTopicLoading({ topicId, loading: false }));
+      store.dispatch({
+        type: 'messages/setTopicLoading',
+        payload: { topicId, loading: false }
+      });
+
+      // 发送服务错误事件
+      EventService.emit(EVENT_NAMES.SERVICE_ERROR, {
+        message: errorMessage,
+        source: 'sendMessage'
+      });
 
       throw error;
     }

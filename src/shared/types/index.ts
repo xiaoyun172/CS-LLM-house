@@ -119,46 +119,67 @@ export interface WebSearchResult {
   provider: string;
 }
 
-// 消息内容类型
-export type MessageContent = string | {
-  text?: string;
-  images?: ImageContent[];
-};
+// 导入新的消息类型
+import type {
+  Message,
+  MessageBlock,
+  MessageBlockType,
+  MessageBlockStatus,
+  MainTextMessageBlock,
+  ThinkingMessageBlock,
+  CodeMessageBlock,
+  ImageMessageBlock,
+  CitationMessageBlock,
+  FileMessageBlock,
+  ErrorMessageBlock,
+  ToolMessageBlock,
+  AssistantMessageStatus,
+  UserMessageStatus
+} from './newMessage.ts';
 
-// 消息类型
-export interface Message {
-  id: string;
-  content: MessageContent;
-  role: 'user' | 'assistant' | 'system';
-  timestamp: string;
-  status?: 'pending' | 'complete' | 'error';
-  modelId?: string; // 使用的模型ID
-  reasoning?: string; // 存储模型的思考过程
-  reasoningTime?: number; // 思考过程耗时（单位：毫秒）
-  version?: number; // 消息版本号，用于标识重新生成的回复
-  parentMessageId?: string; // 关联的用户消息ID
-  alternateVersions?: string[]; // 存储同一回复的其他版本ID数组
-  isCurrentVersion?: boolean; // 是否是当前显示的版本
-  images?: SiliconFlowImageFormat[]; // 图片内容数组，用于多模态消息
-  webSearchResults?: WebSearchResult[]; // 网络搜索结果
-}
+// 导出新的消息类型
+export type {
+  Message,
+  MessageBlock,
+  MessageBlockType,
+  MessageBlockStatus,
+  MainTextMessageBlock,
+  ThinkingMessageBlock,
+  CodeMessageBlock,
+  ImageMessageBlock,
+  CitationMessageBlock,
+  FileMessageBlock,
+  ErrorMessageBlock,
+  ToolMessageBlock,
+  AssistantMessageStatus,
+  UserMessageStatus
+};
 
 // 聊天主题类型
 export interface ChatTopic {
   id: string;
-  name: string;            // 使用name字段而不是title
-  title?: string;          // 保留title作为可选字段，兼容旧代码
-  createdAt: string;       // 添加创建时间
-  updatedAt: string;       // 添加更新时间
-  lastMessageTime?: string; // 改为可选
-  messages: Message[];
-  assistantId: string;     // 关联的助手ID，改为必需
-  prompt?: string;         // 话题特定提示词，会覆盖助手的系统提示词
-  messageCount?: number;   // 可选字段
-  tokenCount?: number;     // 可选字段
-  inputTemplate?: string;  // 可选字段
-  isDefault?: boolean;     // 可选字段
-  isNameManuallyEdited: boolean; // 添加手动编辑标记
+  assistantId: string;     // 关联的助手ID，必需
+  name: string;            // 主要字段，与电脑版一致
+  createdAt: string;
+  updatedAt: string;
+  isNameManuallyEdited: boolean;
+  messageIds: string[];    // 消息ID数组，存储消息ID引用
+  
+  // 可选字段
+  lastMessageTime?: string;// 最后消息时间
+  inputTemplate?: string;  // 输入模板
+  messageCount?: number;   // 消息计数
+  tokenCount?: number;     // token计数
+  isDefault?: boolean;     // 是否默认
+  pinned?: boolean;        // 是否置顶
+  
+  // 旧版字段，标记为已弃用
+  /** @deprecated 使用messageIds代替 */
+  messages?: Message[];    // 已弃用，保留用于兼容
+  /** @deprecated 使用name代替 */
+  title?: string;          // 已弃用，保留用于兼容
+  /** @deprecated 不再使用 */
+  prompt?: string;         // 已弃用，保留用于兼容
 }
 
 // 模型类型
@@ -219,3 +240,6 @@ export interface PresetModel {
   imageGeneration?: boolean; // 是否支持图像生成
   modelTypes?: ModelType[]; // 预设的模型类型
 }
+
+// 确保从newMessage导出所有类型
+export * from './newMessage.ts';

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { updateMessage } from '../../shared/store/messagesSlice';
-import type { Message } from '../../shared/types';
+import type { Message } from '../../shared/types/newMessage.ts';
+import type { RootState } from '../../shared/store';
+import { getMainTextContent } from '../../shared/utils/messageUtils';
+import { UserMessageStatus, AssistantMessageStatus } from '../../shared/types/newMessage.ts';
 
 interface MessageEditorProps {
   message: Message;
@@ -13,7 +16,11 @@ interface MessageEditorProps {
 
 const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, onClose }) => {
   const dispatch = useDispatch();
-  const [editedContent, setEditedContent] = useState(message.content);
+  const state = useSelector((state: RootState) => state);
+
+  // 获取消息内容
+  const initialContent = getMainTextContent(message);
+  const [editedContent, setEditedContent] = useState(initialContent);
   const isUser = message.role === 'user';
 
   // 保存编辑的消息内容
@@ -21,26 +28,45 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, o
     // 获取编辑后的文本内容
     const editedText = typeof editedContent === 'string'
       ? editedContent
-      : (editedContent as {text?: string}).text || '';
-    
+      : '';
+
     if (topicId && editedText.trim()) {
-      // 更新消息
+      // 查找主文本块
+      const mainTextBlockId = message.blocks.find((blockId: string) => {
+        const block = state.messageBlocks.entities[blockId];
+        return block && block.type === 'main_text';
+      });
+
+      if (mainTextBlockId) {
+        // 更新块内容
+        dispatch({
+          type: 'messageBlocks/updateMessageBlock',
+          payload: {
+            id: mainTextBlockId,
+            changes: {
+              content: editedText
+            }
+          }
+        });
+      }
+
+      // 同时更新消息对象
       dispatch(updateMessage({
         topicId,
         messageId: message.id,
         updates: {
-          content: editedText,
-          status: 'complete' // 确保状态为完成
+          // 直接使用新的消息状态
+          status: isUser ? UserMessageStatus.SUCCESS : AssistantMessageStatus.SUCCESS
         }
       }));
-      
+
       onClose();
     }
   };
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={onClose}
       fullWidth
       maxWidth="sm"
@@ -63,11 +89,11 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, o
         <Button onClick={onClose} color="inherit" size="small">
           取消
         </Button>
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           color="primary"
           onClick={handleSave}
-          disabled={typeof editedContent === 'string' ? !editedContent.trim() : !((editedContent as {text?: string}).text || '').trim()}
+          disabled={!editedContent || !editedContent.trim()}
           sx={{ mr: 1 }}
         >
           保存
@@ -77,4 +103,4 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, o
   );
 };
 
-export default MessageEditor; 
+export default MessageEditor;

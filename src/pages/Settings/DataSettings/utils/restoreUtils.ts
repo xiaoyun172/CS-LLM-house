@@ -1,11 +1,11 @@
 // import { saveTopicToDB, saveAssistantToDB } from '../../../../shared/services/storageService';
 import type { ChatTopic } from '../../../../shared/types';
-import type { Message } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
 import { CURRENT_BACKUP_VERSION } from './backupUtils';
 import { importExternalBackup } from './externalBackupUtils';
 import { dexieStorage } from '../../../../shared/services/DexieStorageService';
 import { getStorageItem, setStorageItem, setStorageItems } from '../../../../shared/utils/storage';
+import { getMainTextContent } from '../../../../shared/utils/messageUtils';
 
 /**
  * 从文件中读取JSON内容
@@ -87,40 +87,39 @@ export function processBackupDataForVersion(data: any): any {
         // 确保消息数组存在
         if (Array.isArray(processedTopic.messages)) {
           // 处理消息数组 - 修复可能的状态问题
-          processedTopic.messages = processedTopic.messages.map((msg: Message) => {
-            // 处理消息状态
-            if (msg.status === 'error' || msg.status === 'pending') {
-              return {
-                ...msg,
-                status: 'complete',
-                // 如果是error状态且没有内容或内容是错误信息，提供友好默认内容
-                content: (!msg.content ||
-                         typeof msg.content === 'string' && (
-                           msg.content === '很抱歉，请求处理失败，请稍后再试。' ||
-                           msg.content === '网络连接问题，请检查网络并重试' ||
-                           msg.content === 'API密钥无效或已过期，请更新API密钥' ||
-                           msg.content === '请求超时，服务器响应时间过长' ||
-                           msg.content.includes('请求失败') ||
-                           msg.content.includes('错误')
-                         ))
-                  ? '您好！有什么我可以帮助您的吗？ (Hello! Is there anything I can assist you with?)'
-                  : msg.content
-              };
-            }
-
-            // 确保版本信息一致
-            if (msg.alternateVersions && msg.alternateVersions.length > 0) {
-              if (!msg.version) {
-                msg.version = 1;
-              }
-
-              // 如果未明确标记版本状态，但有替代版本，默认为非当前版本
-              if (msg.isCurrentVersion === undefined && msg.alternateVersions.length > 0) {
-                msg.isCurrentVersion = false;
-              }
-            }
-
-            return msg;
+          processedTopic.messages = processedTopic.messages.map((msg: any) => {
+            // 首先处理消息内容
+            const mainTextContent = getMainTextContent(msg);
+            const processedMsg = {
+              ...msg,
+              status: 'success', // 使用'success'替代'complete'
+              // 确保使用块系统
+              blocks: msg.blocks || [{
+                id: `block-restore-${Math.random().toString(36).substring(2, 10)}`,
+                messageId: msg.id,
+                type: 'main_text',
+                content: (!mainTextContent ||
+                  mainTextContent === '很抱歉，请求处理失败，请稍后再试。' ||
+                  mainTextContent === '网络连接问题，请检查网络并重试' ||
+                  mainTextContent === 'API密钥无效或已过期，请更新API密钥' ||
+                  mainTextContent === '请求超时，服务器响应时间过长' ||
+                  mainTextContent.includes('请求失败') ||
+                  mainTextContent.includes('错误')
+                )
+                  ? '恢复成功，以前的内容不可见，继续聊天吧...'
+                  : mainTextContent,
+                createdAt: msg.createdAt || (msg as any).timestamp || new Date().toISOString(),
+                status: 'success'
+              }]
+            };
+            
+            // 移除不兼容的字段
+            delete processedMsg.alternateVersions;
+            delete processedMsg.version;
+            delete processedMsg.isCurrentVersion;
+            delete processedMsg.content; // 删除旧的content字段，仅使用blocks
+            
+            return processedMsg as any; // 使用类型断言避免严格类型检查
           });
         } else {
           // 如果消息数组不存在，初始化为空数组

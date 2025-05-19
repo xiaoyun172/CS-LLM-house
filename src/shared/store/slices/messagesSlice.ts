@@ -1,80 +1,147 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import type { Message, ChatTopic } from '../../types';
+import type { ChatTopic } from '../../types';
+import type { Message } from '../../types/newMessage.ts';
+// 移除未使用的导入
 import { loadTopics as loadTopicsFromService } from '../../services/messages/messageService';
-import { saveTopicToDB } from '../../services/storageService';
-import { dexieStorage } from '../../services/DexieStorageService';
+import { TopicService } from '../../services/TopicService';
 
-// 消息状态接口
-export interface MessagesState {
-  messagesByTopic: Record<string, Message[]>;
-  topics: ChatTopic[];
-  currentTopic: ChatTopic | null;
-  loadingByTopic: Record<string, boolean>;
-  streamingByTopic: Record<string, boolean>;
-  error: string | null;
-}
+// 清空主题消息
+export const clearTopicMessages = (topic: ChatTopic) => {
+  // 清空messageIds数组
+  topic.messageIds = [];
+  // 为了兼容性，也清空messages数组
+  if (topic.messages) {
+    topic.messages = [];
+  }
+  return topic;
+};
 
 // 初始状态
-const initialState: MessagesState = {
-  messagesByTopic: {},
-  topics: [],
-  currentTopic: null,
-  loadingByTopic: {},
-  streamingByTopic: {},
-  error: null,
+const initialState = {
+  topics: [] as ChatTopic[],
+  currentTopic: null as ChatTopic | null,
+  messagesByTopic: {} as Record<string, Message[]>,
+  loadingByTopic: {} as Record<string, boolean>, // 添加每个话题的加载状态
+  streamingByTopic: {} as Record<string, boolean>, // 添加每个话题的流式响应状态
+  status: 'idle', // 'idle' | 'loading' | 'succeeded' | 'failed'
+  error: null as string | null,
+  systemPrompt: '',
+  showSystemPrompt: false,
 };
 
 // 话题加载处理函数
 const loadTopicsFromStorage = async (dispatch: any) => {
   try {
     const topics = await loadTopicsFromService();
+    
+    // 直接加载话题，不进行消息转换
     dispatch(loadTopicsSuccess(topics));
+    
+    // 对每个话题，加载其消息
+    for (const topic of topics) {
+      try {
+        await TopicService.loadTopicMessages(topic.id);
+      } catch (error) {
+        console.error(`加载话题 ${topic.id} 的消息失败:`, error);
+      }
+    }
   } catch (error) {
     console.error('加载话题失败:', error);
     dispatch(setError('加载话题失败'));
   }
 };
 
-// 创建消息slice
+// 创建slice
 const messagesSlice = createSlice({
   name: 'messages',
   initialState,
   reducers: {
+    // 设置系统提示词
+    setSystemPrompt: (state, action: PayloadAction<string>) => {
+      state.systemPrompt = action.payload;
+    },
+
+    // 设置是否显示系统提示词
+    setShowSystemPrompt: (state, action: PayloadAction<boolean>) => {
+      state.showSystemPrompt = action.payload;
+    },
+
+    // 设置加载状态
+    setLoadingStatus: (state, action: PayloadAction<'idle' | 'loading' | 'succeeded' | 'failed'>) => {
+      state.status = action.payload;
+    },
+
+    // 设置错误
+    setError: (state, action: PayloadAction<string | null>) => {
+      state.error = action.payload;
+    },
+
+    // 添加主题
+    addTopic: (state, action: PayloadAction<ChatTopic>) => {
+      const topic = action.payload;
+      // 确保不添加重复主题
+      if (!state.topics.some(t => t.id === topic.id)) {
+        state.topics.push(topic);
+      }
+    },
+
+    // 添加多个主题
+    addTopics: (state, action: PayloadAction<ChatTopic[]>) => {
+      const newTopics = action.payload;
+      // 仅添加不存在的主题
+      for (const newTopic of newTopics) {
+        if (!state.topics.some(t => t.id === newTopic.id)) {
+          state.topics.push(newTopic);
+        }
+      }
+    },
+
     // 设置当前主题
     setCurrentTopic: (state, action: PayloadAction<ChatTopic | null>) => {
       state.currentTopic = action.payload;
     },
 
-    // 触发话题加载的action
-    loadTopics: () => {
-      // 这个reducer不修改状态，只用于触发异步操作
-      // 实际的数据加载在loadTopicsFromStorage函数中处理
+    // 更新主题
+    updateTopic: (state, action: PayloadAction<{id: string; updates: Partial<ChatTopic>}>) => {
+      const {id, updates} = action.payload;
+      const topicIndex = state.topics.findIndex(t => t.id === id);
+
+      if (topicIndex >= 0) {
+        state.topics[topicIndex] = { ...state.topics[topicIndex], ...updates };
+
+        // 如果更新的是当前主题，同步更新当前主题
+        if (state.currentTopic && state.currentTopic.id === id) {
+          state.currentTopic = { ...state.currentTopic, ...updates };
+        }
+      }
     },
 
-    // 设置话题加载状态
-    setTopicLoading: (state, action: PayloadAction<{ topicId: string; loading: boolean }>) => {
-      const { topicId, loading } = action.payload;
-      state.loadingByTopic[topicId] = loading;
-    },
+    // 删除主题
+    deleteTopic: (state, action: PayloadAction<string>) => {
+      const id = action.payload;
+      state.topics = state.topics.filter(t => t.id !== id);
 
-    // 设置话题流式响应状态
-    setTopicStreaming: (state, action: PayloadAction<{ topicId: string; streaming: boolean }>) => {
-      const { topicId, streaming } = action.payload;
-      state.streamingByTopic[topicId] = streaming;
+      // 如果删除的是当前主题，清空当前主题
+      if (state.currentTopic && state.currentTopic.id === id) {
+        state.currentTopic = null;
+      }
+
+      // 清理相关消息
+      delete state.messagesByTopic[id];
     },
 
     // 添加消息
     addMessage: (state, action: PayloadAction<{ topicId: string; message: Message }>) => {
       const { topicId, message } = action.payload;
-      
-      // 如果主题消息数组不存在，创建一个空数组
+
+      // 更新消息存储
       if (!state.messagesByTopic[topicId]) {
         state.messagesByTopic[topicId] = [];
       }
       
       // 检查消息是否已存在
-      const existingMessageIndex = state.messagesByTopic[topicId].findIndex(m => m.id === message.id);
+      const existingMessageIndex = state.messagesByTopic[topicId].findIndex((m: Message) => m.id === message.id);
       
       if (existingMessageIndex === -1) {
         // 添加新消息
@@ -83,38 +150,49 @@ const messagesSlice = createSlice({
         // 更新现有消息
         state.messagesByTopic[topicId][existingMessageIndex] = message;
       }
-      
-      // 如果是当前主题，更新主题的最后消息时间
+
+      // 更新当前主题的messageIds
       if (state.currentTopic && state.currentTopic.id === topicId) {
-        state.currentTopic.lastMessageTime = message.timestamp;
-        state.currentTopic.messages = state.messagesByTopic[topicId];
+        if (!state.currentTopic.messageIds) {
+          state.currentTopic.messageIds = [];
+        }
+        
+        if (!state.currentTopic.messageIds.includes(message.id)) {
+          state.currentTopic.messageIds.push(message.id);
+        }
+
+        // 更新当前主题的最后消息时间
+        state.currentTopic.lastMessageTime = message.createdAt;
       }
-      
-      // 使用Dexie存储保存消息到话题
-      dexieStorage.addMessageToTopic(topicId, message)
-        .catch(error => console.error(`保存消息到话题 ${topicId} 失败:`, error));
+
+      // 更新主题列表中的messageIds
+      const topicToUpdate = state.topics.find(t => t.id === topicId);
+      if (topicToUpdate) {
+        if (!topicToUpdate.messageIds) {
+          topicToUpdate.messageIds = [];
+        }
+        
+        if (!topicToUpdate.messageIds.includes(message.id)) {
+          topicToUpdate.messageIds.push(message.id);
+        }
+
+        // 更新主题的最后消息时间
+        topicToUpdate.lastMessageTime = message.createdAt;
+      }
     },
 
     // 更新消息
     updateMessage: (state, action: PayloadAction<{ topicId: string; messageId: string; updates: Partial<Message> }>) => {
       const { topicId, messageId, updates } = action.payload;
-      
-      const messageArray = state.messagesByTopic[topicId];
-      if (messageArray) {
-        const messageIndex = messageArray.findIndex(m => m.id === messageId);
-        if (messageIndex !== -1) {
-          // 合并更新
-          const updatedMessage = {
-            ...state.messagesByTopic[topicId][messageIndex],
+
+      // 更新消息存储
+      if (state.messagesByTopic[topicId]) {
+        const msgIndex = state.messagesByTopic[topicId].findIndex((m: Message) => m.id === messageId);
+        if (msgIndex >= 0) {
+          state.messagesByTopic[topicId][msgIndex] = {
+            ...state.messagesByTopic[topicId][msgIndex],
             ...updates
           };
-          
-          // 更新Redux状态
-          state.messagesByTopic[topicId][messageIndex] = updatedMessage;
-          
-          // 使用Dexie存储更新消息
-          dexieStorage.updateMessageInTopic(topicId, messageId, updatedMessage)
-            .catch(error => console.error(`更新消息 ${messageId} 在话题 ${topicId} 中失败:`, error));
         }
       }
     },
@@ -122,140 +200,61 @@ const messagesSlice = createSlice({
     // 删除消息
     deleteMessage: (state, action: PayloadAction<{ topicId: string; messageId: string }>) => {
       const { topicId, messageId } = action.payload;
-      
+
+      // 从消息存储中删除
       if (state.messagesByTopic[topicId]) {
-        // 从Redux状态移除消息
-        state.messagesByTopic[topicId] = state.messagesByTopic[topicId].filter(m => m.id !== messageId);
-        
-        // 使用Dexie存储删除消息
-        dexieStorage.deleteMessageFromTopic(topicId, messageId)
-          .catch(error => console.error(`删除消息 ${messageId} 从话题 ${topicId} 中失败:`, error));
+        state.messagesByTopic[topicId] = state.messagesByTopic[topicId].filter((m: Message) => m.id !== messageId);
+      }
+
+      // 从当前主题的messageIds中删除
+      if (state.currentTopic && state.currentTopic.id === topicId && state.currentTopic.messageIds) {
+        state.currentTopic.messageIds = state.currentTopic.messageIds.filter(id => id !== messageId);
+      }
+
+      // 从主题列表中的messageIds中删除
+      const topicIndex = state.topics.findIndex(t => t.id === topicId);
+      if (topicIndex >= 0 && state.topics[topicIndex].messageIds) {
+        state.topics[topicIndex].messageIds = state.topics[topicIndex].messageIds.filter(id => id !== messageId);
       }
     },
 
-    // 清除话题消息
-    clearTopicMessages: (state, action: PayloadAction<string>) => {
-      const topicId = action.payload;
-      state.messagesByTopic[topicId] = [];
-    },
-
-    // 删除话题
-    deleteTopic: (state, action: PayloadAction<string>) => {
-      const topicId = action.payload;
-      
-      // 删除主题
-      state.topics = state.topics.filter(t => t.id !== topicId);
-      
-      // 删除主题消息
-      delete state.messagesByTopic[topicId];
-      
-      // 如果删除的是当前主题，清除当前主题
-      if (state.currentTopic && state.currentTopic.id === topicId) {
-        state.currentTopic = null;
-      }
-    },
-
-    // 设置错误
-    setError: (state, action: PayloadAction<string | null>) => {
-      state.error = action.payload;
-    },
-    
-    // 创建主题
-    createTopic: (state, action: PayloadAction<ChatTopic>) => {
-      const newTopic = action.payload;
-      console.log(`创建话题action: ${newTopic.id} (${newTopic.title})`);
-      
-      // 检查主题是否已存在
-      const exists = state.topics.some(topic => topic.id === newTopic.id);
-      if (exists) {
-        console.warn(`主题ID ${newTopic.id} 已存在, 不会重复创建`);
-        return;
-      }
-      
-      // 添加到topics数组
-      state.topics.unshift(newTopic);
-      
-      // 初始化消息数组
-      state.messagesByTopic[newTopic.id] = newTopic.messages || [];
-      
-      // 设置为当前主题
-      state.currentTopic = newTopic;
-      
-      // 保存到数据库
-      saveTopicToDB(newTopic).catch(error => {
-        console.error('保存新主题到数据库失败:', error);
-      });
-    },
-    
-    // 更新主题
-    updateTopic: (state, action: PayloadAction<ChatTopic>) => {
-      const updatedTopic = action.payload;
-      
-      // 更新topics中的话题
-      const topicIndex = state.topics.findIndex(topic => topic.id === updatedTopic.id);
-      if (topicIndex !== -1) {
-        state.topics[topicIndex] = updatedTopic;
-      }
-      
-      // 如果是当前话题，也更新当前话题
-      if (state.currentTopic && state.currentTopic.id === updatedTopic.id) {
-        state.currentTopic = updatedTopic;
-      }
-      
-      // 保存到数据库
-      saveTopicToDB(updatedTopic).catch(error => {
-        console.error(`保存更新的主题 ${updatedTopic.id} 到数据库失败:`, error);
-      });
-    },
-    
-    // 设置主题的消息列表
+    // 设置主题的消息
     setTopicMessages: (state, action: PayloadAction<{ topicId: string; messages: Message[] }>) => {
       const { topicId, messages } = action.payload;
-      
-      // 更新消息列表
-      state.messagesByTopic[topicId] = messages.slice(); // 使用slice()创建一个新数组，避免引用问题
-      
-      // 如果是当前主题，也更新当前主题的消息
+
+      // 更新消息存储
+      state.messagesByTopic[topicId] = messages;
+
+      // 更新当前主题的消息IDs
       if (state.currentTopic && state.currentTopic.id === topicId) {
-        state.currentTopic.messages = messages.slice();
+        state.currentTopic.messageIds = messages.map(m => m.id);
+      }
+
+      // 更新主题列表中的消息IDs
+      const topicIndex = state.topics.findIndex(t => t.id === topicId);
+      if (topicIndex >= 0) {
+        state.topics[topicIndex].messageIds = messages.map(m => m.id);
       }
     },
 
     // 接收成功加载的话题数据
     loadTopicsSuccess: (state, action: PayloadAction<ChatTopic[]>) => {
       const uniqueTopics = action.payload;
-      
+
       // 更新到Redux状态
       state.topics = uniqueTopics;
-      
-      // 初始化消息记录（需要对消息也进行去重）
+
+      // 初始化消息记录
       uniqueTopics.forEach((topic: ChatTopic) => {
-        if (topic.messages && topic.messages.length > 0) {
-          // 使用Map对消息按照ID去重
-          const uniqueMessagesMap = new Map();
-          (topic.messages || []).forEach((msg: Message) => {
-            if (!uniqueMessagesMap.has(msg.id)) {
-              // 清理错误状态和待处理状态的消息
-              if (msg.status === 'error' || msg.status === 'pending') {
-                msg.status = 'complete' as const;
-                
-                // 如果是error状态且没有内容，提供默认内容
-                if (msg.status === 'complete' && (!msg.content || msg.content === '很抱歉，请求处理失败，请稍后再试。')) {
-                  msg.content = '您好！有什么我可以帮助您的吗？ (Hello! Is there anything I can assist you with?)';
-                }
-              }
-              uniqueMessagesMap.set(msg.id, msg);
-            }
-          });
-          
-          // 更新到消息记录
-          state.messagesByTopic[topic.id] = Array.from(uniqueMessagesMap.values());
-        } else {
-          // 确保每个主题都有一个消息数组
-          state.messagesByTopic[topic.id] = [];
+        // 确保topic.messages存在
+        if (!topic.messages) {
+          topic.messages = [];
         }
+
+        // 将消息添加到messagesByTopic
+        state.messagesByTopic[topic.id] = [...topic.messages];
       });
-      
+
       // 选择具有最新消息时间的话题作为当前话题，而不是第一个
       if (uniqueTopics.length > 0) {
         // 按lastMessageTime降序排序话题
@@ -264,30 +263,44 @@ const messagesSlice = createSlice({
           const timeB = new Date(b.lastMessageTime || 0).getTime();
           return timeB - timeA; // 降序排序
         });
-        
+
         // 使用排序后的第一个话题（最新的一个）作为当前话题
         state.currentTopic = sortedTopics[0];
       }
+    },
+
+    // 设置话题加载状态
+    setTopicLoading: (state, action: PayloadAction<{topicId: string; loading: boolean}>) => {
+      const { topicId, loading } = action.payload;
+      state.loadingByTopic[topicId] = loading;
+    },
+
+    // 设置话题流式响应状态
+    setTopicStreaming: (state, action: PayloadAction<{topicId: string; streaming: boolean}>) => {
+      const { topicId, streaming } = action.payload;
+      state.streamingByTopic[topicId] = streaming;
     },
   },
 });
 
 // 导出actions
 export const {
+  setSystemPrompt,
+  setShowSystemPrompt,
+  setLoadingStatus,
+  setError,
+  addTopic,
+  addTopics,
   setCurrentTopic,
-  loadTopics,
-  setTopicLoading,
-  setTopicStreaming, 
+  updateTopic,
+  deleteTopic,
   addMessage,
   updateMessage,
   deleteMessage,
-  clearTopicMessages,
-  deleteTopic,
-  setError,
-  createTopic,
-  updateTopic,
   setTopicMessages,
   loadTopicsSuccess,
+  setTopicLoading,
+  setTopicStreaming,
 } = messagesSlice.actions;
 
 // 异步action creator
@@ -295,5 +308,14 @@ export const initializeTopics = () => async (dispatch: any) => {
   await loadTopicsFromStorage(dispatch);
 };
 
+// 导出类型
+export type MessagesState = typeof initialState;
+
+// 创建话题的空实现，为了满足现有代码的需求
+export const createTopic = () => async () => {};
+
+// 导出loadTopics作为initializeTopics的别名
+export const loadTopics = initializeTopics;
+
 // 导出reducer
-export default messagesSlice.reducer; 
+export default messagesSlice.reducer;
