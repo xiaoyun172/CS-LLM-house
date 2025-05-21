@@ -102,7 +102,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     try {
       // 使用工具函数获取主文本内容
       const textContent = getMainTextContent(message);
-      
+
       navigator.clipboard.writeText(textContent);
       // 使用快照通知
       handleMenuClose();
@@ -162,7 +162,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
       console.error('TTS错误:', error);
       alert('文本转语音失败');
     }
-    
+
     handleMenuClose();
   };
 
@@ -176,24 +176,38 @@ const MessageActions: React.FC<MessageActionsProps> = ({
           <IconButton
             size="small"
             onClick={handleTextToSpeech}
-            sx={{ 
-              opacity: 0.7,
-              '&:hover': { opacity: 1 } 
+            sx={{
+              opacity: 0.6,
+              padding: 0.5, // 减小内边距
+              backgroundColor: 'rgba(255, 255, 255, 0.5)', // 半透明背景
+              '&:hover': {
+                opacity: 1,
+                backgroundColor: 'rgba(255, 255, 255, 0.8)'
+              }
             }}
           >
-            {isPlaying ? <VolumeOffIcon fontSize="small" /> : <VolumeUpIcon fontSize="small" />}
+            {isPlaying ?
+              <VolumeOffIcon sx={{ fontSize: '0.9rem' }} /> :
+              <VolumeUpIcon sx={{ fontSize: '0.9rem' }} />
+            }
           </IconButton>
         )}
-        
+
         <IconButton
           size="small"
           onClick={handleMenuClick}
-          sx={{ 
-            opacity: 0.7,
-            '&:hover': { opacity: 1 } 
+          sx={{
+            opacity: 0.6,
+            padding: 0.5, // 减小内边距
+            backgroundColor: 'rgba(255, 255, 255, 0.5)', // 半透明背景
+            '&:hover': {
+              opacity: 1,
+              backgroundColor: 'rgba(255, 255, 255, 0.8)'
+            },
+            ml: !isUser && enableTTS ? 0.5 : 0 // 如果有TTS按钮，添加左边距
           }}
         >
-          <MoreVertIcon fontSize="small" />
+          <MoreVertIcon sx={{ fontSize: '0.9rem' }} />
         </IconButton>
       </Box>
 

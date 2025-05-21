@@ -30,6 +30,7 @@ export interface MessageContentItem {
   text?: string;
   image_url?: {
     url: string;
+    detail?: 'auto' | 'low' | 'high';
   };
 }
 
@@ -50,100 +51,93 @@ export function convertToOpenAIMessages(messages: Message[]): Array<ChatCompleti
     // 添加调试日志
     console.log(`[OpenAI API] 处理消息类型: ${apiMsg.role}, 复杂内容: ${isComplexContent}, 直接图片: ${hasDirectImages}`);
 
-    if (apiMsg.role === 'user') {
-      // 用户消息处理
-      // 如果包含任意形式的图片，使用内容数组格式
-      if (isComplexContent || hasDirectImages) {
-        // 准备内容数组
-        const contentArray: MessageContentItem[] = [];
+    // 保持原始角色，不再将system角色转换为user角色
+    const role = apiMsg.role;
 
-        // 添加文本内容（如果有）
-        const textContent = isComplexContent
-          ? (apiMsg.content as {text?: string}).text || ''
-          : typeof apiMsg.content === 'string' ? apiMsg.content : '';
+    // 如果包含任意形式的图片，使用内容数组格式
+    if ((isComplexContent || hasDirectImages) && role === 'user') {
+      // 准备内容数组
+      const contentArray: MessageContentItem[] = [];
 
-        if (textContent) {
-          contentArray.push({
-            type: 'text',
-            text: textContent
-          });
-        }
+      // 添加文本内容（如果有）
+      const textContent = isComplexContent
+        ? (apiMsg.content as {text?: string}).text || ''
+        : typeof apiMsg.content === 'string' ? apiMsg.content : '';
 
-        // 添加内容里的图片（旧格式）
-        if (isComplexContent) {
-          const content = apiMsg.content as {text?: string; images?: ImageContent[]};
-          if (content.images && content.images.length > 0) {
-            console.log(`[OpenAI API] 处理旧格式图片，数量: ${content.images.length}`);
-            content.images.forEach((image, index) => {
-              if (image.base64Data) {
-                contentArray.push({
-                  type: 'image_url',
-                  image_url: {
-                    url: image.base64Data // 已经包含完整的data:image/格式
-                  }
-                });
-                console.log(`[OpenAI API] 添加base64图片 ${index+1}, 开头: ${image.base64Data.substring(0, 30)}...`);
-              } else if (image.url) {
-                contentArray.push({
-                  type: 'image_url',
-                  image_url: {
-                    url: image.url
-                  }
-                });
-                console.log(`[OpenAI API] 添加URL图片 ${index+1}: ${image.url}`);
-              }
-            });
-          }
-        }
+      if (textContent) {
+        contentArray.push({
+          type: 'text',
+          text: textContent
+        });
+      }
 
-        // 添加直接附加的图片（新格式）
-        if (hasDirectImages) {
-          console.log(`[OpenAI API] 处理新格式图片，数量: ${apiMsg.images!.length}`);
-          apiMsg.images!.forEach((imgFormat, index) => {
-            if (imgFormat.image_url && imgFormat.image_url.url) {
+      // 添加内容里的图片（旧格式）
+      if (isComplexContent) {
+        const content = apiMsg.content as {text?: string; images?: ImageContent[]};
+        if (content.images && content.images.length > 0) {
+          console.log(`[OpenAI API] 处理旧格式图片，数量: ${content.images.length}`);
+          content.images.forEach((image, index) => {
+            if (image.base64Data) {
               contentArray.push({
                 type: 'image_url',
                 image_url: {
-                  url: imgFormat.image_url.url
+                  url: image.base64Data, // 已经包含完整的data:image/格式
+                  detail: 'auto'
                 }
               });
-              console.log(`[OpenAI API] 添加新格式图片 ${index+1}: ${imgFormat.image_url.url.substring(0, 30)}...`);
+              console.log(`[OpenAI API] 添加base64图片 ${index+1}, 开头: ${image.base64Data.substring(0, 30)}...`);
+            } else if (image.url) {
+              contentArray.push({
+                type: 'image_url',
+                image_url: {
+                  url: image.url,
+                  detail: 'auto'
+                }
+              });
+              console.log(`[OpenAI API] 添加URL图片 ${index+1}: ${image.url}`);
             }
           });
         }
-
-        console.log(`[OpenAI API] 转换后内容数组长度: ${contentArray.length}, 包含图片数量: ${contentArray.filter(item => item.type === 'image_url').length}`);
-
-        // 处理空内容的极端情况
-        if (contentArray.length === 0) {
-          console.warn('[OpenAI API] 警告: 生成了空内容数组，添加默认文本');
-          contentArray.push({
-            type: 'text',
-            text: '图片'
-          });
-        }
-
-        return {
-          role: 'user',
-          content: contentArray
-        } as ChatCompletionUserMessageParam;
-      } else {
-        // 纯文本消息
-        return {
-          role: 'user',
-          content: typeof apiMsg.content === 'string' ? apiMsg.content : (apiMsg.content as {text?: string}).text || '',
-        } as ChatCompletionUserMessageParam;
       }
-    } else if (apiMsg.role === 'assistant') {
+
+      // 添加直接附加的图片（新格式）
+      if (hasDirectImages) {
+        console.log(`[OpenAI API] 处理新格式图片，数量: ${apiMsg.images!.length}`);
+        apiMsg.images!.forEach((imgFormat, index) => {
+          if (imgFormat.image_url && imgFormat.image_url.url) {
+            contentArray.push({
+              type: 'image_url',
+              image_url: {
+                url: imgFormat.image_url.url,
+                detail: 'auto'
+              }
+            });
+            console.log(`[OpenAI API] 添加新格式图片 ${index+1}: ${imgFormat.image_url.url.substring(0, 30)}...`);
+          }
+        });
+      }
+
+      console.log(`[OpenAI API] 转换后内容数组长度: ${contentArray.length}, 包含图片数量: ${contentArray.filter(item => item.type === 'image_url').length}`);
+
+      // 处理空内容的极端情况
+      if (contentArray.length === 0) {
+        console.warn('[OpenAI API] 警告: 生成了空内容数组，添加默认文本');
+        contentArray.push({
+          type: 'text',
+          text: '图片'
+        });
+      }
+
       return {
-        role: 'assistant',
-        content: typeof apiMsg.content === 'string' ? apiMsg.content : (apiMsg.content as {text?: string}).text || '',
-      } as ChatCompletionAssistantMessageParam;
+        role,
+        content: contentArray
+      };
     } else {
+      // 纯文本消息，保持原始角色
       return {
-        role: 'system',
+        role,
         content: typeof apiMsg.content === 'string' ? apiMsg.content : (apiMsg.content as {text?: string}).text || '',
-      } as ChatCompletionSystemMessageParam;
+      };
     }
   });
 }

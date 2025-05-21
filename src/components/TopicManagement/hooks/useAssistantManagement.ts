@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
-import { setCurrentTopic } from '../../../shared/store/slices/messagesSlice';
+import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
 import { addAssistant, setCurrentAssistant as setReduxCurrentAssistant, updateAssistant, removeAssistant } from '../../../shared/store/slices/assistantsSlice';
 import { AssistantService } from '../../../shared/services';
 import { dexieStorage } from '../../../shared/services/DexieStorageService';
@@ -97,7 +97,7 @@ export function useAssistantManagement({
 
       // 如果当前话题不属于选中的助手，清除当前话题
       if (currentTopic && currentTopic.assistantId !== assistant.id) {
-        dispatch(setCurrentTopic(null));
+        dispatch(newMessagesActions.setCurrentTopicId(null));
       }
 
       // 使用Redux dispatch设置当前助手
@@ -112,7 +112,7 @@ export function useAssistantManagement({
 
         // 自动选择第一个话题
         if (assistant.topics && assistant.topics.length > 0 && !currentTopic) {
-          dispatch(setCurrentTopic(assistant.topics[0]));
+          dispatch(newMessagesActions.setCurrentTopicId(assistant.topics[0].id));
         }
       }, 200);
 

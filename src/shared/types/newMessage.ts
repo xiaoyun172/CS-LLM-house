@@ -99,14 +99,24 @@ export interface FileMessageBlock extends BaseMessageBlock {
 export interface ErrorMessageBlock extends BaseMessageBlock {
   type: typeof MessageBlockType.ERROR
   content: string
+  message?: string
+  details?: string
+  code?: string
 }
 
 // 引用消息块
 export interface CitationMessageBlock extends BaseMessageBlock {
   type: typeof MessageBlockType.CITATION
   content: string
-  source: string
+  source?: string
   url?: string
+  sources?: Array<{
+    title?: string
+    url?: string
+    content?: string
+  }>
+  response?: any
+  knowledge?: any[]
 }
 
 // 翻译块
@@ -155,7 +165,7 @@ export interface MathMessageBlock extends BaseMessageBlock {
 }
 
 // 消息块联合类型
-export type MessageBlock = 
+export type MessageBlock =
   | MainTextMessageBlock
   | ThinkingMessageBlock
   | ImageMessageBlock
@@ -173,6 +183,8 @@ export type MessageBlock =
 // 助手消息状态枚举
 export const AssistantMessageStatus = {
   PENDING: 'pending',
+  PROCESSING: 'processing', // 添加处理中状态
+  SEARCHING: 'searching',   // 添加搜索中状态
   STREAMING: 'streaming',
   SUCCESS: 'success',
   ERROR: 'error',
@@ -234,4 +246,4 @@ export type Message = {
   metrics?: Metrics
   blocks: MessageBlock['id'][]
   versions?: MessageVersion[]
-} 
+}

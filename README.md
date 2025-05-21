@@ -420,7 +420,7 @@ AetherLink支持将AI回复转换为语音：
     minHeight: '24px',
     maxHeight: '80px'
   }}
-  placeholder="和ai助手说点什么"
+  placeholder="和ai助手说点什么1"
   value={message}
   onChange={handleChange}
   onKeyPress={handleKeyPress}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
-import { updateMessage } from '../../shared/store/messagesSlice';
+import { newMessagesActions } from '../../shared/store/slices/newMessagesSlice';
 import type { Message } from '../../shared/types/newMessage.ts';
 import type { RootState } from '../../shared/store';
 import { getMainTextContent } from '../../shared/utils/messageUtils';
@@ -51,10 +51,9 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, o
       }
 
       // 同时更新消息对象
-      dispatch(updateMessage({
-        topicId,
-        messageId: message.id,
-        updates: {
+      dispatch(newMessagesActions.updateMessage({
+        id: message.id,
+        changes: {
           // 直接使用新的消息状态
           status: isUser ? UserMessageStatus.SUCCESS : AssistantMessageStatus.SUCCESS
         }

@@ -8,7 +8,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../shared/store';
 import { TopicService } from '../shared/services/TopicService';
 import { EventEmitter, EVENT_NAMES } from '../shared/services/EventService';
-import { setCurrentTopic } from '../shared/store/slices/messagesSlice';
+import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
 
 interface ChatToolbarProps {
   onClearTopic?: () => void;
@@ -60,7 +60,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
       console.log('[ChatToolbar] 成功创建新话题，自动跳转:', newTopic.id);
 
       // 设置当前话题 - 立即选择新创建的话题
-      dispatch(setCurrentTopic(newTopic));
+      dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
 
       // 确保话题侧边栏显示并选中新话题
       setTimeout(() => {
@@ -68,7 +68,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
 
         // 再次确保新话题被选中，防止其他逻辑覆盖
         setTimeout(() => {
-          dispatch(setCurrentTopic(newTopic));
+          dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
         }, 50);
       }, 100);
     }

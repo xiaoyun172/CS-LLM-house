@@ -17,18 +17,22 @@ export const EVENT_NAMES = {
   SERVICE_ERROR: 'SERVICE_ERROR',
   IMAGE_PROCESSING_DEPRECATED: 'IMAGE_PROCESSING_DEPRECATED',
   TOPICS_CLEARED: 'TOPICS_CLEARED',
-  MESSAGE_CREATED: 'MESSAGE_CREATED',
-  MESSAGE_UPDATED: 'MESSAGE_UPDATED',
+  MESSAGE_CREATED: 'message:created',
+  MESSAGE_UPDATED: 'message:updated',
   MESSAGE_DELETED: 'MESSAGE_DELETED',
-  BLOCK_UPDATED: 'BLOCK_UPDATED',
-  STREAMING_STARTED: 'STREAMING_STARTED',
-  STREAMING_ENDED: 'STREAMING_ENDED'
+  MESSAGE_ERROR: 'message:error',
+  BLOCK_UPDATED: 'block:updated',
+  STREAMING_STARTED: 'streaming:started',
+  STREAMING_ENDED: 'streaming:ended',
+  CONTENT_UPDATED: 'content:updated',
+  RESPONSE_COMPLETED: 'response:completed',
+  RESPONSE_ERROR: 'response:error'
 };
 
 // 提供一个更简洁的事件服务使用方式
 export class EventService {
   private static instance: EventService;
-  
+
   // 单例模式
   static getInstance(): EventService {
     if (!EventService.instance) {
@@ -36,7 +40,7 @@ export class EventService {
     }
     return EventService.instance;
   }
-  
+
   // 发送事件
   static emit(eventName: string, data: any) {
     EventEmitter.emit(eventName, data);
@@ -53,15 +57,15 @@ export class EventService {
       unsubscribe();
     };
   }
-  
+
   // 一次性监听事件
   static once(eventName: string, callback: (data: any) => void) {
     // 使用Promise.resolve处理Emittery.once返回的Promise
     const promise = EventEmitter.once(eventName);
-    
+
     // 添加回调并返回取消函数
     promise.then(callback);
-    
+
     return () => {
       // 无法取消once，但可以忽略回调
       promise.then(() => {
@@ -69,9 +73,9 @@ export class EventService {
       });
     };
   }
-  
+
   // 移除所有监听器
   static clear() {
     EventEmitter.clearListeners();
   }
-} 
+}

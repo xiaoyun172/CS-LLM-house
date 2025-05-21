@@ -7,6 +7,7 @@ import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventService
 import type { Assistant } from '../../../shared/types/Assistant';
 import type { RootState } from '../../../shared/store';
 import { setAssistants, setCurrentAssistant as setReduxCurrentAssistant } from '../../../shared/store/slices/assistantsSlice';
+import { dexieStorage } from '../../../shared/services/DexieStorageService';
 
 // 常量
 const CURRENT_ASSISTANT_ID_KEY = 'currentAssistantId';
@@ -25,11 +26,35 @@ export function useSidebarState() {
   const dispatch = useDispatch();
 
   // 从Redux获取助手列表和当前助手
-  const { reduxAssistants, reduxCurrentAssistant, currentTopic } = useSelector((state: RootState) => ({
+  const { reduxAssistants, reduxCurrentAssistant, currentTopicId } = useSelector((state: RootState) => ({
     reduxAssistants: state.assistants.assistants,
     reduxCurrentAssistant: state.assistants.currentAssistant,
-    currentTopic: state.messages.currentTopic
+    currentTopicId: state.messages.currentTopicId
   }));
+
+  // 从数据库获取当前话题
+  const [currentTopic, setCurrentTopic] = useState<any>(null);
+
+  // 当话题ID变化时，从数据库获取话题信息
+  useEffect(() => {
+    const loadTopic = async () => {
+      if (!currentTopicId) {
+        setCurrentTopic(null);
+        return;
+      }
+
+      try {
+        const topic = await dexieStorage.getTopic(currentTopicId);
+        if (topic) {
+          setCurrentTopic(topic);
+        }
+      } catch (error) {
+        console.error('加载话题信息失败:', error);
+      }
+    };
+
+    loadTopic();
+  }, [currentTopicId]);
 
   // 使用useAssistant钩子加载当前助手的话题
   const {

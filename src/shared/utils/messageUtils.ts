@@ -62,7 +62,7 @@ export function createUserMessage(options: {
   };
 
   const blocks: MessageBlock[] = [mainTextBlock];
-  
+
   // 如果有图片，创建图片块
   if (images && Array.isArray(images) && images.length > 0) {
     for (const image of images) {
@@ -90,10 +90,23 @@ export function createAssistantMessage(options: {
   model?: Model;
   askId?: string;
   initialContent?: string;
+  status?: AssistantMessageStatus; // 添加状态参数
 }): { message: Message; blocks: MessageBlock[] } {
-  const { assistantId, topicId, modelId, model, askId, initialContent = '' } = options;
+  const { assistantId, topicId, modelId, model, askId, initialContent = '', status = AssistantMessageStatus.SUCCESS } = options;
   const messageId = uuid();
   const now = new Date().toISOString();
+
+  // 根据消息状态确定块状态
+  let blockStatus: MessageBlockStatus = MessageBlockStatus.SUCCESS;
+  if (status === AssistantMessageStatus.PENDING || status === AssistantMessageStatus.PROCESSING) {
+    blockStatus = MessageBlockStatus.PROCESSING as MessageBlockStatus;
+  } else if (status === AssistantMessageStatus.STREAMING) {
+    blockStatus = MessageBlockStatus.STREAMING as MessageBlockStatus;
+  } else if (status === AssistantMessageStatus.ERROR) {
+    blockStatus = MessageBlockStatus.ERROR as MessageBlockStatus;
+  } else if (status === AssistantMessageStatus.SEARCHING) {
+    blockStatus = MessageBlockStatus.PROCESSING as MessageBlockStatus;
+  }
 
   // 创建主文本块，使用initialContent或空字符串
   const mainTextBlock: MainTextMessageBlock = {
@@ -102,7 +115,7 @@ export function createAssistantMessage(options: {
     type: MessageBlockType.MAIN_TEXT,
     content: initialContent, // 使用提供的内容，不再设置默认值
     createdAt: now,
-    status: MessageBlockStatus.SUCCESS // 始终设置为SUCCESS状态
+    status: blockStatus // 使用根据消息状态确定的块状态
   };
 
   // 创建消息对象
@@ -112,7 +125,7 @@ export function createAssistantMessage(options: {
     assistantId,
     topicId,
     createdAt: now,
-    status: AssistantMessageStatus.SUCCESS, // 始终设置为SUCCESS状态
+    status, // 使用传入的状态
     modelId,
     model,
     askId,
@@ -216,17 +229,58 @@ export function findMainTextBlocks(message: Message): MainTextMessageBlock[] {
     return [];
   }
 
-  const state = store.getState();
-  const textBlocks: MainTextMessageBlock[] = [];
+  try {
+    const state = store.getState();
+    const textBlocks: MainTextMessageBlock[] = [];
 
-  for (const blockId of message.blocks) {
-    const block = messageBlocksSelectors.selectById(state, blockId);
-    if (block && block.type === MessageBlockType.MAIN_TEXT) {
-      textBlocks.push(block as MainTextMessageBlock);
+    for (const blockId of message.blocks) {
+      try {
+        const block = messageBlocksSelectors.selectById(state, blockId);
+        if (block && block.type === MessageBlockType.MAIN_TEXT) {
+          textBlocks.push(block as MainTextMessageBlock);
+        }
+      } catch (error) {
+        console.error(`[findMainTextBlocks] 获取块 ${blockId} 失败:`, error);
+      }
     }
-  }
 
-  return textBlocks;
+    // 如果没有找到任何主文本块，创建一个默认的
+    if (textBlocks.length === 0) {
+      console.warn(`[findMainTextBlocks] 消息 ${message.id} 没有主文本块，创建默认块`);
+
+      // 尝试从旧版本的content属性获取内容
+      let content = '';
+      if (typeof (message as any).content === 'string') {
+        content = (message as any).content;
+      }
+
+      // 创建一个默认的主文本块
+      const defaultBlock: MainTextMessageBlock = {
+        id: 'default-block-' + Date.now(),
+        messageId: message.id,
+        type: MessageBlockType.MAIN_TEXT,
+        content: content || '你好', // 使用默认内容
+        createdAt: new Date().toISOString(),
+        status: MessageBlockStatus.SUCCESS
+      };
+
+      textBlocks.push(defaultBlock);
+    }
+
+    return textBlocks;
+  } catch (error) {
+    console.error('[findMainTextBlocks] 查找主文本块失败:', error);
+
+    // 返回一个默认的主文本块
+    return [{
+      id: 'error-block-' + Date.now(),
+      messageId: message.id,
+      type: MessageBlockType.MAIN_TEXT,
+      content: '你好', // 使用默认内容
+      createdAt: new Date().toISOString(),
+      status: MessageBlockStatus.SUCCESS
+    }];
+  }
 }
 
 /**

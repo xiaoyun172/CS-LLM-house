@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  TextField, 
-  IconButton, 
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  IconButton,
   Typography,
   Box,
   Alert,
@@ -28,11 +28,11 @@ interface SystemPromptDialogProps {
  * 系统提示词编辑对话框
  * 用于编辑当前话题的系统提示词
  */
-const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({ 
-  open, 
-  onClose, 
-  topic, 
-  assistant 
+const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
+  open,
+  onClose,
+  topic,
+  assistant
 }) => {
   const theme = useTheme();
   const [prompt, setPrompt] = useState('');
@@ -45,13 +45,13 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
     if (open) {
       // 优先使用话题的提示词
       setPrompt(topic?.prompt || assistant?.systemPrompt || '');
-      
+
       // 简单估算token数量 (英文按照单词计算，中文按照字符计算)
       const text = topic?.prompt || assistant?.systemPrompt || '';
-      const estimatedTokens = Math.ceil(text.split(/\s+/).length + 
+      const estimatedTokens = Math.ceil(text.split(/\s+/).length +
         text.replace(/[\u4e00-\u9fa5]/g, '').length / 4);
       setTokensCount(estimatedTokens);
-      
+
       // 重置错误状态
       setError(null);
     }
@@ -62,54 +62,90 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
     try {
       setSaving(true);
       setError(null);
-      
+
       // 如果没有话题但有助手，先创建话题
       if (!topic && assistant) {
-        console.log('没有当前话题，尝试创建新话题');
+        console.log('[SystemPromptDialog] 没有当前话题，尝试创建新话题');
         const newTopic = await TopicService.createNewTopic();
-        
+
         if (newTopic) {
-          console.log('成功创建新话题:', newTopic.id);
-          
+          console.log('[SystemPromptDialog] 成功创建新话题:', newTopic.id);
+
           // 更新新话题的提示词
           newTopic.prompt = prompt.trim();
           await TopicService.saveTopic(newTopic);
-          
+          console.log('[SystemPromptDialog] 已保存话题提示词');
+
           // 同时更新助手的系统提示词
-          if (assistant.systemPrompt !== undefined) {
-            const updatedAssistant = { 
-              ...assistant, 
-              systemPrompt: prompt.trim() 
+          if (assistant) {
+            const updatedAssistant = {
+              ...assistant,
+              systemPrompt: prompt.trim()
             };
+
+            // 直接保存到数据库，确保数据持久化
             await AssistantManager.updateAssistant(updatedAssistant);
+            console.log('[SystemPromptDialog] 已更新助手系统提示词');
+
+            // 强制刷新Redux状态
+            import('../shared/store').then(({ default: store }) => {
+              const { updateAssistant } = require('../shared/store/slices/assistantsSlice');
+              store.dispatch(updateAssistant(updatedAssistant));
+              console.log('[SystemPromptDialog] 已通过Redux更新助手状态');
+            });
           }
-          
+
           onClose();
           return;
         } else {
           throw new Error('创建话题失败');
         }
       }
-      
+
       // 更新现有话题提示词
       if (topic) {
-        console.log('更新现有话题的系统提示词');
+        console.log('[SystemPromptDialog] 更新现有话题的系统提示词');
         const updatedTopic = { ...topic, prompt: prompt.trim() };
+
+        // 保存到数据库
         await TopicService.saveTopic(updatedTopic);
-        
+        console.log('[SystemPromptDialog] 已保存话题提示词到数据库');
+
+        // 强制刷新Redux状态
+        import('../shared/store').then(({ default: store }) => {
+          const { updateTopic } = require('../shared/store/slices/assistantsSlice');
+          if (assistant) {
+            store.dispatch(updateTopic({
+              assistantId: assistant.id,
+              topic: updatedTopic
+            }));
+            console.log('[SystemPromptDialog] 已通过Redux更新话题状态');
+          }
+        });
+
         // 如果助手也有systemPrompt字段，同步更新助手的系统提示词
-        if (assistant && assistant.systemPrompt !== undefined) {
-          const updatedAssistant = { 
-            ...assistant, 
-            systemPrompt: prompt.trim() 
+        if (assistant) {
+          const updatedAssistant = {
+            ...assistant,
+            systemPrompt: prompt.trim()
           };
+
+          // 直接保存到数据库，确保数据持久化
           await AssistantManager.updateAssistant(updatedAssistant);
+          console.log('[SystemPromptDialog] 已更新助手系统提示词到数据库');
+
+          // 强制刷新Redux状态
+          import('../shared/store').then(({ default: store }) => {
+            const { updateAssistant } = require('../shared/store/slices/assistantsSlice');
+            store.dispatch(updateAssistant(updatedAssistant));
+            console.log('[SystemPromptDialog] 已通过Redux更新助手状态');
+          });
         }
       }
-      
+
       onClose();
     } catch (error) {
-      console.error('保存系统提示词失败:', error);
+      console.error('[SystemPromptDialog] 保存系统提示词失败:', error);
       setError(error instanceof Error ? error.message : '保存系统提示词失败');
     } finally {
       setSaving(false);
@@ -120,9 +156,9 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
   const handlePromptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
     setPrompt(text);
-    
+
     // 简单估算token数量
-    const estimatedTokens = Math.ceil(text.split(/\s+/).length + 
+    const estimatedTokens = Math.ceil(text.split(/\s+/).length +
       text.replace(/[\u4e00-\u9fa5]/g, '').length / 4);
     setTokensCount(estimatedTokens);
   };
@@ -140,9 +176,9 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
         }
       }}
     >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
+      <DialogTitle sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
         borderBottom: `1px solid ${theme.palette.divider}`,
         pb: 1
@@ -152,20 +188,20 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      
+
       <DialogContent sx={{ pt: 2, pb: 1 }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
-        
+
         {!topic && !saving && (
           <Alert severity="info" sx={{ mb: 2 }}>
             保存将创建新话题并应用此系统提示词
           </Alert>
         )}
-        
+
         <TextField
           autoFocus
           multiline
@@ -177,9 +213,9 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
           rows={8}
           sx={{ mb: 1 }}
         />
-        
-        <Box sx={{ 
-          display: 'flex', 
+
+        <Box sx={{
+          display: 'flex',
           justifyContent: 'flex-end',
           color: theme.palette.text.secondary,
           fontSize: '0.75rem'
@@ -189,17 +225,17 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
           </Typography>
         </Box>
       </DialogContent>
-      
-      <DialogActions sx={{ 
+
+      <DialogActions sx={{
         padding: '8px 24px 16px 24px',
         borderTop: `1px solid ${theme.palette.divider}`,
       }}>
         <Button onClick={onClose} color="inherit">
           取消
         </Button>
-        <Button 
-          onClick={handleSave} 
-          variant="contained" 
+        <Button
+          onClick={handleSave}
+          variant="contained"
           color="primary"
           disabled={saving}
         >
@@ -210,4 +246,4 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
   );
 };
 
-export default SystemPromptDialog; 
+export default SystemPromptDialog;

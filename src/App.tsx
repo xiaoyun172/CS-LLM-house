@@ -9,14 +9,16 @@ import LoggerService from './shared/services/LoggerService';
 import ExitConfirmDialog from './components/ExitConfirmDialog';
 import BackButtonHandler from './components/BackButtonHandler';
 import UpdateNoticeDialog from './components/UpdateNoticeDialog';
+import AppInitializer from './components/AppInitializer';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { initializeTopics } from './shared/store/slices/messagesSlice';
+import { loadTopicMessagesThunk } from './shared/store/slices/newMessagesSlice';
 import { initGroups } from './shared/store/slices/groupsSlice';
 import { useSelector } from 'react-redux';
 import { DataManager } from './shared/services';
 import { DataRepairService } from './shared/services/DataRepairService';
 import { DatabaseCleanupService } from './shared/services/DatabaseCleanupService';
+import { dexieStorage } from './shared/services/DexieStorageService';
 import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from '@mui/material';
 
 // 初始化日志拦截器
@@ -258,8 +260,21 @@ function App() {
       sessionStorage.setItem('_topicsLoaded', 'true');
 
       console.log('[App] 初始化时加载话题数据');
-      // 使用新的异步加载方法
-      store.dispatch(initializeTopics());
+      // 使用新的异步加载方法 - 加载所有话题的消息
+      const loadAllTopics = async () => {
+        try {
+          // 从数据库获取所有话题
+          const topics = await dexieStorage.getAllTopics();
+          // 为每个话题加载消息
+          for (const topic of topics) {
+            store.dispatch(loadTopicMessagesThunk(topic.id));
+          }
+        } catch (error) {
+          console.error('[App] 加载话题消息失败:', error);
+        }
+      };
+
+      loadAllTopics();
 
       // 加载分组数据
       store.dispatch(initGroups());
@@ -270,7 +285,7 @@ function App() {
           if (result.fixed > 0) {
             console.log(`[App] 已修复 ${result.fixed} 个重复话题，共 ${result.total} 个话题`);
             // 重新加载话题
-            store.dispatch(initializeTopics());
+            loadAllTopics();
           } else {
             console.log('[App] 未发现重复话题');
           }
@@ -331,6 +346,7 @@ function App() {
       <HashRouter>
         {appInitialized ? (
           <>
+            <AppInitializer />
             <AppRouter />
             <BackButtonHandler />
             <MemoizedExitConfirmDialog />

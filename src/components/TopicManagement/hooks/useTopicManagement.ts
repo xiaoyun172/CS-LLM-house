@@ -1,10 +1,6 @@
 import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
-import {
-  setCurrentTopic,
-  deleteTopic as deleteTopicAction,
-  updateTopic
-} from '../../../shared/store/slices/messagesSlice';
+import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
 import { AssistantService } from '../../../shared/services';
 import { TopicService } from '../../../shared/services/TopicService';
 import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventService';
@@ -55,7 +51,7 @@ export function useTopicManagement({
         setCurrentAssistant(updatedAssistant);
 
         // 设置当前话题 - 立即选择新创建的话题
-        dispatch(setCurrentTopic(newTopic));
+        dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
 
         // 刷新话题列表
         setTimeout(() => {
@@ -66,7 +62,7 @@ export function useTopicManagement({
 
           // 再次确保新话题被选中，防止其他逻辑覆盖
           setTimeout(() => {
-            dispatch(setCurrentTopic(newTopic));
+            dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
           }, 50);
         }, 100);
       }
@@ -95,10 +91,10 @@ export function useTopicManagement({
       };
 
       // 分发 action，将话题设置为当前话题
-      dispatch(setCurrentTopic(topicWithAssistantInfo));
+      dispatch(newMessagesActions.setCurrentTopicId(topicWithAssistantInfo.id));
     } else {
       console.warn('[SidebarTabs] 选择话题时找不到对应的助手');
-      dispatch(setCurrentTopic(topic));
+      dispatch(newMessagesActions.setCurrentTopicId(topic.id));
     }
   };
 
@@ -110,13 +106,14 @@ export function useTopicManagement({
         await AssistantService.removeTopicFromAssistant(currentAssistant.id, topicId);
       }
       await TopicService.deleteTopic(topicId);
-      dispatch(deleteTopicAction(topicId));
+      // 从数据库中删除话题后，清除该话题的消息
+      dispatch(newMessagesActions.clearTopicMessages(topicId));
       if (currentTopic && currentTopic.id === topicId) {
         const assistantTopics = assistantWithTopics?.topics || [];
         if (assistantTopics.length > 0 && assistantTopics[0].id !== topicId) {
-          dispatch(setCurrentTopic(assistantTopics[0]));
+          dispatch(newMessagesActions.setCurrentTopicId(assistantTopics[0].id));
         } else {
-          dispatch(setCurrentTopic(null));
+          dispatch(newMessagesActions.setCurrentTopicId(null));
         }
       }
     } catch (error) {
@@ -126,15 +123,9 @@ export function useTopicManagement({
 
   // 更新话题
   const handleUpdateTopic = (topic: ChatTopic) => {
-    // 使用新的格式更新话题，不再修改不存在的collapsed属性
-    dispatch(updateTopic({
-      id: topic.id,
-      updates: {
-        // 只更新已知的属性，例如name或description
-        name: topic.name,
-        title: topic.title
-      }
-    }));
+    // 使用新的格式更新话题
+    // 注意：这里不再需要通过Redux更新话题，直接更新数据库即可
+    // 数据库更新会通过 updateAssistantTopic 处理
     updateAssistantTopic(topic); // 来自 useAssistant
   };
 

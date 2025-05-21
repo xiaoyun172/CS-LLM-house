@@ -22,8 +22,9 @@ import AssistantGroups from './AssistantGroups';
 import AssistantItem from './AssistantItem';
 import PresetAssistantItem from './PresetAssistantItem';
 import GroupDialog from '../GroupDialog';
-import AssistantIconPicker from './AssistantIconPicker';
+import { COMMON_EMOJIS } from './AssistantIconPicker';
 import { useAssistantTabLogic } from './useAssistantTabLogic';
+import type { Group } from '../../../shared/types';
 
 // 组件属性定义
 interface AssistantTabProps {
@@ -62,7 +63,6 @@ export default function AssistantTab({
     editDialogOpen,
     editAssistantName,
     editAssistantPrompt,
-    iconPickerOpen,
     
     // 处理函数
     handleCloseNotification,
@@ -84,8 +84,6 @@ export default function AssistantTab({
     handleSaveAssistant,
     handleCopyAssistant,
     handleClearTopics,
-    handleOpenIconPicker,
-    handleCloseIconPicker,
     handleSelectEmoji,
     handleSortByPinyinAsc,
     handleSortByPinyinDesc,
@@ -151,7 +149,7 @@ export default function AssistantTab({
         未分组助手
       </Typography>
       <List sx={{ flexGrow: 1, overflow: 'auto' }}>
-        {(ungroupedAssistants || []).map((assistant) => (
+        {(ungroupedAssistants || []).map((assistant: Assistant) => (
           <AssistantItem
             key={assistant.id}
             assistant={assistant}
@@ -204,7 +202,67 @@ export default function AssistantTab({
       >
         <MenuItem onClick={handleOpenAddToGroupMenu}>添加到分组...</MenuItem>
         <MenuItem onClick={handleOpenEditDialog}>编辑助手</MenuItem>
-        <MenuItem onClick={handleOpenIconPicker}>修改图标</MenuItem>
+        <MenuItem onClick={() => {
+          handleCloseAssistantMenu();
+          // 直接打开一个Dialog形式的图标选择器，而不是依赖于Popover
+          const tempAssistant = selectedMenuAssistant;
+          if (tempAssistant) {
+            // 使用Dialog来显示图标选择器，这种方式更可靠
+            const dialog = document.createElement('dialog');
+            dialog.style.padding = '20px';
+            dialog.style.borderRadius = '8px';
+            dialog.style.border = '1px solid #ccc';
+            dialog.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+            dialog.style.maxWidth = '400px';
+            
+            const title = document.createElement('h3');
+            title.textContent = '选择助手图标';
+            title.style.marginTop = '0';
+            title.style.marginBottom = '16px';
+            
+            const container = document.createElement('div');
+            container.style.display = 'grid';
+            container.style.gridTemplateColumns = 'repeat(8, 1fr)';
+            container.style.gap = '8px';
+            
+            COMMON_EMOJIS.forEach((emoji: string) => {
+              const button = document.createElement('button');
+              button.textContent = emoji;
+              button.style.fontSize = '20px';
+              button.style.padding = '8px';
+              button.style.cursor = 'pointer';
+              button.style.border = emoji === tempAssistant.emoji ? '2px solid #1976d2' : '1px solid #ddd';
+              button.style.borderRadius = '4px';
+              button.style.background = 'none';
+              
+              button.onclick = () => {
+                handleSelectEmoji(emoji);
+                dialog.close();
+              };
+              
+              container.appendChild(button);
+            });
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '关闭';
+            closeBtn.style.marginTop = '16px';
+            closeBtn.style.padding = '8px 12px';
+            closeBtn.style.float = 'right';
+            closeBtn.onclick = () => dialog.close();
+            
+            dialog.appendChild(title);
+            dialog.appendChild(container);
+            dialog.appendChild(document.createElement('br'));
+            dialog.appendChild(closeBtn);
+            
+            document.body.appendChild(dialog);
+            dialog.showModal();
+            
+            dialog.addEventListener('close', () => {
+              document.body.removeChild(dialog);
+            });
+          }
+        }}>修改图标</MenuItem>
         <MenuItem onClick={handleCopyAssistant}>复制助手</MenuItem>
         <MenuItem onClick={handleClearTopics}>清空话题</MenuItem>
         <Divider />
@@ -224,7 +282,7 @@ export default function AssistantTab({
         open={Boolean(addToGroupMenuAnchorEl)}
         onClose={handleCloseAddToGroupMenu}
       >
-        {(assistantGroups || []).map((group) => (
+        {(assistantGroups || []).map((group: Group) => (
           <MenuItem
             key={group.id}
             onClick={() => handleAddToGroup(group.id)}
@@ -266,16 +324,6 @@ export default function AssistantTab({
           <Button onClick={handleSaveAssistant} color="primary">保存</Button>
         </DialogActions>
       </Dialog>
-
-      {/* 图标选择器对话框 */}
-      {selectedMenuAssistant && (
-        <AssistantIconPicker
-          open={iconPickerOpen}
-          onClose={handleCloseIconPicker}
-          onSelectEmoji={handleSelectEmoji}
-          currentEmoji={selectedMenuAssistant.emoji}
-        />
-      )}
 
       {/* 通知提示 */}
       <Snackbar

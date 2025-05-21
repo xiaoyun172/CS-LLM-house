@@ -5,7 +5,7 @@
 import type { Model } from '../types';
 import * as openaiApi from '../api/openai';
 import * as anthropicApi from '../api/anthropic';
-import * as googleApi from '../api/google';
+import * as geminiApi from '../api/gemini';
 
 /**
  * 获取实际的提供商类型
@@ -14,7 +14,9 @@ import * as googleApi from '../api/google';
  */
 export function getActualProviderType(model: Model): string {
   // 优先使用providerType字段(如果存在)，否则回退到provider字段
-  return (model as any).providerType || model.provider;
+  const providerType = (model as any).providerType || model.provider;
+  console.log(`[ProviderFactory] 获取提供商类型: ${providerType}, 模型ID: ${model.id}`);
+  return providerType;
 }
 
 /**
@@ -24,17 +26,25 @@ export function getActualProviderType(model: Model): string {
  */
 export function getProviderApi(model: Model): any {
   const providerType = getActualProviderType(model);
+  console.log(`[ProviderFactory] 查找API实现，提供商类型: ${providerType}, 模型ID: ${model.id}`);
 
-  // 只处理三种主要供应商类型，其他都使用OpenAI兼容API
+  // 处理四种主要供应商类型，其他都使用OpenAI兼容API
   switch (providerType) {
     case 'anthropic':
+      console.log(`[ProviderFactory] 返回Anthropic API实现`);
       return anthropicApi;
     case 'gemini':
+      console.log(`[ProviderFactory] 返回新的模块化Gemini API实现`);
+      return geminiApi;
     case 'google':
-      return googleApi;
+      console.log(`[ProviderFactory] 返回OpenAI兼容API实现 (Google API已移除)`);
+      return openaiApi;
     case 'openai':
+      console.log(`[ProviderFactory] 返回OpenAI API实现`);
+      return openaiApi;
     default:
       // 默认使用OpenAI兼容API
+      console.log(`[ProviderFactory] 未识别的提供商类型: ${providerType}，使用OpenAI兼容API`);
       return openaiApi;
   }
 }
@@ -67,10 +77,53 @@ export async function sendChatRequest(
   onUpdate?: (content: string, reasoning?: string) => void
 ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
   try {
+    console.log(`[ProviderFactory.sendChatRequest] 开始处理请求 - 模型ID: ${model.id}, 提供商: ${model.provider}`);
+
+    // 检查模型是否有API密钥
+    if (!model.apiKey && model.provider !== 'auto') {
+      console.warn(`[ProviderFactory.sendChatRequest] 警告: 模型 ${model.id} 没有API密钥`);
+    }
+
+    // 强制检查：确保消息数组不为空
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      console.error('[ProviderFactory.sendChatRequest] 严重错误: 消息数组为空或无效，添加默认消息');
+
+      // 添加一个默认的用户消息
+      messages = [{
+        id: 'default-' + Date.now(),
+        role: 'user',
+        content: '你好',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        blocks: []
+      }];
+
+      console.log('[ProviderFactory.sendChatRequest] 添加默认用户消息: 你好');
+    }
+
+    // 记录消息数组
+    console.log(`[ProviderFactory.sendChatRequest] 消息数组:`, JSON.stringify(messages.map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      content: typeof msg.content === 'string' ?
+        (msg.content.length > 50 ? msg.content.substring(0, 50) + '...' : msg.content) :
+        '[复杂内容]'
+    }))));
+
+    // 获取合适的API实现
     const api = getProviderApi(model);
+    console.log(`[ProviderFactory.sendChatRequest] 获取API实现 - 提供商: ${model.provider}`);
+
+    // 确保API有sendChatRequest方法
+    if (!api.sendChatRequest) {
+      console.error(`[ProviderFactory.sendChatRequest] 错误: API没有sendChatRequest方法`);
+      throw new Error(`提供商 ${model.provider} 的API没有sendChatRequest方法`);
+    }
+
+    console.log(`[ProviderFactory.sendChatRequest] 调用API的sendChatRequest方法`);
     return await api.sendChatRequest(messages, model, onUpdate);
   } catch (error) {
-    console.error('发送聊天请求失败:', error);
+    console.error('[ProviderFactory.sendChatRequest] 发送聊天请求失败:', error);
     throw error;
   }
 }
@@ -91,15 +144,45 @@ export async function fetchModels(provider: any): Promise<any[]> {
       providerType = 'openai';
     }
 
-    // 只处理三种主要供应商类型，其他都使用OpenAI兼容API
+    // 处理主要供应商类型
     switch (providerType.toLowerCase()) {
       case 'anthropic':
-        // 暂时使用OpenAI兼容API获取模型，后续可以实现专门的Anthropic模型获取
-        console.log(`[fetchModels] Anthropic模型获取暂未实现，使用OpenAI兼容API`);
-        return await openaiApi.fetchModels(provider);
+        console.log(`[fetchModels] 使用新的模块化Anthropic API获取模型`);
+        // 创建一个临时模型配置
+        const anthropicModel = {
+          id: provider.id,
+          name: provider.name || 'Claude',
+          apiKey: provider.apiKey,
+          baseUrl: provider.baseUrl || 'https://api.anthropic.com',
+          provider: 'anthropic'
+        };
+        // 使用 sendChatRequest 方法，这个方法在所有API模块中都应该存在
+        return await anthropicApi.sendChatRequest([], anthropicModel)
+          .then(() => {
+            // 返回预设模型列表
+            return [
+              { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', description: 'Claude 3.5 Sonnet - 最新的Claude模型', owned_by: 'anthropic' },
+              { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Claude 3 Opus - 最强大的Claude模型', owned_by: 'anthropic' },
+              { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Claude 3 Sonnet - 平衡性能和速度', owned_by: 'anthropic' },
+              { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Claude 3 Haiku - 最快的Claude模型', owned_by: 'anthropic' },
+              { id: 'claude-2.1', name: 'Claude 2.1', description: 'Claude 2.1 - 旧版Claude模型', owned_by: 'anthropic' }
+            ];
+          })
+          .catch(error => {
+            console.error('获取Anthropic模型列表失败:', error);
+            // 返回预设模型列表
+            return [
+              { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', description: 'Claude 3.5 Sonnet - 最新的Claude模型', owned_by: 'anthropic' },
+              { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Claude 3 Opus - 最强大的Claude模型', owned_by: 'anthropic' },
+              { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Claude 3 Sonnet - 平衡性能和速度', owned_by: 'anthropic' },
+              { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Claude 3 Haiku - 最快的Claude模型', owned_by: 'anthropic' },
+              { id: 'claude-2.1', name: 'Claude 2.1', description: 'Claude 2.1 - 旧版Claude模型', owned_by: 'anthropic' }
+            ];
+          });
       case 'gemini':
+        console.log(`[fetchModels] 使用新的模块化Gemini API获取模型`);
+        return await geminiApi.fetchModels(provider);
       case 'google':
-        // 暂时使用OpenAI兼容API获取模型，后续可以实现专门的Google模型获取
         console.log(`[fetchModels] Google模型获取暂未实现，使用OpenAI兼容API`);
         return await openaiApi.fetchModels(provider);
       case 'openai':

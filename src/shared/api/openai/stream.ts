@@ -4,7 +4,8 @@
  */
 // 使用any类型代替OpenAI类型，避免未使用的导入警告
 // import OpenAI from 'openai';
-import { logApiResponse } from '../../services/LoggerService';
+// 使用console.log替代logApiResponse
+// import { logApiResponse } from '../../services/LoggerService';
 
 /**
  * 流式完成请求
@@ -14,6 +15,7 @@ import { logApiResponse } from '../../services/LoggerService';
  * @param temperature 温度参数
  * @param maxTokens 最大token数
  * @param onUpdate 更新回调函数
+ * @param additionalParams 额外请求参数
  * @returns 响应内容
  */
 export async function streamCompletion(
@@ -22,7 +24,8 @@ export async function streamCompletion(
   messages: any[], // 使用any[]类型代替OpenAI.Chat.ChatCompletionMessageParam[]
   temperature?: number,
   maxTokens?: number,
-  onUpdate?: (content: string, reasoning?: string) => void
+  onUpdate?: (content: string, reasoning?: string) => void,
+  additionalParams?: Record<string, any>
 ): Promise<string> {
   try {
     const startTime = new Date().getTime();
@@ -48,6 +51,13 @@ export async function streamCompletion(
       max_tokens: maxTokens,
       stream: true,
     };
+
+    // 合并额外参数，但确保必要的参数不被覆盖
+    if (additionalParams) {
+      // 先删除基本参数以确保它们不会被覆盖
+      const { model, messages, stream, ...otherParams } = additionalParams;
+      Object.assign(streamParams, otherParams);
+    }
 
     // 如果模型支持思考提示，添加思考工具
     if (modelId.includes('gpt-4') || modelId.includes('gpt-4o')) {
@@ -293,8 +303,8 @@ export async function streamCompletion(
 
     console.log(`[API流式响应] 完整内容: ${content.substring(0, 100) + (content.length > 100 ? '...' : '')}`);
 
-    // 记录API响应
-    logApiResponse('OpenAI Chat Completions Stream', 200, {
+    // 记录API响应（使用console.log替代logApiResponse）
+    console.log('OpenAI Chat Completions Stream 响应:', {
       model: modelId,
       content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
       totalLength: content.length,

@@ -3,15 +3,40 @@ import { getSettingFromDB } from '../services/storageService';
 import { getProviderApi, getActualProviderType } from '../services/ProviderFactory';
 import store from '../store';
 
-// 导出新的模块化OpenAI API
-export * as openaiApi from './openai/index';
+/**
+ * API模块索引文件
+ * 导出所有API模块
+ */
 
-// 定义请求接口
+// 导出OpenAI API模块
+export * as openaiApi from './openai';
+
+// 导出Gemini API模块
+export * as geminiApi from './gemini';
+
+// 导出Anthropic API模块
+export * as anthropicApi from './anthropic';
+
+// 通用聊天请求接口
 export interface ChatRequest {
-  messages: { role: string; content: string; images?: any[] }[]; // 更新消息格式支持images字段
+  messages: { role: string; content: string; images?: any[] }[];
   modelId: string;
   systemPrompt?: string;
   onChunk?: (chunk: string) => void;
+}
+
+// 标准化的API请求接口
+export interface StandardApiRequest {
+  messages: {
+    role: string;
+    content: string | { text?: string; images?: string[] };
+  }[];
+  model: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  stream?: boolean;
+  stop?: string[];
 }
 
 // 测试API连接
@@ -101,6 +126,14 @@ export const sendChatRequest = async (options: ChatRequest): Promise<{ success: 
 // 处理模型请求的函数，从sendChatRequest中提取出来
 async function processModelRequest(model: Model, options: ChatRequest): Promise<{ success: boolean; content?: string; reasoning?: string; reasoningTime?: number; error?: string }> {
   try {
+    // 添加详细调试日志
+    console.log(`[processModelRequest] 开始处理API请求，模型信息:`, {
+      id: model.id,
+      provider: model.provider,
+      providerType: model.providerType || '未指定',
+      apiKey: model.apiKey ? '已设置' : '未设置',
+      baseUrl: model.baseUrl || '未设置'
+    });
 
     // 将简单消息格式转换为API需要的消息格式
     const messages = options.messages.map((msg, index) => ({
@@ -131,10 +164,13 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
 
     // 获取对应的API实现
     const providerType = getActualProviderType(model);
-    console.log(`使用提供商类型: ${providerType}`);
+    console.log(`[processModelRequest] 使用提供商类型: ${providerType}`);
 
     try {
+      // 获取API实现，添加详细日志
+      console.log(`[processModelRequest] 尝试获取API实现，提供商: ${providerType}`);
       const api = getProviderApi(model);
+      console.log(`[processModelRequest] 成功获取API实现`);
 
       // 创建一个响应包装器，将旧API的流式回调转换为新格式
       let contentAccumulator = '';
@@ -169,6 +205,7 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
             // 1. 新增内容长度超过阈值
             // 2. 距离上次更新时间超过阈值
             // 3. 或者内容长度变短（可能是替换/修改）
+            // 4. 或者刚刚收到思考过程
             if (newContent.length >= minChunkSize ||
                 timeSinceLastUpdate >= updateThreshold ||
                 content.length < contentAccumulator.length ||
@@ -243,33 +280,42 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
         return apiMessage;
       });
 
+      console.log(`[processModelRequest] 准备发送API请求, 消息数量: ${apiMessages.length}`);
+      
       // 调用实际的API
+      console.log(`[processModelRequest] 开始发送API请求`, { 
+        modelId: model.id, 
+        hasCallback: !!onUpdate
+      });
+      
       const response = await api.sendChatRequest(apiMessages as any[], model, onUpdate);
+      console.log(`[processModelRequest] 成功收到API响应`);
 
       // 如果返回值是对象（带有reasoning等属性），正确处理response
       const content = typeof response === 'string' ? response : response.content;
       const reasoning = typeof response === 'string' ? undefined : response.reasoning;
       const reasoningTime = typeof response === 'string' ? undefined : response.reasoningTime;
 
+      // 返回统一的响应格式
       return {
         success: true,
-        content: content,
-        reasoning: reasoning,
-        reasoningTime: reasoningTime
+        content,
+        reasoning,
+        reasoningTime
       };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : '';
-
-      console.error('[sendChatRequest] API调用失败:', errorMessage);
-      console.error('[sendChatRequest] 错误堆栈:', errorStack);
-
-      // 记录更多上下文信息
-      console.error('[sendChatRequest] 请求上下文:', {
-        modelId: options.modelId,
-        messageCount: options.messages.length,
-        hasSystemPrompt: !!options.systemPrompt,
-        hasOnChunk: !!options.onChunk
+    } catch (error: any) {
+      const errorMessage = error?.message || '未知错误';
+      console.error('[processModelRequest] API调用失败:', errorMessage);
+      console.error('[processModelRequest] 错误详细信息:', error);
+      
+      // 提供更多错误上下文
+      console.error('[processModelRequest] 错误上下文:', {
+        modelId: model.id,
+        provider: model.provider,
+        errorName: error?.name,
+        errorCode: error?.code || error?.status,
+        apiKey: model.apiKey ? '已设置(长度:' + model.apiKey.length + ')' : '未设置',
+        baseUrl: model.baseUrl || '未设置'
       });
 
       return {
@@ -279,14 +325,13 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : '';
-
-    console.error('[sendChatRequest] API准备失败:', errorMessage);
-    console.error('[sendChatRequest] 错误堆栈:', errorStack);
-
+    console.error('[processModelRequest] 请求准备失败:', errorMessage);
+    console.error('[processModelRequest] 错误堆栈:', error instanceof Error ? error.stack : '无堆栈信息');
+    
     // 记录更多上下文信息
-    console.error('[sendChatRequest] 请求上下文:', {
-      modelId: options.modelId,
+    console.error('[processModelRequest] 请求上下文:', {
+      modelId: model.id,
+      provider: model.provider,
       messageCount: options.messages?.length || 0,
       hasSystemPrompt: !!options.systemPrompt,
       hasOnChunk: !!options.onChunk
@@ -297,7 +342,7 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
       error: errorMessage
     };
   }
-};
+}
 
 // 查找模型
 async function findModelById(modelId: string): Promise<Model | null> {

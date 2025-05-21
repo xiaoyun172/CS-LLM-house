@@ -5,7 +5,8 @@ import {
   ListItemAvatar,
   Avatar,
   IconButton,
-  Typography
+  Typography,
+  Box,
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -73,8 +74,11 @@ export default function AssistantItem({
           sx={{
             width: 32,
             height: 32,
-            fontSize: '1rem',
-            bgcolor: isSelected ? 'primary.main' : 'grey.300'
+            fontSize: '1.2rem',
+            bgcolor: isSelected ? 'primary.main' : 'grey.300',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
           }}
         >
           {assistant.emoji || assistant.name.charAt(0)}
@@ -104,20 +108,22 @@ export default function AssistantItem({
           </Typography>
         }
       />
-      <IconButton
-        size="small"
-        onClick={handleOpenMenu}
-        sx={{ opacity: 0.6 }}
-      >
-        <MoreVertIcon fontSize="small" />
-      </IconButton>
-      <IconButton
-        size="small"
-        onClick={handleDeleteClick}
-        sx={{ opacity: 0.6, '&:hover': { color: 'error.main' } }}
-      >
-        <DeleteIcon fontSize="small" />
-      </IconButton>
+      <Box sx={{ display: 'flex' }}>
+        <IconButton
+          size="small"
+          onClick={handleOpenMenu}
+          sx={{ opacity: 0.6 }}
+        >
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+        <IconButton
+          size="small"
+          onClick={handleDeleteClick}
+          sx={{ opacity: 0.6, '&:hover': { color: 'error.main' } }}
+        >
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </Box>
     </ListItemButton>
   );
 }

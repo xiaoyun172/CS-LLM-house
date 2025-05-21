@@ -1,148 +1,110 @@
 /**
  * OpenAI聊天完成模块
  * 负责处理聊天完成请求
+ * 使用与电脑版一致的Provider实现
  */
 import type { Message, Model } from '../../types';
-// 不直接导入OpenAI，而是在需要的地方使用类型断言
-import { logApiRequest, logApiResponse } from '../../services/LoggerService';
-import { adaptToAPIMessage } from '../../utils/messageAdapterUtils';
-import { createClient, supportsMultimodal } from './client';
-import { convertToOpenAIMessages, hasImages, hasOpenAIFormatImages } from './multimodal';
-import { streamCompletion } from './stream';
+import { logApiRequest } from '../../services/LoggerService';
+import { createProvider } from './provider';
+import { ToolType } from './tools';
+
+
 
 /**
  * 发送聊天请求
  * @param messages 消息数组
  * @param model 模型配置
- * @param onUpdate 更新回调函数
+ * @param options 额外选项
  * @returns 响应内容
  */
 export async function sendChatRequest(
   messages: Message[],
   model: Model,
-  onUpdate?: (content: string) => void
+  options?: {
+    onUpdate?: (content: string, reasoning?: string) => void;
+    enableWebSearch?: boolean;
+    enableThinking?: boolean;
+    systemPrompt?: string;
+  }
 ): Promise<string> {
   try {
-    // 创建OpenAI客户端
-    const openai = createClient(model);
-    const modelId = model.id;
+    const opts = options || {};
+    // 确保onUpdate回调类型正确
+    const onUpdate = typeof opts.onUpdate === 'function' ? opts.onUpdate : undefined;
+    const enableWebSearch = opts.enableWebSearch === true;
+    const enableThinking = opts.enableThinking === true;
 
-    // 检查多模态支持
-    const modelSupportsMultimodal = supportsMultimodal(model);
+    // 获取系统提示词 - 即使没有提供也使用空字符串，确保始终添加system角色消息
+    // 这样与电脑版保持一致，电脑版总是添加system角色消息
+    const systemPrompt = opts.systemPrompt || '';
 
-    // 过滤掉空消息
-    const filteredMessages = messages.filter(msg => {
-      // 转换为API兼容格式
-      const apiMsg = adaptToAPIMessage(msg);
+    console.log(`[API请求] 使用OpenAI API发送请求，模型ID: ${model.id}，提供商: ${model.provider}`);
+    console.log(`[API请求] 消息数量: ${messages.length}, 系统提示: ${systemPrompt ? '有' : '无'}`);
 
-      if (typeof apiMsg.content === 'string') {
-        return apiMsg.content.trim() !== '';
-      } else {
-        // 对于复杂消息，检查是否有文本或图片
-        const content = apiMsg.content as {text?: string; images?: any[]};
-        return content.text?.trim() !== '' || (content.images && content.images.length > 0);
-      }
-    });
+    // 强制检查：确保消息数组不为空
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      console.error('[API请求] 严重错误: 消息数组为空或无效，添加默认消息');
 
-    // 检查是否包含图片
-    const messagesHaveImages = hasImages(filteredMessages);
-    console.log(`[OpenAI API] 消息中图片检测: ${messagesHaveImages ? '包含图片' : '不包含图片'}`);
+      // 创建一个默认的主文本块
+      const blockId = 'block-default-' + Date.now();
 
-    // 转换消息格式
-    const openaiMessages = convertToOpenAIMessages(filteredMessages);
+      // 添加一个默认的用户消息
+      messages = [{
+        id: 'default-' + Date.now(),
+        role: 'user',
+        assistantId: '',
+        topicId: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: 'success' as any,
+        blocks: [blockId]
+      }];
 
-    // 如果消息列表为空，返回友好的提示消息而不是抛出错误
-    if (openaiMessages.length === 0) {
-      console.log('[API请求] 警告: 消息列表为空，返回提示消息');
-      return '请输入您想要提问的内容';
+      console.log('[API请求] 添加默认用户消息');
     }
 
-    // 检查是否包含图片但模型不支持
-    const openaiMessagesHaveImages = hasOpenAIFormatImages(openaiMessages);
-
-    if (openaiMessagesHaveImages) {
-      // 详细记录所有图片信息，帮助调试
-      console.log('[OpenAI API] 发现图片内容，详细信息:');
-      openaiMessages.forEach((msg, i) => {
-        if (Array.isArray(msg.content)) {
-          const imageItems = msg.content.filter((item: any) => item.type === 'image_url');
-          if (imageItems.length > 0) {
-            console.log(`[OpenAI API] 消息 #${i+1} 包含 ${imageItems.length} 张图片`);
-          }
-        }
-      });
-
-      if (!modelSupportsMultimodal) {
-        console.warn('[API请求] 警告: 消息包含图片，但模型不支持多模态');
-        throw new Error('当前模型不支持图片分析，请选择支持多模态的模型，如GPT-4V或Gemini');
-      }
-    }
-
-    // 确保至少有一条用户消息
-    if (!openaiMessages.some(msg => msg.role === 'user')) {
-      console.warn('[API请求] 警告: 没有用户消息，API可能返回错误');
-    }
-
-    console.log(`[API请求] 使用OpenAI API发送请求，模型ID: ${modelId}，提供商: ${model.provider}`);
-    console.log('[API请求] 消息数量:', openaiMessages.length);
+    // 记录消息数组
+    console.log(`[API请求] 消息数组:`, JSON.stringify(messages.map(msg => ({
+      id: msg.id,
+      role: msg.role,
+      blocks: msg.blocks
+    }))));
 
     // 记录API请求
-    logApiRequest('OpenAI Chat Completions', 'INFO', {
+    logApiRequest('OpenAI Chat', 'INFO', {
       method: 'POST',
-      model: modelId,
-      temperature: model.temperature,
-      max_tokens: model.maxTokens,
-      messages: openaiMessages.map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string'
-          ? (m.content.substring(0, 50) + (m.content.length > 50 ? '...' : ''))
-          : '[复杂内容]'
+      model: model.id,
+      messagesCount: messages.length,
+      enableWebSearch,
+      enableThinking,
+      hasSystemPrompt: Boolean(systemPrompt),
+      stream: true, // 添加流式输出信息，与电脑版保持一致
+      messages: messages.map(msg => ({
+        role: msg.role,
+        blocks: msg.blocks
       }))
     });
 
-    // 如果提供了onUpdate回调，使用流式响应
-    if (onUpdate) {
-      return await streamCompletion(openai, modelId, openaiMessages, model.temperature, model.maxTokens, onUpdate);
-    } else {
-      // 否则使用普通响应
-      try {
-        const completion = await openai.chat.completions.create({
-          model: modelId,
-          messages: openaiMessages,
-          temperature: model.temperature,
-          max_tokens: model.maxTokens,
-        });
+    // 创建Provider实例
+    const provider = createProvider(model);
 
-        const responseContent = completion.choices[0].message.content || '';
-        console.log('[API响应] 成功接收响应:', {
-          model: modelId,
-          content: responseContent.substring(0, 100) + (responseContent.length > 100 ? '...' : ''),
-          usage: completion.usage
-        });
+    // 准备工具列表
+    const tools: ToolType[] = [];
 
-        // 记录API响应
-        logApiResponse('OpenAI Chat Completions', 200, {
-          model: modelId,
-          content: responseContent.substring(0, 100) + (responseContent.length > 100 ? '...' : ''),
-          usage: completion.usage
-        });
-
-        return responseContent;
-      } catch (error: any) {
-        console.error('[API错误] OpenAI API请求失败:', error);
-        console.error('[API错误] 详细信息:', {
-          message: error.message,
-          code: error.code,
-          status: error.status,
-          type: error.type,
-          param: error.param,
-          modelId,
-          provider: model.provider
-        });
-
-        throw error;
-      }
+    // 添加网页搜索工具
+    if (enableWebSearch && model.capabilities?.webSearch) {
+      tools.push(ToolType.WEB_SEARCH);
+      console.log(`[API请求] 启用网页搜索功能`);
     }
+
+    // 使用Provider发送消息
+    return await provider.sendChatMessage(messages, {
+      onUpdate,
+      enableWebSearch,
+      enableThinking,
+      tools,
+      systemPrompt
+    });
   } catch (error) {
     console.error('[API错误] OpenAI API请求失败:', error);
     console.error('[API错误] 详细信息:', {

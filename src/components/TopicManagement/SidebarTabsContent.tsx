@@ -123,22 +123,16 @@ export default function SidebarTabsContent() {
           </TabPanel>
 
           <TabPanel value={value} index={1}>
-            <React.Suspense fallback={
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <CircularProgress size={24} />
-              </Box>
-            }>
-              {/* 使用key属性确保在助手变化时重新渲染组件 */}
-              <TopicTab
-                key={assistantWithTopics?.id || currentAssistant?.id || 'no-assistant'}
-                currentAssistant={assistantWithTopics || currentAssistant}
-                currentTopic={currentTopic}
-                onSelectTopic={handleSelectTopic}
-                onCreateTopic={handleCreateTopic}
-                onDeleteTopic={handleDeleteTopic}
-                onUpdateTopic={handleUpdateTopic}
-              />
-            </React.Suspense>
+            {/* 直接渲染组件，与电脑版保持一致 */}
+            <TopicTab
+              key={assistantWithTopics?.id || currentAssistant?.id || 'no-assistant'}
+              currentAssistant={assistantWithTopics || currentAssistant}
+              currentTopic={currentTopic}
+              onSelectTopic={handleSelectTopic}
+              onCreateTopic={handleCreateTopic}
+              onDeleteTopic={handleDeleteTopic}
+              onUpdateTopic={handleUpdateTopic}
+            />
           </TabPanel>
 
           <TabPanel value={value} index={2}>

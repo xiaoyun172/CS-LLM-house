@@ -160,17 +160,33 @@ export class AssistantManager {
    */
   static async updateAssistant(assistant: Assistant): Promise<boolean> {
     try {
+      console.log('[AssistantManager.updateAssistant] 开始更新助手:', {
+        id: assistant.id,
+        name: assistant.name,
+        systemPrompt: assistant.systemPrompt ?
+          (assistant.systemPrompt.substring(0, 30) + (assistant.systemPrompt.length > 30 ? '...' : '')) :
+          '无系统提示词'
+      });
+
       // 处理icon字段
       const assistantToSave = { ...assistant };
       if (assistantToSave.icon && typeof assistantToSave.icon === 'object') {
         assistantToSave.icon = null;
       }
 
-      // 保存助手
+      // 保存助手到数据库
       await dexieStorage.saveAssistant(assistantToSave);
+      console.log('[AssistantManager.updateAssistant] 已保存助手到数据库');
+
+      // 派发事件通知其他组件
+      window.dispatchEvent(new CustomEvent('assistantUpdated', {
+        detail: { assistant: assistantToSave }
+      }));
+      console.log('[AssistantManager.updateAssistant] 已派发assistantUpdated事件');
+
       return true;
     } catch (error) {
-      console.error('更新助手失败:', error);
+      console.error('[AssistantManager.updateAssistant] 更新助手失败:', error);
       return false;
     }
   }

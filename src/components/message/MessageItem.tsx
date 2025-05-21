@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
-  Typography,
   Avatar,
   Paper,
   useTheme,
@@ -13,14 +12,8 @@ import { MessageBlockType } from '../../shared/types/newMessage.ts';
 import { messageBlocksSelectors } from '../../shared/store/slices/messageBlocksSlice';
 import { dexieStorage } from '../../shared/services/DexieStorageService';
 import { upsertManyBlocks } from '../../shared/store/slices/messageBlocksSlice';
-import Markdown from './Markdown';
-import CodeBlock from './CodeBlock';
 import MessageActions from './MessageActions';
-import TranslationBlock from './TranslationBlock';
-import TableBlock from './TableBlock';
-import MultiModelBlock from './MultiModelBlock';
-import ChartBlock from './ChartBlock';
-import MathBlock from './MathBlock';
+import MessageBlockRenderer from './MessageBlockRenderer';
 import type { RootState } from '../../shared/store';
 
 interface MessageItemProps {
@@ -54,21 +47,54 @@ const MessageItem: React.FC<MessageItemProps> = ({
     state.messageBlocks.loadingState === 'loading'
   );
 
+  // 调试日志
+  console.log(`[MessageItem] 渲染消息: ID=${message.id}, 角色=${message.role}, 状态=${message.status}, 块数量=${blocks.length}`);
+  if (blocks.length > 0) {
+    blocks.forEach(block => {
+      // 安全地获取内容长度
+      let contentLength = 0;
+      if (block.type === MessageBlockType.MAIN_TEXT ||
+          block.type === MessageBlockType.CODE ||
+          block.type === MessageBlockType.THINKING ||
+          block.type === MessageBlockType.CITATION ||
+          block.type === MessageBlockType.TRANSLATION) {
+        contentLength = (block as any).content?.length || 0;
+      }
+      console.log(`[MessageItem] 块信息: ID=${block.id}, 类型=${block.type}, 状态=${block.status}, 内容长度=${contentLength}`);
+    });
+  }
+
   // 如果Redux中没有块，从数据库加载
   useEffect(() => {
     const loadBlocks = async () => {
       if (blocks.length === 0 && message.blocks.length > 0) {
+        console.log(`[MessageItem] 从数据库加载块: 消息ID=${message.id}, 块ID列表=${message.blocks.join(',')}`);
         try {
           const messageBlocks: MessageBlock[] = [];
           for (const blockId of message.blocks) {
             const block = await dexieStorage.getMessageBlock(blockId);
             if (block) {
+              // 安全地获取内容长度
+              let contentLength = 0;
+              if (block.type === MessageBlockType.MAIN_TEXT ||
+                  block.type === MessageBlockType.CODE ||
+                  block.type === MessageBlockType.THINKING ||
+                  block.type === MessageBlockType.CITATION ||
+                  block.type === MessageBlockType.TRANSLATION) {
+                contentLength = (block as any).content?.length || 0;
+              }
+              console.log(`[MessageItem] 从数据库加载块成功: ID=${block.id}, 类型=${block.type}, 内容长度=${contentLength}`);
               messageBlocks.push(block);
+            } else {
+              console.warn(`[MessageItem] 数据库中找不到块: ID=${blockId}`);
             }
           }
 
           if (messageBlocks.length > 0) {
+            console.log(`[MessageItem] 更新Redux状态: 加载了${messageBlocks.length}个块`);
             dispatch(upsertManyBlocks(messageBlocks));
+          } else {
+            console.warn(`[MessageItem] 数据库中没有找到任何块: 消息ID=${message.id}`);
           }
         } catch (error) {
           console.error('加载消息块失败:', error);
@@ -86,105 +112,12 @@ const MessageItem: React.FC<MessageItemProps> = ({
       const interval = setInterval(() => {
         forceUpdate();
       }, 100);
-      
+
       return () => clearInterval(interval);
     }
   }, [message.status, forceUpdate]);
 
-  // 渲染主文本块
-  const renderMainTextBlock = (block: MessageBlock) => {
-    if (block.type !== MessageBlockType.MAIN_TEXT) return null;
-    return (
-      <Markdown content={block.content} allowHtml={false} />
-    );
-  };
-
-  // 渲染思考块
-  const renderThinkingBlock = (block: MessageBlock) => {
-    if (block.type !== MessageBlockType.THINKING) return null;
-    return (
-      <Box
-        sx={{
-          backgroundColor: theme.palette.mode === 'dark'
-            ? 'rgba(0, 0, 0, 0.1)'
-            : 'rgba(0, 0, 0, 0.03)',
-          padding: '8px 12px',
-          borderRadius: '8px',
-          marginTop: '8px',
-          borderLeft: `3px solid ${theme.palette.primary.main}`
-        }}
-      >
-        <Typography variant="caption" sx={{ color: theme.palette.primary.main, display: 'block', marginBottom: '4px' }}>
-          思考过程
-        </Typography>
-        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
-          {block.content}
-        </Typography>
-      </Box>
-    );
-  };
-
-  // 渲染图片块
-  const renderImageBlock = (block: MessageBlock) => {
-    if (block.type !== MessageBlockType.IMAGE) return null;
-    return (
-      <Box
-        component="img"
-        src={block.url}
-        alt="图片"
-        sx={{
-          maxWidth: '100%',
-          maxHeight: '400px',
-          borderRadius: '4px',
-          marginTop: '8px'
-        }}
-      />
-    );
-  };
-
-  // 渲染代码块
-  const renderCodeBlock = (block: MessageBlock) => {
-    if (block.type !== MessageBlockType.CODE) return null;
-    return (
-      <CodeBlock
-        code={block.content}
-        language={block.language || 'text'}
-      />
-    );
-  };
-
-  // 根据块类型渲染不同内容
-  const renderBlock = (block: MessageBlock) => {
-    switch (block.type) {
-      case MessageBlockType.MAIN_TEXT:
-        return renderMainTextBlock(block);
-      case MessageBlockType.THINKING:
-        return renderThinkingBlock(block);
-      case MessageBlockType.IMAGE:
-        return renderImageBlock(block);
-      case MessageBlockType.CODE:
-        return renderCodeBlock(block);
-      case MessageBlockType.CITATION:
-        return (
-          <Box sx={{ fontStyle: 'italic', marginTop: '8px', borderLeft: `2px solid ${theme.palette.grey[400]}`, paddingLeft: '8px' }}>
-            {block.content}
-            {block.source && <Typography variant="caption" display="block">— {block.source}</Typography>}
-          </Box>
-        );
-      case MessageBlockType.TRANSLATION:
-        return <TranslationBlock block={block} />;
-      case MessageBlockType.TABLE:
-        return <TableBlock block={block} />;
-      case MessageBlockType.MULTI_MODEL:
-        return <MultiModelBlock block={block} />;
-      case MessageBlockType.CHART:
-        return <ChartBlock block={block} />;
-      case MessageBlockType.MATH:
-        return <MathBlock block={block} />;
-      default:
-        return null;
-    }
-  };
+  // 所有渲染逻辑已移至MessageBlockRenderer组件
 
   const isUserMessage = message.role === 'user';
 
@@ -219,8 +152,13 @@ const MessageItem: React.FC<MessageItemProps> = ({
           sx={{
             padding: 1.5,
             backgroundColor: isUserMessage
-              ? theme.palette.primary.light
+              ? theme.palette.mode === 'dark'
+                ? '#333333' // 深色主题下使用灰色背景
+                : theme.palette.primary.light
               : theme.palette.background.paper,
+            color: isUserMessage && theme.palette.mode === 'dark'
+              ? '#ffffff' // 深色主题下使用白色文字
+              : 'inherit',
             width: '100%',
             borderRadius: '12px',
             borderTopLeftRadius: !isUserMessage ? 0 : '12px',
@@ -228,8 +166,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
             position: 'relative', // 确保相对定位
           }}
         >
-          {/* 三点菜单按钮 - 放在气泡内部右上角 */}
-          <Box sx={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }}>
+          {/* 三点菜单按钮 - 根据消息类型放在气泡内部的左上角或右上角 */}
+          <Box sx={{
+            position: 'absolute',
+            top: 2,
+            // 用户消息和助手消息都放在右侧
+            right: 2,
+            left: 'auto',
+            zIndex: 2
+          }}>
             <MessageActions
               message={message as any}
               topicId={message.topicId}
@@ -243,17 +188,29 @@ const MessageItem: React.FC<MessageItemProps> = ({
               <Skeleton variant="text" width="80%" />
               <Skeleton variant="text" width="60%" />
             </>
-          ) : blocks.length > 0 ? (
-            blocks.map(block => (
-              <Box key={block.id} sx={{ marginBottom: 1 }}>
-                {renderBlock(block)}
-              </Box>
-            ))
           ) : (
-            // 如果没有块但有消息内容，直接显示消息内容
-            <Typography variant="body1">
-              {'(无内容)'}
-            </Typography>
+            // 使用新的MessageBlockRenderer组件渲染所有块
+            <Box sx={{ width: '100%' }}>
+              {message.blocks && message.blocks.length > 0 ? (
+                <MessageBlockRenderer
+                  blocks={message.blocks}
+                  message={message}
+                  // 无论是用户还是助手消息，右侧都需要额外padding，避免与三点菜单重叠
+                  extraPaddingLeft={0}
+                  extraPaddingRight={2}
+                />
+              ) : (
+                // 如果消息没有块，显示消息内容
+                <Box sx={{
+                  p: 1,
+                  // 无论是用户还是助手消息，右侧都需要额外padding
+                  pl: 1,
+                  pr: 3
+                }}>
+                  {(message as any).content || '(无内容)'}
+                </Box>
+              )}
+            </Box>
           )}
         </Paper>
       </Box>

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../shared/store';
 import { useChatPageLayout } from './hooks/useChatPageLayout.ts';
@@ -7,54 +7,77 @@ import { useTopicManagement } from './hooks/useTopicManagement.ts';
 import { useMessageHandling } from './hooks/useMessageHandling.ts';
 import { useChatFeatures } from './hooks/useChatFeatures.ts';
 import { ChatPageUI } from './components/ChatPageUI.tsx';
-import { 
-  selectMessagesForTopic, 
-  selectTopicLoading, 
-  selectTopicStreaming 
+import {
+  selectMessagesForTopic,
+  selectTopicLoading,
+  selectTopicStreaming
 } from '../../shared/store/selectors/messageSelectors';
+import { dexieStorage } from '../../shared/services/DexieStorageService';
 
 const ChatPage: React.FC = () => {
   // 从Redux获取状态
-  const currentTopic = useSelector((state: RootState) => state.messages.currentTopic);
+  const currentTopicId = useSelector((state: RootState) => state.messages.currentTopicId);
+  const [currentTopic, setCurrentTopic] = useState<any>(null);
+
+  // 当话题ID变化时，从数据库获取话题信息
+  useEffect(() => {
+    const loadTopic = async () => {
+      if (!currentTopicId) {
+        setCurrentTopic(null);
+        return;
+      }
+
+      try {
+        const topic = await dexieStorage.getTopic(currentTopicId);
+        if (topic) {
+          setCurrentTopic(topic);
+        }
+      } catch (error) {
+        console.error('加载话题信息失败:', error);
+      }
+    };
+
+    loadTopic();
+  }, [currentTopicId]);
 
   // 使用新的选择器获取当前主题的消息
-  const currentMessages = useSelector((state: RootState) => 
+  const currentMessages = useSelector((state: RootState) =>
     currentTopic ? selectMessagesForTopic(state, currentTopic.id) : []
   );
 
   // 使用新的选择器获取流式状态和加载状态
-  const isStreaming = useSelector((state: RootState) => 
+  const isStreaming = useSelector((state: RootState) =>
     currentTopic ? selectTopicStreaming(state, currentTopic.id) : false
   );
-  const isLoading = useSelector((state: RootState) => 
+  const isLoading = useSelector((state: RootState) =>
     currentTopic ? selectTopicLoading(state, currentTopic.id) : false
   );
 
   // 布局相关钩子
-  const { 
-    isMobile, 
-    drawerOpen, 
-    setDrawerOpen, 
-    navigate 
+  const {
+    isMobile,
+    drawerOpen,
+    setDrawerOpen,
+    navigate
   } = useChatPageLayout();
 
   // 模型选择钩子
-  const { 
-    selectedModel, 
-    availableModels, 
-    handleModelSelect, 
-    handleModelMenuClick, 
-    handleModelMenuClose, 
-    menuOpen 
+  const {
+    selectedModel,
+    availableModels,
+    handleModelSelect,
+    handleModelMenuClick,
+    handleModelMenuClose,
+    menuOpen
   } = useModelSelection();
 
   // 主题管理钩子
   const { handleClearTopic } = useTopicManagement(currentTopic);
 
   // 消息处理钩子
-  const { 
-    handleSendMessage, 
-    handleDeleteMessage, 
+  const {
+    handleSendMessage,
+    handleDeleteMessage,
     handleRegenerateMessage,
     loadTopicMessages
   } = useMessageHandling(selectedModel, currentTopic);

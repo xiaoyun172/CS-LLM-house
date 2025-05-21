@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { updateMessage } from '../../../shared/store/messagesSlice';
+import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
 import { generateId } from '../../../shared/utils';
 import {
   createUserMessage,
@@ -233,21 +233,26 @@ export const useChatFeatures = (
         topicId: currentTopic.id,
         askId: userMessage.id,
         modelId: selectedModel?.id,
-        model: selectedModel || undefined
+        model: selectedModel || undefined,
+        status: AssistantMessageStatus.SEARCHING // 设置初始状态为SEARCHING
       });
 
       // 更新主文本块内容
       const mainTextBlock = searchingBlocks.find((block: any) => block.type === MessageBlockType.MAIN_TEXT);
       if (mainTextBlock && 'content' in mainTextBlock) {
         mainTextBlock.content = "正在搜索网络，请稍候...";
-        mainTextBlock.status = MessageBlockStatus.SUCCESS;
+        mainTextBlock.status = MessageBlockStatus.PROCESSING; // 使用PROCESSING状态
       }
 
       // 保存助手消息和块
       await TopicService.saveMessageAndBlocks(searchingMessage, searchingBlocks);
 
-      // 调用网络搜索服务
-      const searchResults = await WebSearchService.search(query);
+      // 使用带状态管理的搜索方法 - 已适配新的状态管理方式
+      const searchResults = await WebSearchService.searchWithStatus(
+        query,
+        currentTopic.id,
+        searchingMessage.id
+      );
 
       // 准备搜索结果内容
       let resultsContent = `### 网络搜索结果\n\n`;
@@ -269,12 +274,15 @@ export const useChatFeatures = (
         });
       }
 
-      // 更新消息状态
-      dispatch(updateMessage({
-        topicId: currentTopic.id,
-        messageId: searchingMessage.id,
-        updates: { status: 'complete' } as any
-      }));
+      // 更新消息状态 - 使用新的Redux action
+      store.dispatch({
+        type: 'normalizedMessages/updateMessageStatus',
+        payload: {
+          topicId: currentTopic.id,
+          messageId: searchingMessage.id,
+          status: AssistantMessageStatus.SUCCESS
+        }
+      });
 
       // 关闭网络搜索模式
       setWebSearchActive(false);
@@ -288,7 +296,8 @@ export const useChatFeatures = (
         topicId: currentTopic.id,
         askId: userMessage.id,
         modelId: selectedModel?.id,
-        model: selectedModel || undefined
+        model: selectedModel || undefined,
+        status: AssistantMessageStatus.ERROR // 设置状态为ERROR
       });
 
       // 更新主文本块内容
@@ -300,6 +309,14 @@ export const useChatFeatures = (
 
       // 保存错误消息和块
       await TopicService.saveMessageAndBlocks(errorMessage, errorBlocks);
+
+      // 设置错误状态
+      store.dispatch({
+        type: 'normalizedMessages/setError',
+        payload: {
+          error: `网络搜索失败: ${error instanceof Error ? error.message : String(error)}`
+        }
+      });
 
       // 关闭网络搜索模式
       setWebSearchActive(false);
@@ -357,10 +374,9 @@ export const useChatFeatures = (
     if (!lastAssistantMessage) return;
 
     // 更新消息状态为成功
-    dispatch(updateMessage({
-      topicId: currentTopic.id,
-      messageId: lastAssistantMessage.id,
-      updates: {
+    dispatch(newMessagesActions.updateMessage({
+      id: lastAssistantMessage.id,
+      changes: {
         status: AssistantMessageStatus.SUCCESS
       }
     }));
@@ -395,4 +411,4 @@ export const useChatFeatures = (
     handleStopResponseClick,
     handleMessageSend
   };
-}; 
+};

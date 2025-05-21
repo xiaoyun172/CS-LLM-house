@@ -60,7 +60,26 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [scraperError, setScraperError] = useState<string>('');
 
   // 获取当前话题状态 - 移到组件顶层
-  const currentTopicState = useSelector((state: RootState) => state.messages.currentTopic);
+  const currentTopicId = useSelector((state: RootState) => state.messages.currentTopicId);
+  const [currentTopicState, setCurrentTopicState] = useState<any>(null);
+
+  // 当话题ID变化时，从数据库获取话题信息
+  useEffect(() => {
+    const loadTopic = async () => {
+      if (!currentTopicId) return;
+
+      try {
+        const topic = await dexieStorage.getTopic(currentTopicId);
+        if (topic) {
+          setCurrentTopicState(topic);
+        }
+      } catch (error) {
+        console.error('加载话题信息失败:', error);
+      }
+    };
+
+    loadTopic();
+  }, [currentTopicId]);
 
   // 获取主题相关颜色
   const theme = useTheme();

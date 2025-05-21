@@ -1,5 +1,4 @@
 import { sendChatRequest } from '../api';
-import { updateTopic } from '../store/messagesSlice';
 import store from '../store';
 import type { ChatTopic } from '../types';
 import { getStorageItem, setStorageItem } from '../utils/storage';
@@ -20,39 +19,39 @@ export class TopicNamingService {
     // 获取用户和助手消息的数量
     const userMessages = topic.messages?.filter(m => m.role === 'user') || [];
     const assistantMessages = topic.messages?.filter(m => m.role === 'assistant' && m.status === 'success') || [];
-    
+
     // 获取话题名称（优先使用name字段，兼容旧版本使用title字段）
     const topicName = topic.name || topic.title || '';
-    
+
     // 添加调试日志
     console.log('自动命名检查:', {
       topicId: topic.id,
       topicName,
-      titleMatches: 
-        topicName.includes('新话题') || 
-        topicName.includes('New Topic') || 
+      titleMatches:
+        topicName.includes('新话题') ||
+        topicName.includes('New Topic') ||
         topicName.includes('新的对话') ||
         topicName.includes('新对话'),
       userMsgCount: userMessages.length,
       assistantMsgCount: assistantMessages.length,
-      matchesCondition: 
-        (topicName.includes('新话题') || 
-         topicName.includes('New Topic') || 
+      matchesCondition:
+        (topicName.includes('新话题') ||
+         topicName.includes('New Topic') ||
          topicName.includes('新的对话') ||
-         topicName.includes('新对话')) && 
-        userMessages.length >= 2 && 
+         topicName.includes('新对话')) &&
+        userMessages.length >= 2 &&
         assistantMessages.length >= 2
     });
-    
+
     // 检查是否满足自动命名条件：
     // 1. 标题符合默认格式（包含"新话题"、"New Topic"、"新的对话"或"新对话"）
     // 2. 用户消息和助手消息的数量都大于等于2（与电脑版保持一致）
     return (
-      (topicName.includes('新话题') || 
-       topicName.includes('New Topic') || 
+      (topicName.includes('新话题') ||
+       topicName.includes('New Topic') ||
        topicName.includes('新的对话') ||
-       topicName.includes('新对话')) && 
-      userMessages.length >= 2 && 
+       topicName.includes('新对话')) &&
+      userMessages.length >= 2 &&
       assistantMessages.length >= 2
     );
   }
@@ -123,20 +122,14 @@ export class TopicNamingService {
           };
 
           // 在Redux中更新话题
-          store.dispatch(updateTopic({
-            id: updatedTopic.id, 
-            updates: {
-              name: newTitle,
-              title: newTitle,
-              isNameManuallyEdited: true
-            }
-          }));
+          // 注意：newMessagesSlice 中没有直接更新话题的 action，
+          // 所以我们只在数据库中更新话题，Redux 状态会在下次加载时更新
 
           // 同时更新数据库中的话题
           try {
             // 直接保存到数据库
             await saveTopicToDB(updatedTopic);
-            
+
             // 记录已命名状态，防止重复命名
             await setStorageItem(namingKey, true);
           } catch (error) {
@@ -152,4 +145,4 @@ export class TopicNamingService {
       console.error('在生成话题标题时发生错误:', error);
     }
   }
-} 
+}

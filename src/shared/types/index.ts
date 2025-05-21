@@ -201,10 +201,14 @@ export interface Model {
   capabilities?: {
     multimodal?: boolean; // 是否支持多模态（图像）
     imageGeneration?: boolean; // 是否支持图像生成
+    webSearch?: boolean; // 是否支持网页搜索
+    reasoning?: boolean; // 是否支持推理优化
   }; // 模型能力
   multimodal?: boolean; // 直接的多模态支持标志，用于兼容预设模型配置
   imageGeneration?: boolean; // 直接的图像生成支持标志
   modelTypes?: ModelType[]; // 模型类型
+  apiVersion?: string; // API版本，主要用于Azure OpenAI
+  extraHeaders?: Record<string, string>; // 额外的请求头
 }
 
 // 设置类型

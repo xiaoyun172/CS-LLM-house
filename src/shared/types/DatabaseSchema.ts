@@ -6,7 +6,7 @@ import type { Message, MessageBlock } from '../types/newMessage.ts';
 // 统一的数据库配置
 export const DB_CONFIG = {
   NAME: 'aetherlink-db-new',
-  VERSION: 4,
+  VERSION: 5, // 增加版本号以触发数据库升级
   STORES: {
     TOPICS: 'topics' as const,
     ASSISTANTS: 'assistants' as const,
@@ -52,7 +52,7 @@ export interface AetherLinkDB extends DBSchema {
 
   topics: {
     key: string;
-    value: ChatTopic;
+    value: ChatTopic & { messages: Message[] }; // 添加messages数组到topics表
     indexes: {
       'by-assistant': string;
       'by-last-time': number;

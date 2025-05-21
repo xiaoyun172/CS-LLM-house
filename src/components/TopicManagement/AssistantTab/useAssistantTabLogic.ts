@@ -5,6 +5,7 @@ import * as tinyPinyin from 'tiny-pinyin';
 import type { Assistant } from '../../../shared/types/Assistant';
 import type { RootState } from '../../../shared/store';
 import { AssistantService } from '../../../shared/services';
+import { dexieStorage } from '../../../shared/services/DexieStorageService';
 import { addItemToGroup } from '../../../shared/store/slices/groupsSlice';
 import { useAssistantGroups } from './hooks/useAssistantGroups';
 import { getAllAgentSources } from '../../../shared/services/assistant/PredefinedAssistants';
@@ -59,9 +60,6 @@ export function useAssistantTabLogic(
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editAssistantName, setEditAssistantName] = useState('');
   const [editAssistantPrompt, setEditAssistantPrompt] = useState('');
-
-  // 图标选择对话框状态
-  const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
   // 添加调试日志，监控助手列表变化
   useEffect(() => {
@@ -190,20 +188,40 @@ export function useAssistantTabLogic(
   };
 
   // 保存编辑后的助手
-  const handleSaveAssistant = () => {
+  const handleSaveAssistant = async () => {
     if (!selectedMenuAssistant) return;
 
-    const updatedAssistant = {
-      ...selectedMenuAssistant,
-      name: editAssistantName,
-      systemPrompt: editAssistantPrompt
-    };
+    try {
+      console.log('[useAssistantTabLogic] 保存助手:', {
+        id: selectedMenuAssistant.id,
+        name: editAssistantName,
+        systemPrompt: editAssistantPrompt
+      });
 
-    if (onUpdateAssistant) {
-      onUpdateAssistant(updatedAssistant);
+      const updatedAssistant = {
+        ...selectedMenuAssistant,
+        name: editAssistantName,
+        systemPrompt: editAssistantPrompt
+      };
+
+      // 直接保存到数据库，确保数据持久化
+      await dexieStorage.saveAssistant(updatedAssistant);
+      console.log('[useAssistantTabLogic] 已保存助手到数据库');
+
+      // 更新Redux状态
+      if (onUpdateAssistant) {
+        onUpdateAssistant(updatedAssistant);
+        console.log('[useAssistantTabLogic] 已通过回调更新助手');
+      }
+
+      // 显示成功通知
+      showNotification('助手已更新');
+
+      handleCloseEditDialog();
+    } catch (error) {
+      console.error('[useAssistantTabLogic] 保存助手失败:', error);
+      showNotification('保存助手失败', 'error');
     }
-
-    handleCloseEditDialog();
   };
 
   // 复制助手
@@ -247,17 +265,6 @@ export function useAssistantTabLogic(
     handleCloseAssistantMenu();
   };
 
-  // 打开图标选择对话框
-  const handleOpenIconPicker = () => {
-    handleCloseAssistantMenu();
-    setIconPickerOpen(true);
-  };
-
-  // 关闭图标选择对话框
-  const handleCloseIconPicker = () => {
-    setIconPickerOpen(false);
-  };
-
   // 选择新的图标
   const handleSelectEmoji = (emoji: string) => {
     if (!selectedMenuAssistant) return;
@@ -279,7 +286,7 @@ export function useAssistantTabLogic(
       const pinyinB = tinyPinyin.convertToPinyin(b.name, '', true);
       return pinyinA.localeCompare(pinyinB);
     });
-    
+
     // 更新Redux中的助手列表顺序
     sorted.forEach((assistant, index) => {
       dispatch({
@@ -287,10 +294,10 @@ export function useAssistantTabLogic(
         payload: { assistantId: assistant.id, order: index }
       });
     });
-    
+
     // 显示通知
     showNotification('助手已按拼音升序排列');
-    
+
     handleCloseAssistantMenu();
   };
 
@@ -301,7 +308,7 @@ export function useAssistantTabLogic(
       const pinyinB = tinyPinyin.convertToPinyin(b.name, '', true);
       return pinyinB.localeCompare(pinyinA);
     });
-    
+
     // 更新Redux中的助手列表顺序
     sorted.forEach((assistant, index) => {
       dispatch({
@@ -309,10 +316,10 @@ export function useAssistantTabLogic(
         payload: { assistantId: assistant.id, order: index }
       });
     });
-    
+
     // 显示通知
     showNotification('助手已按拼音降序排列');
-    
+
     handleCloseAssistantMenu();
   };
 
@@ -353,8 +360,7 @@ export function useAssistantTabLogic(
     editDialogOpen,
     editAssistantName,
     editAssistantPrompt,
-    iconPickerOpen,
-    
+
     // 处理函数
     showNotification,
     handleCloseNotification,
@@ -376,16 +382,14 @@ export function useAssistantTabLogic(
     handleSaveAssistant,
     handleCopyAssistant,
     handleClearTopics,
-    handleOpenIconPicker,
-    handleCloseIconPicker,
     handleSelectEmoji,
     handleSortByPinyinAsc,
     handleSortByPinyinDesc,
     handleAddToGroup,
     handleEditNameChange,
     handleEditPromptChange,
-    
+
     // 数据
     predefinedAssistantsData
   };
-} 
+}

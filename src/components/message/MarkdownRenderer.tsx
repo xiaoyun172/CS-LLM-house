@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Typography, Box, useTheme } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import 'katex/dist/katex.min.css';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -12,86 +12,28 @@ interface MarkdownRendererProps {
   content: string;
 }
 
-// 预处理公式的正则表达式
-const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
-const BLOCK_LATEX_REGEX = /\\\[([\s\S]+?)\\\]/g;
-
-/**
- * 预处理Markdown内容，统一数学公式格式
- * - 将 \( ... \) 转换为 $ ... $（行内公式）
- * - 将 \[ ... \] 转换为 $$ ... $$（块级公式）
- */
-const preProcessMarkdown = (content: string): string => {
-  // 添加测试样例（仅开发模式下启用）
-  if (content.includes('#testmath')) {
-    return `${content}
-
-### 数学公式测试
-
-行内公式测试:
-- 使用美元符: $E=mc^2$
-- 使用括号: \\(E=mc^2\\)
-
-块级公式测试:
-- 使用双美元符:
-
-$$
-\\frac{d}{dx}\\left( \\int_{0}^{x} f(u)\\,du\\right)=f(x)
-$$
-
-- 使用方括号:
-
-\\[
-\\frac{\\partial f}{\\partial t} + \\nabla \\cdot \\vec{v} = 0
-\\]
-
-复杂公式测试:
-
-$$
-\\begin{pmatrix}
-a & b \\\\
-c & d
-\\end{pmatrix}
-$$
-`;
-  }
-
-  // 替换行内公式 \( ... \) 到 $ ... $
-  let result = content.replace(INLINE_LATEX_REGEX, (_, formula) => {
-    return `$${formula}$`;
-  });
-
-  // 替换块级公式 \[ ... \] 到 $$ ... $$
-  result = result.replace(BLOCK_LATEX_REGEX, (_, formula) => {
-    return `$$${formula}$$`;
-  });
-
-  return result;
-};
-
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
   const renderRef = useRef<number>(0);
   const [renderKey, setRenderKey] = useState<number>(0);
-
-  // 预处理Markdown内容，支持更多的数学公式格式
-  const processedContent = useMemo(() => preProcessMarkdown(content), [content]);
-
-  // 从localStorage加载渲染器设置
+  
+  // 预处理内容
+  const processedContent = useMemo(() => {
+    return content.trim();
+  }, [content]);
+  
+  // 渲染次数有限
   useEffect(() => {
-    try {
-      // 渲染器类型现在直接使用rehypeKatex，不再需要从设置读取
-      localStorage.getItem('appSettings');
-      // 读取操作仅作为检查点，以防未来有其他设置需要加载
-    } catch (error) {
-      console.error('加载渲染器设置失败', error);
+    if (renderRef.current < 3) {
+      // 延迟一点时间再次触发渲染以确保公式渲染正确
+      const timer = setTimeout(() => {
+        setRenderKey(prev => prev + 1);
+        renderRef.current += 1;
+      }, 500);
+      
+      return () => clearTimeout(timer);
     }
-  }, []);
-
-  // 内容改变时强制重新渲染
-  useEffect(() => {
-    renderRef.current += 1;
-    setRenderKey(renderRef.current);
   }, [processedContent]);
 
   // 自定义Markdown样式
@@ -175,56 +117,44 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   };
 
   return (
-    <Box key={renderKey} sx={{ 
-      wordBreak: 'break-word',
+    <Box sx={{
+      fontFamily: 'inherit',
+      fontSize: 'inherit',
+      lineHeight: 1.6,
       width: '100%',
-      '& img': { maxWidth: '100%' },
-      '& .darkmode-bold': {
-        color: '#ffffff',
-        fontWeight: 'bold',
-        textShadow: '0px 0px 1px rgba(255, 255, 255, 0.3)'
-      },
-      '& p': {
-        color: theme.palette.mode === 'dark' ? '#e6e6e6' : 'inherit'
-      },
-      '& code': {
-        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-        color: theme.palette.mode === 'dark' ? '#e0e0e0' : 'inherit',
-      },
-      '& .math-inline': {
-        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
-        borderRadius: '4px',
-        padding: '0 4px',
-      },
-      '& .math-display': {
-        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
-        borderRadius: '4px',
-        padding: '8px',
-        overflowX: 'auto',
-        margin: '8px 0',
+      // Markdown样式
+      '& .katex-display': {
+        overflow: 'auto hidden',
+        padding: '0.5em 0',
       },
       '& .katex': {
-        color: theme.palette.mode === 'dark' ? '#e0e0e0' : 'inherit',
         fontSize: '1.1em',
       },
-      '& .katex-display': {
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        padding: '8px 0',
-        margin: '8px 0',
-        '&::-webkit-scrollbar': {
-          height: '4px',
-        },
-        '&::-webkit-scrollbar-thumb': {
-          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)',
-          borderRadius: '2px',
-        }
+      '& .katex-error': {
+        color: theme.palette.error.main,
       },
       '& .katex-html': {
         maxWidth: '100%',
-      }
+      },
+      // 为代码块添加样式
+      '& pre': {
+        backgroundColor: 'transparent !important',
+      },
+      '& code': {
+        fontFamily: 'monospace',
+        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+        color: isDarkMode ? '#e0e0e0' : 'inherit',
+        padding: '2px 4px',
+        borderRadius: '4px',
+      },
+      // 确保代码块内的代码没有背景色
+      '& pre code': {
+        backgroundColor: 'transparent !important',
+        padding: 0,
+      },
     }}>
       <ReactMarkdown
+        key={renderKey}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           [rehypeKatex, {
@@ -245,9 +175,21 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             return !isInline && match ? (
               <SyntaxHighlighter
                 // @ts-ignore
-                style={vscDarkPlus}
+                style={isDarkMode ? vscDarkPlus : vs}
                 language={match[1]}
                 PreTag="div"
+                customStyle={{
+                  margin: 0,
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  backgroundColor: isDarkMode ? '#1e1e1e' : '#f5f5f5',
+                  border: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0',
+                }}
+                codeTagProps={{
+                  style: {
+                    backgroundColor: 'transparent',
+                  }
+                }}
                 {...props}
               >
                 {String(children).replace(/\n$/, '')}
@@ -258,29 +200,6 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
               </code>
             )
           },
-          a: ({href, children}) => (
-            <a 
-              href={href} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              style={{
-                color: theme.palette.mode === 'dark' 
-                  ? '#90caf9'
-                  : '#1976d2',
-                textDecoration: 'none',
-                borderBottom: `1px solid ${theme.palette.mode === 'dark' 
-                  ? 'rgba(144, 202, 249, 0.5)' 
-                  : 'rgba(25, 118, 210, 0.5)'}`,
-                paddingBottom: '1px',
-                transition: 'color 0.2s, border-color 0.2s',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-            >
-              {children}
-            </a>
-          ),
           h1: ({children}) => (
             <Typography 
               variant="h1" 
@@ -288,7 +207,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
               style={markdownStyles.h1}
               sx={{
                 fontWeight: 'bold',
-                color: theme.palette.mode === 'dark' ? '#fff !important' : 'inherit',
+                color: theme.palette.mode === 'dark' ? '#ffffff !important' : 'inherit',
               }}
             >
               {children}
@@ -301,7 +220,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
               style={markdownStyles.h2}
               sx={{
                 fontWeight: 'bold',
-                color: theme.palette.mode === 'dark' ? '#e0e0e0 !important' : 'inherit',
+                color: theme.palette.mode === 'dark' ? '#f0f0f0 !important' : 'inherit',
               }}
             >
               {children}
@@ -314,7 +233,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
               style={markdownStyles.h3}
               sx={{
                 fontWeight: 'bold',
-                color: theme.palette.mode === 'dark' ? '#d0d0d0 !important' : 'inherit',
+                color: theme.palette.mode === 'dark' ? '#e0e0e0 !important' : 'inherit',
               }}
             >
               {children}
@@ -327,7 +246,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
               style={markdownStyles.h4}
               sx={{
                 fontWeight: 'bold',
-                color: theme.palette.mode === 'dark' ? '#c0c0c0 !important' : 'inherit',
+                color: theme.palette.mode === 'dark' ? '#d0d0d0 !important' : 'inherit',
               }}
             >
               {children}
@@ -365,7 +284,17 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             >
               {children}
             </strong>
-          )
+          ),
+          a: ({children, href}) => (
+            <a 
+              href={href} 
+              style={markdownStyles.a}
+              target="_blank" 
+              rel="noopener noreferrer"
+            >
+              {children}
+            </a>
+          ),
         }}
       >
         {processedContent}

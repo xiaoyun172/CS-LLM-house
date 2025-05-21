@@ -1,10 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
-import {
-  setCurrentTopic,
-  addTopic,
-  setTopicMessages
-} from '../../../shared/store/slices/messagesSlice';
+import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
 import type { ChatTopic } from '../../../shared/types';
 import { AssistantService } from '../../../shared/services';
 import type { Assistant } from '../../../shared/types/Assistant';
@@ -49,25 +45,18 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
         console.log('设置第一个话题为当前话题:', validTopics[0].id);
 
         // 设置当前主题
-        dispatch(setCurrentTopic(validTopics[0]));
+        dispatch(newMessagesActions.setCurrentTopicId(validTopics[0].id));
 
         // 加载每个话题的消息到Redux
         for (const topic of validTopics) {
           if (topic.messages && topic.messages.length > 0) {
-            // 为主题准备数据
-            const processedTopic = processTopic(topic);
-            dispatch(setTopicMessages({
-              topicId: processedTopic.id,
-              messages: processedTopic.messages || []
-            }));
+            // 注意：这里不再需要手动加载消息，因为我们已经在 App.tsx 中使用 loadTopicMessagesThunk 加载了所有话题的消息
+            console.log(`跳过处理话题 ${topic.id} 的消息`);
           } else {
             console.log(`话题${topic.id}仍使用旧消息格式，将在后续迁移`);
-            
-            // 此处应该不会执行，因为messagesSlice中的loadTopicsFromStorage应已处理转换
-            dispatch(setTopicMessages({
-              topicId: topic.id,
-              messages: [] // 传递空数组，避免类型错误
-            }));
+
+            // 此处应该不会执行，因为我们已经在 App.tsx 中使用 loadTopicMessagesThunk 加载了所有话题的消息
+            console.log(`跳过加载话题 ${topic.id} 的消息`);
           }
         }
       }
@@ -100,12 +89,12 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
       // 如果没有当前助手，可以考虑不创建默认话题，或者使用一个预定义的ID
       // 为了通过类型检查，这里我们用一个占位符，但实际应用中应有更好处理
       console.warn('创建默认话题时未找到当前助手ID，将使用占位符');
-      assistantIdForTopic = 'default_assistant_placeholder'; 
+      assistantIdForTopic = 'default_assistant_placeholder';
     }
 
     const now = new Date();
     const formattedDate = formatDateForTopicTitle(now);
-    
+
     const defaultTopic: ChatTopic = {
       id: uuid(),
       name: `新的对话 ${formattedDate}`,
@@ -130,8 +119,8 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
     }
 
     // 仍然使用Redux操作，保持状态一致性
-    dispatch(addTopic(defaultTopic));
-    dispatch(setCurrentTopic(defaultTopic));
+    // 注意：newMessagesSlice 中没有 addTopic action，我们只需要设置当前话题ID
+    dispatch(newMessagesActions.setCurrentTopicId(defaultTopic.id));
 
     // 获取当前助手ID
     const currentAssistantId = await getStorageItem<string>('currentAssistant');
@@ -203,18 +192,7 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
       });
   };
 
-  // 修复加载主题数据的代码
-  const processTopic = (topic: ChatTopic) => {
-    // 检查是否有消息
-    if (topic.messages && topic.messages.length > 0) {
-      // 为主题准备数据
-      return {
-        ...topic,
-        messages: topic.messages
-      };
-    }
-    return topic;
-  };
+  // 不再需要处理话题数据的函数，因为我们直接从数据库加载消息
 
   return {
     topics,
