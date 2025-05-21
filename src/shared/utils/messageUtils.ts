@@ -919,3 +919,48 @@ export function findMathBlocks(message: Message): MathMessageBlock[] {
 
   return mathBlocks;
 }
+
+/**
+ * 重置助手消息，创建一个干净的消息对象，为重新生成做准备
+ * 
+ * @param originalMessage 原始助手消息
+ * @param updates 可选的更新内容，例如状态、模型等
+ * @returns 重置后的消息对象
+ */
+export function resetAssistantMessage(
+  originalMessage: Message,
+  updates?: Partial<Pick<Message, 'status' | 'updatedAt' | 'model' | 'modelId'>>
+): Message {
+  // 确保只重置助手消息
+  if (originalMessage.role !== 'assistant') {
+    console.warn(
+      `[resetAssistantMessage] 尝试重置非助手消息 (ID: ${originalMessage.id}, Role: ${originalMessage.role})。返回原始消息。`
+    );
+    return originalMessage;
+  }
+
+  // 创建重置后的消息
+  return {
+    // --- 保留核心标识符 ---
+    id: originalMessage.id,  // 保持相同的消息ID
+    topicId: originalMessage.topicId,
+    askId: originalMessage.askId,  // 保持与原始用户查询的链接
+
+    // --- 保留身份信息 ---
+    role: 'assistant',
+    assistantId: originalMessage.assistantId,
+    model: originalMessage.model,  // 保持模型信息
+    modelId: originalMessage.modelId,
+
+    // --- 重置响应内容和状态 ---
+    blocks: [],  // 清空块数组
+    status: AssistantMessageStatus.PENDING,  // 默认设置为PENDING
+
+    // --- 时间戳 ---
+    createdAt: originalMessage.createdAt,  // 保留原始创建时间
+    updatedAt: new Date().toISOString(),   // 更新时间设为当前
+
+    // --- 应用传入的更新 ---
+    ...updates  // 应用任何特定的更新
+  };
+}

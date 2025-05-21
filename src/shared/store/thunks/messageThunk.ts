@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { dexieStorage } from '../../services/DexieStorageService';
-import { createUserMessage, createAssistantMessage } from '../../utils/messageUtils';
+import { createUserMessage, createAssistantMessage, resetAssistantMessage } from '../../utils/messageUtils';
 import { getMainTextContent } from '../../utils/blockUtils';
 import { newMessagesActions } from '../slices/newMessagesSlice';
 import { upsertManyBlocks, upsertOneBlock, updateOneBlock, removeManyBlocks } from '../slices/messageBlocksSlice';
@@ -132,11 +132,7 @@ const processAssistantResponse = async (
     // 1. 准备API请求
     const messages = await prepareMessagesForApi(topicId, assistantMessage.id);
 
-    // 2. 创建或使用现有主文本块
-    let mainTextBlockId = assistantMessage.blocks.length > 0 ? assistantMessage.blocks[0] : '';
-    let mainBlock;
-
-    // 设置消息状态为处理中，避免显示错误消息
+    // 2. 设置消息状态为处理中，避免显示错误消息
     dispatch(newMessagesActions.updateMessage({
       id: assistantMessage.id,
       changes: {
@@ -144,51 +140,46 @@ const processAssistantResponse = async (
       }
     }));
 
-    if (!mainTextBlockId) {
-      // 创建新的主文本块
-      mainBlock = {
-        id: uuid(),
-        messageId: assistantMessage.id,
-        type: 'main_text' as const, // 使用const断言确保类型正确
-        content: '正在生成回复...',  // 添加初始内容，避免空内容错误
-        createdAt: new Date().toISOString(),
-        status: MessageBlockStatus.PROCESSING // 使用PROCESSING状态而不是PENDING
-      };
+    // 3. 无论是否有现有块，都创建新的主文本块
+    const mainBlock = {
+      id: uuid(),
+      messageId: assistantMessage.id,
+      type: 'main_text' as const,
+      content: '正在生成回复...',
+      createdAt: new Date().toISOString(),
+      status: MessageBlockStatus.PROCESSING
+    };
 
-      mainTextBlockId = mainBlock.id;
+    const mainTextBlockId = mainBlock.id;
 
-      // 关联块到消息
-      dispatch(newMessagesActions.updateMessage({
-        id: assistantMessage.id,
-        changes: {
-          blocks: [mainTextBlockId]
-        }
-      }));
-
-      // 保存块到Redux和数据库
-      dispatch(upsertOneBlock(mainBlock));
-      await dexieStorage.saveMessageBlock(mainBlock);
-
-      // 更新消息
-      await dexieStorage.updateMessage(assistantMessage.id, {
+    // 4. 关联块到消息
+    dispatch(newMessagesActions.updateMessage({
+      id: assistantMessage.id,
+      changes: {
         blocks: [mainTextBlockId]
-      });
-    } else {
-      // 获取现有块
-      mainBlock = await dexieStorage.getMessageBlock(mainTextBlockId);
-    }
+      }
+    }));
 
-    // 3. 创建响应处理器
+    // 5. 保存块到Redux和数据库
+    dispatch(upsertOneBlock(mainBlock));
+    await dexieStorage.saveMessageBlock(mainBlock);
+
+    // 6. 更新消息
+    await dexieStorage.updateMessage(assistantMessage.id, {
+      blocks: [mainTextBlockId]
+    });
+
+    // 7. 创建响应处理器
     const responseHandler = createResponseHandler({
       messageId: assistantMessage.id,
       blockId: mainTextBlockId,
       topicId
     });
 
-    // 4. 获取API提供者
+    // 8. 获取API提供者
     const apiProvider = ApiProviderRegistry.get(model);
 
-    // 5. 发送API请求
+    // 9. 发送API请求
     try {
       const response = await apiProvider.sendChatRequest(messages, model, responseHandler.handleChunk);
       return await responseHandler.complete(response);
@@ -355,16 +346,20 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
       dispatch(removeManyBlocks(blockIds));
     }
 
-    // 5. 更新消息状态
+    // 5. 使用resetAssistantMessage函数重置消息
+    const resetMessage = resetAssistantMessage(message, {
+      status: AssistantMessageStatus.PENDING,
+      updatedAt: new Date().toISOString(),
+      model: model
+    });
+
+    // 6. 更新Redux状态
     dispatch(newMessagesActions.updateMessage({
       id: messageId,
-      changes: {
-        status: AssistantMessageStatus.PENDING,
-        blocks: []
-      }
+      changes: resetMessage
     }));
 
-    // 6. 从数据库中删除消息块
+    // 7. 从数据库中删除消息块并更新消息
     await dexieStorage.transaction('rw', [
       dexieStorage.messages,
       dexieStorage.message_blocks
@@ -375,19 +370,8 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
       }
 
       // 更新消息
-      await dexieStorage.updateMessage(messageId, {
-        status: AssistantMessageStatus.PENDING,
-        blocks: []
-      });
+      await dexieStorage.updateMessage(messageId, resetMessage);
     });
-
-    // 7. 创建一个重置后的消息对象，保留原始消息的关键属性
-    const resetMessage = {
-      ...message,
-      status: AssistantMessageStatus.PENDING,
-      blocks: [],
-      updatedAt: new Date().toISOString()
-    };
 
     // 8. 处理助手响应
     await processAssistantResponse(dispatch, getState, resetMessage, topicId, model);
