@@ -13,9 +13,6 @@ import {
   FormHelperText,
   Box,
   Typography,
-  Chip,
-  Switch,
-  FormControlLabel,
   Avatar,
   IconButton,
   Tooltip
@@ -23,9 +20,10 @@ import {
 import PhotoIcon from '@mui/icons-material/Photo';
 import type { Model } from '../../shared/types';
 import { ModelType } from '../../shared/types';
-import { matchModelTypes, getModelTypeDisplayName } from '../../shared/data/modelTypeRules';
+import { matchModelTypes } from '../../shared/data/modelTypeRules';
 import AvatarUploader from './AvatarUploader';
 import { dexieStorage } from '../../shared/services/DexieStorageService';
+import EnhancedModelTypeSelector from './EnhancedModelTypeSelector';
 
 interface SimpleModelDialogProps {
   open: boolean;
@@ -108,19 +106,6 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
         ...errors,
         [field]: '',
       });
-    }
-  };
-
-  // 处理类型切换
-  const handleTypeToggle = (type: ModelType) => {
-    setAutoDetectTypes(false);
-    if (modelTypes.includes(type)) {
-      // 至少保留一个类型
-      if (modelTypes.length > 1) {
-        setModelTypes(modelTypes.filter(t => t !== type));
-      }
-    } else {
-      setModelTypes([...modelTypes, type]);
     }
   };
 
@@ -322,39 +307,15 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
             helperText="模型的唯一标识符，例如：gpt-4、claude-3-opus"
           />
 
-          {/* 模型类型选择 */}
-          <Box sx={{ mt: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle2">模型类型</Typography>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={autoDetectTypes}
-                    onChange={handleAutoDetectToggle}
-                    size="small"
-                  />
-                }
-                label="自动检测"
-              />
-            </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-              {Object.values(ModelType).map((type) => (
-                <Chip
-                  key={type}
-                  label={getModelTypeDisplayName(type)}
-                  color={modelTypes.includes(type) ? "primary" : "default"}
-                  onClick={() => !autoDetectTypes && handleTypeToggle(type)}
-                  sx={{ mr: 0.5, mb: 0.5 }}
-                  disabled={autoDetectTypes}
-                />
-              ))}
-            </Box>
-            <FormHelperText>
-              {autoDetectTypes
-                ? '根据模型ID和提供商自动检测模型类型'
-                : '点击类型标签来添加或移除'}
-            </FormHelperText>
-          </Box>
+          {/* 增强的模型类型选择 */}
+          <EnhancedModelTypeSelector
+            modelTypes={modelTypes}
+            onChange={setModelTypes}
+            autoDetect={autoDetectTypes}
+            onAutoDetectChange={handleAutoDetectToggle}
+            modelId={modelData.id}
+            provider={modelData.provider}
+          />
         </Box>
 
         {/* 头像上传对话框 */}

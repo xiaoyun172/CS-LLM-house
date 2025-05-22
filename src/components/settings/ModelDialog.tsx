@@ -14,15 +14,13 @@ import {
   Box,
   Typography,
   Slider,
-  Chip,
-  Switch,
-  FormControlLabel,
 } from '@mui/material';
 import type { Model, PresetModel } from '../../shared/types';
 import { ModelType } from '../../shared/types';
 import { presetModels } from '../../shared/data/presetModels';
 import { generateId } from '../../shared/utils';
-import { matchModelTypes, getModelTypeDisplayName } from '../../shared/data/modelTypeRules';
+import { matchModelTypes } from '../../shared/data/modelTypeRules';
+import EnhancedModelTypeSelector from './EnhancedModelTypeSelector';
 
 interface ModelDialogProps {
   open: boolean;
@@ -146,19 +144,6 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
         ...errors,
         [field]: '',
       });
-    }
-  };
-
-  // 处理类型切换
-  const handleTypeToggle = (type: ModelType) => {
-    setAutoDetectTypes(false);
-    if (modelTypes.includes(type)) {
-      // 至少保留一个类型
-      if (modelTypes.length > 1) {
-        setModelTypes(modelTypes.filter(t => t !== type));
-      }
-    } else {
-      setModelTypes([...modelTypes, type]);
     }
   };
 
@@ -298,39 +283,15 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
             helperText="可选，如果使用自定义API端点"
           />
 
-          {/* 模型类型选择 */}
-          <Box sx={{ mt: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle2">模型类型</Typography>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={autoDetectTypes}
-                    onChange={handleAutoDetectToggle}
-                    size="small"
-                  />
-                }
-                label="自动检测"
-              />
-            </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-              {Object.values(ModelType).map((type) => (
-                <Chip
-                  key={type}
-                  label={getModelTypeDisplayName(type)}
-                  color={modelTypes.includes(type) ? "primary" : "default"}
-                  onClick={() => !autoDetectTypes && handleTypeToggle(type)}
-                  sx={{ mr: 0.5, mb: 0.5 }}
-                  disabled={autoDetectTypes}
-                />
-              ))}
-            </Box>
-            <FormHelperText>
-              {autoDetectTypes
-                ? '根据模型ID和提供商自动检测模型类型'
-                : '点击类型标签来添加或移除'}
-            </FormHelperText>
-          </Box>
+          {/* 增强的模型类型选择 */}
+          <EnhancedModelTypeSelector
+            modelTypes={modelTypes}
+            onChange={setModelTypes}
+            autoDetect={autoDetectTypes}
+            onAutoDetectChange={handleAutoDetectToggle}
+            modelId={modelData.id}
+            provider={modelData.provider}
+          />
 
           <Box sx={{ mt: 3 }}>
             <Typography gutterBottom>最大Token数</Typography>

@@ -14,13 +14,18 @@ export const defaultModelTypeRules: ModelTypeRule[] = [
     provider: 'openai'
   },
   {
+    pattern: 'gpt-4o',
+    types: [ModelType.Vision, ModelType.Chat, ModelType.FunctionCalling, ModelType.WebSearch],
+    provider: 'openai'
+  },
+  {
     pattern: 'gemini-(pro|ultra)-vision',
     types: [ModelType.Vision, ModelType.Chat],
     provider: 'google'
   },
   {
     pattern: 'claude-3-(opus|sonnet|haiku)',
-    types: [ModelType.Vision, ModelType.Chat],
+    types: [ModelType.Vision, ModelType.Chat, ModelType.FunctionCalling],
     provider: 'anthropic'
   },
   {
@@ -28,7 +33,7 @@ export const defaultModelTypeRules: ModelTypeRule[] = [
     types: [ModelType.Vision, ModelType.Chat],
     provider: 'siliconflow'
   },
-  
+
   // 图像生成模型匹配规则
   {
     pattern: 'FLUX|flux|black-forest|stable-diffusion|sd|dalle|midjourney',
@@ -38,7 +43,7 @@ export const defaultModelTypeRules: ModelTypeRule[] = [
     pattern: 'image|img|picture|generate',
     types: [ModelType.ImageGen],
   },
-  
+
   // 嵌入模型匹配规则
   {
     pattern: 'embedding|text-embedding|embeddings',
@@ -54,19 +59,59 @@ export const defaultModelTypeRules: ModelTypeRule[] = [
     types: [ModelType.Embedding],
     provider: 'google'
   },
-  
+
   // 语音模型匹配规则
   {
     pattern: 'tts|whisper|audio|speech',
-    types: [ModelType.Audio],
+    types: [ModelType.Audio, ModelType.Transcription],
   },
-  
+
   // 工具使用模型匹配规则
   {
     pattern: 'tool|function|plugin',
-    types: [ModelType.Tool, ModelType.Chat],
+    types: [ModelType.Tool, ModelType.Chat, ModelType.FunctionCalling],
   },
-  
+
+  // 函数调用模型匹配规则
+  {
+    pattern: 'function.*calling|function-calling',
+    types: [ModelType.FunctionCalling, ModelType.Chat],
+  },
+  {
+    pattern: 'gpt-4-turbo|gpt-3.5-turbo',
+    types: [ModelType.Chat, ModelType.FunctionCalling],
+    provider: 'openai'
+  },
+
+  // 网络搜索模型匹配规则
+  {
+    pattern: 'web.*search|search|browse',
+    types: [ModelType.WebSearch, ModelType.Chat],
+  },
+  {
+    pattern: 'gpt-4-turbo-search|gpt-4o-search',
+    types: [ModelType.WebSearch, ModelType.Chat],
+    provider: 'openai'
+  },
+
+  // 重排序模型匹配规则
+  {
+    pattern: 'rerank|rank',
+    types: [ModelType.Rerank],
+  },
+
+  // 代码生成模型匹配规则
+  {
+    pattern: 'code|codex|coder|copilot|starcoder|codellama',
+    types: [ModelType.CodeGen, ModelType.Chat],
+  },
+
+  // 翻译模型匹配规则
+  {
+    pattern: 'translate|translation',
+    types: [ModelType.Translation, ModelType.Chat],
+  },
+
   // 推理模型匹配规则
   {
     pattern: 'reasoning|think|coder|math',
@@ -76,7 +121,12 @@ export const defaultModelTypeRules: ModelTypeRule[] = [
     pattern: '.*-thinking-.*',
     types: [ModelType.Reasoning, ModelType.Chat],
   },
-  
+  {
+    pattern: 'deepseek-reasoner|deepseek-r1',
+    types: [ModelType.Reasoning, ModelType.Chat],
+    provider: 'deepseek'
+  },
+
   // 默认聊天模型规则
   {
     pattern: '.*',
@@ -92,8 +142,8 @@ export const defaultModelTypeRules: ModelTypeRule[] = [
  * @returns 匹配的模型类型数组
  */
 export function matchModelTypes(
-  modelId: string, 
-  provider: string, 
+  modelId: string,
+  provider: string,
   rules: ModelTypeRule[] = defaultModelTypeRules
 ): ModelType[] {
   for (const rule of rules) {
@@ -101,7 +151,7 @@ export function matchModelTypes(
     if (rule.provider && rule.provider !== provider) {
       continue;
     }
-    
+
     try {
       const regex = new RegExp(rule.pattern, 'i');
       if (regex.test(modelId)) {
@@ -114,7 +164,7 @@ export function matchModelTypes(
       }
     }
   }
-  
+
   // 默认返回Chat类型
   return [ModelType.Chat];
 }
@@ -160,8 +210,14 @@ export function getModelTypeDisplayName(type: ModelType): string {
     [ModelType.Embedding]: '嵌入向量',
     [ModelType.Tool]: '工具使用',
     [ModelType.Reasoning]: '推理',
-    [ModelType.ImageGen]: '图像生成'
+    [ModelType.ImageGen]: '图像生成',
+    [ModelType.FunctionCalling]: '函数调用',
+    [ModelType.WebSearch]: '网络搜索',
+    [ModelType.Rerank]: '重排序',
+    [ModelType.CodeGen]: '代码生成',
+    [ModelType.Translation]: '翻译',
+    [ModelType.Transcription]: '转录'
   };
-  
+
   return displayNames[type] || type;
-} 
+}

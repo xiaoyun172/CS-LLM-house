@@ -6,6 +6,7 @@ import type { Model } from '../types';
 import * as openaiApi from '../api/openai';
 import * as anthropicApi from '../api/anthropic';
 import * as geminiApi from '../api/gemini';
+import * as deepseekApi from '../api/deepseek';
 
 /**
  * 获取实际的提供商类型
@@ -28,7 +29,7 @@ export function getProviderApi(model: Model): any {
   const providerType = getActualProviderType(model);
   console.log(`[ProviderFactory] 查找API实现，提供商类型: ${providerType}, 模型ID: ${model.id}`);
 
-  // 处理四种主要供应商类型，其他都使用OpenAI兼容API
+  // 处理五种主要供应商类型，其他都使用OpenAI兼容API
   switch (providerType) {
     case 'anthropic':
       console.log(`[ProviderFactory] 返回Anthropic API实现`);
@@ -39,6 +40,9 @@ export function getProviderApi(model: Model): any {
     case 'google':
       console.log(`[ProviderFactory] 返回OpenAI兼容API实现 (Google API已移除)`);
       return openaiApi;
+    case 'deepseek':
+      console.log(`[ProviderFactory] 返回DeepSeek API实现`);
+      return deepseekApi;
     case 'openai':
       console.log(`[ProviderFactory] 返回OpenAI API实现`);
       return openaiApi;
@@ -182,6 +186,12 @@ export async function fetchModels(provider: any): Promise<any[]> {
       case 'gemini':
         console.log(`[fetchModels] 使用新的模块化Gemini API获取模型`);
         return await geminiApi.fetchModels(provider);
+      case 'deepseek':
+        console.log(`[fetchModels] 使用新的模块化DeepSeek API获取模型`);
+        return await deepseekApi.fetchModels ? deepseekApi.fetchModels(provider) : [
+          { id: 'deepseek-chat', name: 'DeepSeek-V3', description: 'DeepSeek最新的大型语言模型，具有优秀的中文和代码能力。', owned_by: 'deepseek' },
+          { id: 'deepseek-reasoner', name: 'DeepSeek-R1', description: 'DeepSeek的推理模型，擅长解决复杂推理问题。', owned_by: 'deepseek' }
+        ];
       case 'google':
         console.log(`[fetchModels] Google模型获取暂未实现，使用OpenAI兼容API`);
         return await openaiApi.fetchModels(provider);

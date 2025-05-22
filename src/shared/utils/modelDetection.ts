@@ -75,8 +75,22 @@ export function isGrokReasoningModel(model?: Model): boolean {
 export function isDeepSeekReasoningModel(model?: Model): boolean {
   if (!model) return false;
 
-  return model.id.includes('deepseek-reasoner') ||
-         model.id.includes('deepseek-coder');
+  // 检查模型ID是否包含deepseek-reasoner或deepseek-coder
+  if (model.id.includes('deepseek-reasoner') || model.id.includes('deepseek-coder')) {
+    return true;
+  }
+
+  // 检查模型名称是否包含DeepSeek-R
+  if (model.name && (model.name.includes('DeepSeek-R') || model.name.includes('DeepSeek Reasoner'))) {
+    return true;
+  }
+
+  // 检查提供商是否为deepseek，且模型ID包含reasoner
+  if (model.provider === 'deepseek' && (model.id.includes('reasoner') || model.id.includes('r1'))) {
+    return true;
+  }
+
+  return false;
 }
 
 /**

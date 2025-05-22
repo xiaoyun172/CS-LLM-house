@@ -8,6 +8,10 @@ export interface UIState {
   showThinking: boolean;
   // 思考过程显示样式
   thinkingDisplayStyle: 'compact' | 'detailed' | 'hidden';
+  // 思考过程自动折叠
+  thoughtAutoCollapse: boolean;
+  // 思考过程默认深度
+  defaultThinkingEffort: 'off' | 'low' | 'medium' | 'high' | 'auto';
   // 多模型响应显示样式
   multiModelDisplayStyle: 'horizontal' | 'vertical' | 'grid';
   // 是否显示系统提示词
@@ -36,6 +40,8 @@ const initialState: UIState = {
   generating: false,
   showThinking: true,
   thinkingDisplayStyle: 'compact',
+  thoughtAutoCollapse: true,
+  defaultThinkingEffort: 'high',
   multiModelDisplayStyle: 'horizontal',
   showSystemPrompt: true,
   showToolCalls: true,
@@ -61,6 +67,12 @@ export const uiSlice = createSlice({
     },
     setThinkingDisplayStyle: (state, action: PayloadAction<'compact' | 'detailed' | 'hidden'>) => {
       state.thinkingDisplayStyle = action.payload;
+    },
+    setThoughtAutoCollapse: (state, action: PayloadAction<boolean>) => {
+      state.thoughtAutoCollapse = action.payload;
+    },
+    setDefaultThinkingEffort: (state, action: PayloadAction<'off' | 'low' | 'medium' | 'high' | 'auto'>) => {
+      state.defaultThinkingEffort = action.payload;
     },
     setMultiModelDisplayStyle: (state, action: PayloadAction<'horizontal' | 'vertical' | 'grid'>) => {
       state.multiModelDisplayStyle = action.payload;
@@ -109,6 +121,8 @@ export const {
   setGenerating,
   setShowThinking,
   setThinkingDisplayStyle,
+  setThoughtAutoCollapse,
+  setDefaultThinkingEffort,
   setMultiModelDisplayStyle,
   setShowSystemPrompt,
   setShowToolCalls,

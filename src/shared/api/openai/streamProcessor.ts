@@ -7,6 +7,7 @@ import {
   readableStreamAsyncIterable,
   openAIChunkToTextDelta
 } from '../../utils/streamUtils';
+import { EventEmitter, EVENT_NAMES } from '../../services/EventEmitter';
 import { getAppropriateTag } from '../../config/reasoningTags';
 import { extractReasoningMiddleware } from '../../middlewares/extractReasoningMiddleware';
 import type { Model } from '../../types';
@@ -36,6 +37,10 @@ export interface OpenAIStreamProcessorOptions {
   model: Model;
   enableReasoning?: boolean;
   onUpdate?: (content: string, reasoning?: string) => void;
+  messageId?: string;
+  blockId?: string;
+  thinkingBlockId?: string;
+  topicId?: string;
 }
 
 /**
@@ -51,6 +56,12 @@ export class OpenAIStreamProcessor {
   private startTime: number;
   private reasoningStartTime: number = 0;
 
+  // 消息和块相关属性
+  private messageId?: string;
+  private blockId?: string;
+  private thinkingBlockId?: string;
+  private topicId?: string;
+
   /**
    * 构造函数
    * @param options 选项
@@ -59,6 +70,10 @@ export class OpenAIStreamProcessor {
     this.model = options.model;
     this.enableReasoning = options.enableReasoning ?? true;
     this.onUpdate = options.onUpdate;
+    this.messageId = options.messageId;
+    this.blockId = options.blockId;
+    this.thinkingBlockId = options.thinkingBlockId;
+    this.topicId = options.topicId;
     this.startTime = Date.now();
   }
 
@@ -77,12 +92,18 @@ export class OpenAIStreamProcessor {
       // 记录开始时间
       this.reasoningStartTime = 0;
 
+      // 检查是否为DeepSeek Reasoner模型
+      const isDeepSeekReasoner = this.model.id.includes('deepseek-reasoner') ||
+                                (this.model.provider === 'deepseek' && this.model.id.includes('reasoner'));
+
       // 使用中间件处理流式响应
       const { stream: processedStream } = await extractReasoningMiddleware<CompleteOpenAIStreamChunk>({
         openingTag: reasoningTag.openingTag,
         closingTag: reasoningTag.closingTag,
         separator: reasoningTag.separator,
-        enableReasoning: this.enableReasoning
+        enableReasoning: this.enableReasoning,
+        // 为DeepSeek Reasoner模型启用特殊处理
+        isDeepSeekReasoner: isDeepSeekReasoner
       }).wrapStream({
         doStream: async () => ({
           stream: asyncGeneratorToReadableStream(openAIChunkToTextDelta(stream))
@@ -125,13 +146,46 @@ export class OpenAIStreamProcessor {
    */
   private async handleProcessedChunk(chunk: CompleteOpenAIStreamChunk): Promise<void> {
     if (chunk.type === 'text-delta') {
-      // 处理文本增量
-      this.content += chunk.textDelta;
+      // 检查是否为DeepSeek模型
+      const isDeepSeekModel = this.model.provider === 'deepseek' || this.model.id.includes('deepseek');
+
+      // 检查是否为完整响应（长文本块）
+      const isCompleteResponse = chunk.textDelta.length > 100 &&
+                                (this.content.length === 0 || chunk.textDelta.length > this.content.length);
+
+      // 记录日志
+      console.log(`[OpenAIStreamProcessor] 模型 ${this.model.provider}/${this.model.id} 处理文本增量: ${chunk.textDelta.substring(0, 30)}${chunk.textDelta.length > 30 ? '...' : ''}`);
+
+      // 如果是DeepSeek模型的完整响应，直接替换内容
+      if (isDeepSeekModel && isCompleteResponse) {
+        console.log(`[OpenAIStreamProcessor] 检测到DeepSeek完整响应，长度: ${chunk.textDelta.length}，直接替换内容`);
+        this.content = chunk.textDelta;
+      } else {
+        // 正常情况：累加文本内容
+        this.content += chunk.textDelta;
+      }
 
       // 通知内容更新
       if (this.onUpdate) {
         this.onUpdate(this.content, this.reasoning);
       }
+
+      // 发送文本增量事件
+      EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
+        text: chunk.textDelta,
+        isFirstChunk: this.content === chunk.textDelta, // 如果内容等于当前增量，则是第一个块
+        isCompleteResponse: isDeepSeekModel && isCompleteResponse, // 标记是否为完整响应
+        messageId: this.messageId,
+        blockId: this.blockId,
+        topicId: this.topicId,
+        // 添加调试信息
+        chunkLength: chunk.textDelta.length,
+        fullContentLength: this.content.length,
+        modelProvider: this.model.provider,
+        modelId: this.model.id,
+        timestamp: Date.now()
+      });
+
     } else if (chunk.type === 'reasoning') {
       // 处理思考增量
       if (this.reasoningStartTime === 0) {
@@ -144,6 +198,16 @@ export class OpenAIStreamProcessor {
       if (this.onUpdate) {
         this.onUpdate(this.content, this.reasoning);
       }
+
+      // 发送思考增量事件
+      EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_DELTA, {
+        text: chunk.textDelta,
+        thinking_millsec: Date.now() - this.reasoningStartTime,
+        messageId: this.messageId,
+        blockId: this.thinkingBlockId,
+        topicId: this.topicId
+      });
+
     } else if (chunk.type === 'tool-calls') {
       // 处理工具调用
       if (chunk.delta?.tool_calls) {
@@ -172,6 +236,15 @@ export class OpenAIStreamProcessor {
                 if (this.onUpdate) {
                   this.onUpdate(this.content, this.reasoning);
                 }
+
+                // 发送思考增量事件
+                EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_DELTA, {
+                  text: args.thinking,
+                  thinking_millsec: Date.now() - this.reasoningStartTime,
+                  messageId: this.messageId,
+                  blockId: this.thinkingBlockId,
+                  topicId: this.topicId
+                });
               }
             } catch (error) {
               console.error('[OpenAIStreamProcessor] 处理思考工具参数失败:', error);
@@ -190,6 +263,35 @@ export class OpenAIStreamProcessor {
           this.onUpdate(this.content, this.reasoning);
         }
       }
+
+      // 如果有思考内容，发送思考完成事件
+      if (this.reasoning) {
+        EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_COMPLETE, {
+          text: this.reasoning,
+          thinking_millsec: this.reasoningStartTime ? (Date.now() - this.reasoningStartTime) : 0,
+          messageId: this.messageId,
+          blockId: this.thinkingBlockId,
+          topicId: this.topicId
+        });
+      }
+
+      // 发送文本完成事件
+      EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
+        text: this.content,
+        messageId: this.messageId,
+        blockId: this.blockId,
+        topicId: this.topicId
+      });
+
+      // 发送流完成事件
+      EventEmitter.emit(EVENT_NAMES.STREAM_COMPLETE, {
+        status: 'success',
+        response: {
+          content: this.content,
+          reasoning: this.reasoning,
+          reasoningTime: this.reasoningStartTime ? (Date.now() - this.reasoningStartTime) : 0
+        }
+      });
     }
   }
 }

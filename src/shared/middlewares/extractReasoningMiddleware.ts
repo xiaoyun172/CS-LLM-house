@@ -14,6 +14,7 @@ export interface ExtractReasoningMiddlewareOptions {
   closingTag: string;
   separator?: string;
   enableReasoning?: boolean;
+  isDeepSeekReasoner?: boolean; // 是否为DeepSeek Reasoner模型
 }
 
 
@@ -37,7 +38,7 @@ export function extractReasoningMiddleware<
     | { type: 'text-delta' | 'reasoning'; textDelta: string }
     | { type: string } // 其他类型
   ) = { type: string; textDelta: string }
->({ openingTag, closingTag, separator = '\n', enableReasoning = true }: ExtractReasoningMiddlewareOptions) {
+>({ openingTag, closingTag, separator = '\n', enableReasoning = true, isDeepSeekReasoner = false }: ExtractReasoningMiddlewareOptions) {
   const openingTagEscaped = escapeRegExp(openingTag);
   const closingTagEscaped = escapeRegExp(closingTag);
 
@@ -97,8 +98,21 @@ export function extractReasoningMiddleware<
         stream: stream.pipeThrough(
           new TransformStream<T, T>({
             transform: (chunk, controller) => {
+              // 处理非文本增量类型的块
               if (chunk.type !== 'text-delta') {
-                controller.enqueue(chunk);
+                // 特殊处理DeepSeek Reasoner模型的reasoning_content字段
+                if (isDeepSeekReasoner &&
+                    chunk.type === 'reasoning' &&
+                    'textDelta' in chunk) {
+                  // 直接发送reasoning类型的块，不需要进行标签处理
+                  console.log(`[extractReasoningMiddleware] DeepSeek Reasoner思考内容: ${chunk.textDelta.substring(0, 30)}...`);
+                  controller.enqueue(chunk);
+                  isReasoning = true;
+                  isFirstReasoning = false;
+                  afterSwitch = false; // 重置切换标志，避免添加分隔符
+                } else {
+                  controller.enqueue(chunk);
+                }
                 return;
               }
 

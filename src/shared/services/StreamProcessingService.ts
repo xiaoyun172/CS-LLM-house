@@ -84,40 +84,53 @@ export function createStreamProcessor(callbacks: StreamProcessorCallbacks = {}) 
           if (callbacks.onTextChunk) {
             const textDeltaChunk = chunk as TextDeltaChunk;
 
-            // 直接调用回调函数，与电脑版保持一致
-            callbacks.onTextChunk(textDeltaChunk.text);
+            // 检查是否是DeepSeek模型的特殊情况
+            const isDeepSeekModel = (textDeltaChunk as any).modelProvider === 'deepseek' ||
+                                   ((textDeltaChunk as any).modelId && (textDeltaChunk as any).modelId.includes('deepseek'));
+
+            // 检查是否是完整响应
+            const isCompleteResponse = (textDeltaChunk as any).isCompleteResponse === true;
 
             // 检查是否是第一个文本块
             const isFirstChunk = textDeltaChunk.isFirstChunk === true;
+
+            // 记录详细日志
+            console.log(`[StreamProcessingService] 收到文本块: 长度=${textDeltaChunk.text.length}, 首块=${isFirstChunk}, 完整响应=${isCompleteResponse}, DeepSeek=${isDeepSeekModel}, 内容=${textDeltaChunk.text.substring(0, 20)}${textDeltaChunk.text.length > 20 ? '...' : ''}`);
+
+            // 直接调用回调函数，与电脑版保持一致
+            callbacks.onTextChunk(textDeltaChunk.text);
 
             // 发送事件，只包含当前文本块，而不是累积内容
             // 这样可以实现累加效果
             EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
               text: textDeltaChunk.text, // 只发送当前文本块
               isFirstChunk: isFirstChunk,
+              isCompleteResponse: isCompleteResponse, // 传递完整响应标记
+              isDeepSeekModel: isDeepSeekModel, // 传递模型信息
               messageId: textDeltaChunk.messageId,
               blockId: textDeltaChunk.blockId,
               topicId: textDeltaChunk.topicId,
               // 添加调试信息
               chunkLength: textDeltaChunk.text.length,
+              modelProvider: textDeltaChunk.modelProvider,
+              modelId: textDeltaChunk.modelId,
               timestamp: Date.now() // 添加时间戳，便于调试
             });
 
-            // 记录详细日志
-            console.log(`[StreamProcessingService] 发送文本块事件，长度: ${textDeltaChunk.text.length}, 内容: ${textDeltaChunk.text.substring(0, 20)}${textDeltaChunk.text.length > 20 ? '...' : ''}`);
-
-
-            // 记录首个文本块
-            if (isFirstChunk) {
-              console.log('[StreamProcessingService] 收到第一个文本块，长度:', textDeltaChunk.text.length);
+            // 记录首个文本块或完整响应
+            if (isFirstChunk || isCompleteResponse) {
+              console.log(`[StreamProcessingService] 收到${isFirstChunk ? '第一个文本块' : '完整响应'}，长度:`, textDeltaChunk.text.length);
 
               // 发送特殊事件，通知UI立即替换占位符
               EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_FIRST_CHUNK, {
                 text: textDeltaChunk.text,
                 fullContent: textDeltaChunk.text,
+                isCompleteResponse: isCompleteResponse,
+                isDeepSeekModel: isDeepSeekModel,
                 messageId: textDeltaChunk.messageId,
                 blockId: textDeltaChunk.blockId,
-                topicId: textDeltaChunk.topicId
+                topicId: textDeltaChunk.topicId,
+                timestamp: Date.now()
               });
             }
           }

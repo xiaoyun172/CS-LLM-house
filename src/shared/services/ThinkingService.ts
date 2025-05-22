@@ -5,6 +5,8 @@
 
 import type { Message, Model } from '../types';
 import { isReasoningModel } from '../utils/modelDetection';
+import type { ThinkingOption } from '../config/reasoningConfig';
+import { getThinkingBudget } from '../config/reasoningConfig';
 
 // 思考过程源类型 - 使用常量对象而不是enum（解决编译错误）
 export const ThinkingSourceType = {
@@ -20,7 +22,7 @@ export type ThinkingSourceTypeValue = typeof ThinkingSourceType[keyof typeof Thi
 // 思考过程配置接口
 export interface ThinkingConfig {
   enabled: boolean;        // 是否启用思考过程
-  effort?: 'low' | 'medium' | 'high';  // 思考过程的深度
+  effort?: ThinkingOption;  // 思考过程的深度
   format?: 'plain' | 'markdown' | 'json'; // 思考过程的格式
 }
 
@@ -261,65 +263,78 @@ export function getThinkingSourceTypeFromProvider(provider: string): ThinkingSou
  * 为指定模型和提供商获取适当的思考过程配置
  * 根据不同模型类型返回对应的思考过程配置
  * @param provider 提供商ID或模型对象
- * @param effort 思考深度
+ * @param reasoningEffort 思考深度
+ * @param maxTokens 最大令牌数
  * @returns 思考过程配置对象
  */
 export function getThinkingConfig(
   provider: string | Model,
-  effort: 'low' | 'medium' | 'high' | 'auto' = 'high'
+  reasoningEffort?: ThinkingOption,
+  maxTokens: number = 4096
 ): any {
-  // 如果传入的是模型对象，提取提供商ID
-  const providerId = typeof provider === 'string' ? provider : provider.provider;
-  const modelId = typeof provider === 'string' ? '' : provider.id;
+  // 如果未指定思考深度，表示不启用思考过程
+  if (reasoningEffort === undefined) {
+    return getDisabledThinkingConfig(provider);
+  }
+
+  // 如果传入的是模型对象，直接使用
+  const model = typeof provider === 'string'
+    ? { id: provider, name: provider, provider } as Model
+    : provider;
 
   // 获取思考过程源类型
-  const sourceType = getThinkingSourceTypeFromProvider(providerId);
+  const sourceType = getThinkingSourceTypeFromProvider(model.provider);
 
-  // 根据模型ID判断特殊情况
-  if (modelId) {
-    // DeepSeek Reasoner模型
-    if (modelId.includes('deepseek-reasoner')) {
-      return {}; // DeepSeek Reasoner模型默认启用思考过程，不需要额外配置
-    }
+  // 使用getThinkingBudget函数计算预算令牌数
+  const budgetTokens = getThinkingBudget(model, reasoningEffort, maxTokens);
 
-    // Gemini模型
-    if (modelId.includes('gemini')) {
-      return {
-        thinking: true,
-        thinking_depth: effort,
-        thinking_mode: effort === 'auto' ? 'auto' : 'manual'
-      };
-    }
+  // DeepSeek Reasoner模型
+  if (model.id.includes('deepseek-reasoner')) {
+    return {}; // DeepSeek Reasoner模型默认启用思考过程，不需要额外配置
+  }
 
-    // Qwen模型
-    if (modelId.includes('qwen')) {
-      return {
-        thinking: true,
-        thinking_depth: effort,
-        qwenThinkMode: true
-      };
-    }
+  // Gemini模型
+  if (model.id.includes('gemini')) {
+    return {
+      thinkingConfig: {
+        thinkingBudget: budgetTokens,
+        includeThoughts: true,
+        thinkingMode: reasoningEffort === 'auto' ? 'auto' : 'manual'
+      }
+    };
+  }
+
+  // Qwen模型
+  if (model.id.includes('qwen')) {
+    return {
+      enable_thinking: true,
+      thinking_budget: budgetTokens,
+      qwenThinkMode: true
+    };
   }
 
   // 根据源类型返回配置
   switch (sourceType) {
     case ThinkingSourceType.GROK:
       // Grok只支持"low"和"high"
-      const grokEffort = effort === 'medium' || effort === 'auto' ? 'high' : effort;
-      return getGrokThinkingConfig(grokEffort as 'low' | 'high');
+      const grokEffort = reasoningEffort === 'medium' || reasoningEffort === 'auto' ? 'high' : reasoningEffort;
+      return {
+        reasoning_effort: grokEffort
+      };
 
     case ThinkingSourceType.CLAUDE:
       // Claude的思考过程配置
       return {
-        thinking: true,
-        thinking_depth: effort === 'auto' ? 'high' : effort
+        thinking: {
+          type: 'enabled',
+          budget_tokens: Math.max(1024, budgetTokens)
+        }
       };
 
     case ThinkingSourceType.OPENAI:
       // OpenAI的思考过程配置
       return {
-        thinking: true,
-        thinking_depth: effort === 'auto' ? 'high' : effort
+        reasoning_effort: reasoningEffort === 'auto' ? 'high' : reasoningEffort
       };
 
     case ThinkingSourceType.DEEPSEEK:
@@ -331,6 +346,41 @@ export function getThinkingConfig(
       return { thinking: true };
   }
 }
+
+/**
+ * 获取禁用思考过程的配置
+ * @param provider 提供商ID或模型对象
+ * @returns 禁用思考过程的配置
+ */
+function getDisabledThinkingConfig(provider: string | Model): any {
+  // 如果传入的是模型对象，直接使用
+  const model = typeof provider === 'string'
+    ? { id: provider, name: provider, provider } as Model
+    : provider;
+
+  // Qwen模型
+  if (model.id.includes('qwen')) {
+    return { enable_thinking: false };
+  }
+
+  // Claude模型
+  if (model.id.includes('claude')) {
+    return { thinking: { type: 'disabled' } };
+  }
+
+  // Gemini模型
+  if (model.id.includes('gemini')) {
+    if (model.provider === 'openrouter') {
+      return { reasoning: { maxTokens: 0, exclude: true } };
+    }
+    return { reasoning_effort: 'none' };
+  }
+
+  // 默认返回空对象
+  return {};
+}
+
+// 使用从reasoningConfig.ts导入的getModelTokenLimit函数
 
 /**
  * 获取指定模型是否支持思考过程
@@ -366,17 +416,7 @@ export function addThinkingToMessage(message: Message, thinking: ThinkingResult)
   return result as Message;
 }
 
-// 格式化思考时间为易读格式
-export function formatThinkingTime(timeMs?: number): string {
-  if (!timeMs) return '未知时间';
-
-  if (timeMs < 1000) {
-    return `${timeMs}毫秒`;
-  }
-
-  const seconds = Math.round(timeMs / 100) / 10;
-  return `${seconds}秒`;
-}
+// 思考时间格式化函数已移至thinkingUtils.ts
 
 export default {
   ThinkingSourceType,
@@ -385,6 +425,5 @@ export default {
   getThinkingSourceTypeFromProvider,
   getThinkingConfig,
   isThinkingSupported,
-  addThinkingToMessage,
-  formatThinkingTime
+  addThinkingToMessage
 };

@@ -237,15 +237,37 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         const isFirstChunk = blockContent === '正在生成回复...' &&
                             accumulatedContent !== '正在生成回复...';
 
+        // 获取当前消息的模型信息
+        const message = store.getState().messages.entities[messageId];
+        const modelInfo = message?.model || {};
+
         // 创建文本增量数据块
-        const textDeltaChunk: TextDeltaChunk = {
+        const textDeltaChunk: any = {
           type: 'text.delta',
           text: chunk,
           isFirstChunk: isFirstChunk,
           messageId: messageId,
           blockId: blockId,
-          topicId: topicId
+          topicId: topicId,
+          // 添加调试信息
+          chunkLength: chunk.length,
+          accumulatedLength: accumulatedContent.length,
+          timestamp: Date.now()
         };
+
+        // 添加模型信息（如果有）
+        if (modelInfo && typeof modelInfo === 'object') {
+          if ('provider' in modelInfo) {
+            textDeltaChunk.modelProvider = modelInfo.provider;
+          }
+          if ('id' in modelInfo) {
+            textDeltaChunk.modelId = modelInfo.id;
+          }
+          // 检查是否是DeepSeek模型
+          const provider = 'provider' in modelInfo ? String(modelInfo.provider) : '';
+          const id = 'id' in modelInfo ? String(modelInfo.id) : '';
+          textDeltaChunk.isDeepSeekModel = provider === 'deepseek' || (id && id.indexOf('deepseek') >= 0);
+        }
 
         // 处理文本数据块
         streamProcessor(textDeltaChunk);
@@ -267,6 +289,10 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
               messageId,
               blockId,
               topicId,
+              // 添加模型信息
+              modelProvider: textDeltaChunk.modelProvider,
+              modelId: textDeltaChunk.modelId,
+              isDeepSeekModel: textDeltaChunk.isDeepSeekModel,
               timestamp: Date.now()
             });
 
@@ -281,6 +307,10 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
           messageId,
           blockId,
           topicId,
+          // 添加模型信息
+          modelProvider: textDeltaChunk.modelProvider,
+          modelId: textDeltaChunk.modelId,
+          isDeepSeekModel: textDeltaChunk.isDeepSeekModel,
           // 添加调试信息
           chunkLength: chunk.length,
           accumulatedLength: accumulatedContent.length,
@@ -407,12 +437,25 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         }
       }
 
+      // 获取当前消息的模型信息
+      const message = store.getState().messages.entities[messageId];
+      const modelInfo = message?.model || {};
+
+      // 检查是否是DeepSeek模型
+      const provider = modelInfo && 'provider' in modelInfo ? String(modelInfo.provider) : '';
+      const id = modelInfo && 'id' in modelInfo ? String(modelInfo.id) : '';
+      const isDeepSeekModel = provider === 'deepseek' || (id && id.indexOf('deepseek') >= 0);
+
       // 发送事件通知
       EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
         text: accumulatedContent,
         messageId,
         blockId,
-        topicId
+        topicId,
+        // 添加模型信息
+        modelProvider: provider,
+        modelId: id,
+        isDeepSeekModel: isDeepSeekModel
       });
 
       // 保存最终状态到数据库

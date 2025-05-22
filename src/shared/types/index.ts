@@ -2,13 +2,19 @@
 
 // 模型类型常量
 export const ModelType = {
-  Chat: 'chat',            // 聊天对话模型
-  Vision: 'vision',        // 视觉模型
-  Audio: 'audio',          // 音频模型
-  Embedding: 'embedding',  // 嵌入模型
-  Tool: 'tool',            // 工具使用模型
-  Reasoning: 'reasoning',  // 推理模型
-  ImageGen: 'image_gen'    // 图像生成模型
+  Chat: 'chat',                  // 聊天对话模型
+  Vision: 'vision',              // 视觉模型
+  Audio: 'audio',                // 音频模型
+  Embedding: 'embedding',        // 嵌入模型
+  Tool: 'tool',                  // 工具使用模型
+  Reasoning: 'reasoning',        // 推理模型
+  ImageGen: 'image_gen',         // 图像生成模型
+  FunctionCalling: 'function_calling', // 函数调用模型
+  WebSearch: 'web_search',       // 网络搜索模型
+  Rerank: 'rerank',              // 重排序模型
+  CodeGen: 'code_gen',           // 代码生成模型
+  Translation: 'translation',    // 翻译模型
+  Transcription: 'transcription' // 转录模型
 } as const;
 
 export type ModelType = typeof ModelType[keyof typeof ModelType];
@@ -164,7 +170,7 @@ export interface ChatTopic {
   updatedAt: string;
   isNameManuallyEdited: boolean;
   messageIds: string[];    // 消息ID数组，存储消息ID引用
-  
+
   // 可选字段
   lastMessageTime?: string;// 最后消息时间
   inputTemplate?: string;  // 输入模板
@@ -172,7 +178,7 @@ export interface ChatTopic {
   tokenCount?: number;     // token计数
   isDefault?: boolean;     // 是否默认
   pinned?: boolean;        // 是否置顶
-  
+
   // 旧版字段，标记为已弃用
   /** @deprecated 使用messageIds代替 */
   messages?: Message[];    // 已弃用，保留用于兼容
