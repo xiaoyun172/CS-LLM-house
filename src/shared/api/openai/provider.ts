@@ -21,6 +21,7 @@ import {
   isQwenReasoningModel,
   isGrokReasoningModel
 } from '../../config/models';
+import { isDeepSeekReasoningModel } from '../../utils/modelDetection';
 import {
   EFFORT_RATIO,
   DEFAULT_MAX_TOKENS,
@@ -143,6 +144,13 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
 
     // OpenAI模型
     if (isOpenAIReasoningModel(actualModel)) {
+      return {
+        reasoning_effort: reasoningEffort
+      };
+    }
+
+    // DeepSeek推理模型
+    if (isDeepSeekReasoningModel(actualModel)) {
       return {
         reasoning_effort: reasoningEffort
       };
@@ -749,8 +757,14 @@ export class OpenAIProvider extends BaseOpenAIProvider {
     // 不使用工具功能
     console.log(`[OpenAIProvider.sendChatMessage] 工具功能已简化，不添加工具参数`);
 
-    // 不添加推理参数
-    console.log(`[OpenAIProvider.sendChatMessage] 跳过推理参数配置`);
+    // 添加推理参数（支持DeepSeek等推理模型）
+    if (this.supportsReasoning()) {
+      const reasoningParams = this.getReasoningEffort();
+      Object.assign(requestParams, reasoningParams);
+      console.log(`[OpenAIProvider.sendChatMessage] 添加推理参数:`, reasoningParams);
+    } else {
+      console.log(`[OpenAIProvider.sendChatMessage] 模型不支持推理，跳过推理参数配置`);
+    }
 
     try {
       // 使用流式响应处理

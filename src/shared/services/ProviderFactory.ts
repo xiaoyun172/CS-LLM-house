@@ -1,12 +1,12 @@
 /**
- * 供应商工厂模块
+ * 供应商工厂模块 - 参考电脑版架构
  * 负责根据供应商类型返回适当的API处理模块
  */
 import type { Model } from '../types';
 import * as openaiApi from '../api/openai';
 import * as anthropicApi from '../api/anthropic';
 import * as geminiApi from '../api/gemini';
-import * as deepseekApi from '../api/deepseek';
+
 
 /**
  * 获取实际的提供商类型
@@ -21,34 +21,24 @@ export function getActualProviderType(model: Model): string {
 }
 
 /**
- * 获取供应商API
+ * 获取供应商API - 简化版本，参考电脑版架构
  * @param model 模型配置
  * @returns 供应商API模块
  */
 export function getProviderApi(model: Model): any {
   const providerType = getActualProviderType(model);
-  console.log(`[ProviderFactory] 查找API实现，提供商类型: ${providerType}, 模型ID: ${model.id}`);
 
-  // 处理五种主要供应商类型，其他都使用OpenAI兼容API
+  // 简化的Provider选择逻辑，参考电脑版
   switch (providerType) {
     case 'anthropic':
-      console.log(`[ProviderFactory] 返回Anthropic API实现`);
       return anthropicApi;
     case 'gemini':
-      console.log(`[ProviderFactory] 返回新的模块化Gemini API实现`);
       return geminiApi;
-    case 'google':
-      console.log(`[ProviderFactory] 返回OpenAI兼容API实现 (Google API已移除)`);
-      return openaiApi;
-    case 'deepseek':
-      console.log(`[ProviderFactory] 返回DeepSeek API实现`);
-      return deepseekApi;
     case 'openai':
-      console.log(`[ProviderFactory] 返回OpenAI API实现`);
-      return openaiApi;
+    case 'deepseek': // DeepSeek使用OpenAI兼容API
+    case 'google':   // Google使用OpenAI兼容API
     default:
-      // 默认使用OpenAI兼容API
-      console.log(`[ProviderFactory] 未识别的提供商类型: ${providerType}，使用OpenAI兼容API`);
+      // 默认使用OpenAI兼容API，与电脑版保持一致
       return openaiApi;
   }
 }
@@ -132,74 +122,83 @@ export async function sendChatRequest(
   }
 }
 
+// 获取默认分组名称 - 从APIService移过来，统一管理
+function getDefaultGroupName(modelId: string): string {
+  const modelIdLower = modelId.toLowerCase();
+
+  if (modelIdLower.includes('gpt-4')) return 'GPT-4';
+  if (modelIdLower.includes('gpt-3.5')) return 'GPT-3.5';
+  if (modelIdLower.includes('claude-3')) return 'Claude 3';
+  if (modelIdLower.includes('claude-2')) return 'Claude 2';
+  if (modelIdLower.includes('claude')) return 'Claude';
+  if (modelIdLower.includes('gemini-1.5')) return 'Gemini 1.5';
+  if (modelIdLower.includes('gemini-2')) return 'Gemini 2.0';
+  if (modelIdLower.includes('gemini')) return 'Gemini';
+  if (modelIdLower.includes('grok-3')) return 'Grok 3';
+  if (modelIdLower.includes('grok')) return 'Grok';
+
+  return '其他模型';
+}
+
 /**
- * 获取模型列表
+ * 获取模型列表 - 简化版本，参考电脑版架构
  * @param provider 提供商配置
- * @returns 模型列表
+ * @returns 格式化的模型列表
  */
 export async function fetchModels(provider: any): Promise<any[]> {
   try {
     // 确定提供商类型
     let providerType = provider.providerType || provider.id;
 
-    // 对于自定义中转站，如果没有指定providerType，默认尝试使用OpenAI兼容API
+    // 对于自定义中转站，默认使用OpenAI兼容API
     if (provider.baseUrl && !provider.providerType && provider.id !== 'openai') {
-      console.log(`[fetchModels] 检测到自定义中转站 ${provider.baseUrl}，将尝试使用OpenAI兼容API`);
       providerType = 'openai';
     }
 
-    // 处理主要供应商类型
+    let rawModels: any[] = [];
+
+    // 简化的Provider选择逻辑，与电脑版保持一致
     switch (providerType.toLowerCase()) {
       case 'anthropic':
-        console.log(`[fetchModels] 使用新的模块化Anthropic API获取模型`);
-        // 创建一个临时模型配置
-        const anthropicModel = {
-          id: provider.id,
-          name: provider.name || 'Claude',
-          apiKey: provider.apiKey,
-          baseUrl: provider.baseUrl || 'https://api.anthropic.com',
-          provider: 'anthropic'
-        };
-        // 使用 sendChatRequest 方法，这个方法在所有API模块中都应该存在
-        return await anthropicApi.sendChatRequest([], anthropicModel)
-          .then(() => {
-            // 返回预设模型列表
-            return [
-              { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', description: 'Claude 3.5 Sonnet - 最新的Claude模型', owned_by: 'anthropic' },
-              { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Claude 3 Opus - 最强大的Claude模型', owned_by: 'anthropic' },
-              { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Claude 3 Sonnet - 平衡性能和速度', owned_by: 'anthropic' },
-              { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Claude 3 Haiku - 最快的Claude模型', owned_by: 'anthropic' },
-              { id: 'claude-2.1', name: 'Claude 2.1', description: 'Claude 2.1 - 旧版Claude模型', owned_by: 'anthropic' }
-            ];
-          })
-          .catch(error => {
-            console.error('获取Anthropic模型列表失败:', error);
-            // 返回预设模型列表
-            return [
-              { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', description: 'Claude 3.5 Sonnet - 最新的Claude模型', owned_by: 'anthropic' },
-              { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Claude 3 Opus - 最强大的Claude模型', owned_by: 'anthropic' },
-              { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Claude 3 Sonnet - 平衡性能和速度', owned_by: 'anthropic' },
-              { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Claude 3 Haiku - 最快的Claude模型', owned_by: 'anthropic' },
-              { id: 'claude-2.1', name: 'Claude 2.1', description: 'Claude 2.1 - 旧版Claude模型', owned_by: 'anthropic' }
-            ];
-          });
+        rawModels = await anthropicApi.fetchModels(provider);
+        break;
       case 'gemini':
-        console.log(`[fetchModels] 使用新的模块化Gemini API获取模型`);
-        return await geminiApi.fetchModels(provider);
+        rawModels = await geminiApi.fetchModels(provider);
+        break;
       case 'deepseek':
-        console.log(`[fetchModels] 使用新的模块化DeepSeek API获取模型`);
-        return await deepseekApi.fetchModels ? deepseekApi.fetchModels(provider) : [
-          { id: 'deepseek-chat', name: 'DeepSeek-V3', description: 'DeepSeek最新的大型语言模型，具有优秀的中文和代码能力。', owned_by: 'deepseek' },
-          { id: 'deepseek-reasoner', name: 'DeepSeek-R1', description: 'DeepSeek的推理模型，擅长解决复杂推理问题。', owned_by: 'deepseek' }
-        ];
-      case 'google':
-        console.log(`[fetchModels] Google模型获取暂未实现，使用OpenAI兼容API`);
-        return await openaiApi.fetchModels(provider);
+        // DeepSeek使用OpenAI兼容API，失败时返回预设列表
+        try {
+          rawModels = await openaiApi.fetchModels(provider);
+        } catch (error) {
+          console.warn(`[fetchModels] DeepSeek模型获取失败，返回预设列表:`, error);
+          rawModels = [
+            { id: 'deepseek-chat', name: 'DeepSeek-V3', description: 'DeepSeek最新的大型语言模型，具有优秀的中文和代码能力。', owned_by: 'deepseek' },
+            { id: 'deepseek-reasoner', name: 'DeepSeek-R1', description: 'DeepSeek的推理模型，擅长解决复杂推理问题。', owned_by: 'deepseek' }
+          ];
+        }
+        break;
       case 'openai':
+      case 'google':
       default:
         // 默认使用OpenAI兼容API
-        return await openaiApi.fetchModels(provider);
+        rawModels = await openaiApi.fetchModels(provider);
+        break;
     }
+
+    // 统一格式化模型数据 - 整合APIService中的逻辑
+    const formattedModels = rawModels.map(model => ({
+      id: model.id,
+      name: model.name || model.id,
+      provider: provider.id,
+      providerType: provider.providerType || provider.id,
+      description: model.description,
+      group: getDefaultGroupName(model.id),
+      enabled: true,
+      // 保留原始数据
+      ...model
+    }));
+
+    return formattedModels;
   } catch (error) {
     console.error('获取模型列表失败:', error);
     throw error;

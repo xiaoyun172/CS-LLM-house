@@ -933,61 +933,16 @@ class DexieStorageService extends Dexie {
 
   /**
    * 修复消息数据，确保所有消息都正确保存到 messages 表
+   * @deprecated 请使用 DataRepairService.repairMessagesData() 方法
    */
   async repairMessagesData(): Promise<void> {
-    console.log('[DexieStorageService] 开始修复消息数据...');
+    console.log('[DexieStorageService] repairMessagesData 已废弃，请使用 DataRepairService.repairMessagesData()');
 
     try {
-      // 获取所有话题
-      const topics = await this.topics.toArray();
-      console.log(`[DexieStorageService] 找到 ${topics.length} 个话题需要检查`);
-
-      let totalRepaired = 0;
-
-      // 逐个处理话题中的消息
-      for (const topic of topics) {
-        // 跳过没有messages数组的话题
-        if (!topic.messages || !Array.isArray(topic.messages) || topic.messages.length === 0) {
-          console.log(`[DexieStorageService] 话题 ${topic.id} 没有消息，跳过`);
-          continue;
-        }
-
-        console.log(`[DexieStorageService] 检查话题 ${topic.id} 的 ${topic.messages.length} 条消息`);
-
-        // 确保messageIds数组存在
-        if (!topic.messageIds) {
-          topic.messageIds = [];
-        }
-
-        // 逐个处理消息
-        for (const message of topic.messages) {
-          if (!message.id) {
-            console.log('[DexieStorageService] 跳过无效消息（没有ID）');
-            continue;
-          }
-
-          // 检查消息是否已存在于messages表
-          const existingMessage = await this.messages.get(message.id);
-          if (!existingMessage) {
-            // 将消息保存到messages表
-            await this.messages.put(message);
-            console.log(`[DexieStorageService] 修复：保存消息 ${message.id} 到messages表`);
-            totalRepaired++;
-
-            // 将消息ID添加到messageIds数组（如果不存在）
-            if (!topic.messageIds.includes(message.id)) {
-              topic.messageIds.push(message.id);
-            }
-          }
-        }
-
-        // 保存更新后的话题
-        await this.topics.put(topic);
-      }
-
-      console.log(`[DexieStorageService] 消息数据修复完成，共修复 ${totalRepaired} 条消息`);
+      const { DataRepairService } = await import('./DataRepairService');
+      await DataRepairService.repairMessagesData();
     } catch (error) {
-      console.error('[DexieStorageService] 修复消息数据失败:', error);
+      console.error('[DexieStorageService] 委托修复消息数据失败:', error);
       throw error;
     }
   }

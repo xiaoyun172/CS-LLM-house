@@ -108,41 +108,6 @@ export interface TextDeltaChunk {
   topicId?: string
 
   /**
-   * 模型提供商
-   */
-  modelProvider?: string
-
-  /**
-   * 模型ID
-   */
-  modelId?: string
-
-  /**
-   * 是否是DeepSeek模型
-   */
-  isDeepSeekModel?: boolean
-
-  /**
-   * 是否是完整响应
-   */
-  isCompleteResponse?: boolean
-
-  /**
-   * 块长度
-   */
-  chunkLength?: number
-
-  /**
-   * 累积长度
-   */
-  accumulatedLength?: number
-
-  /**
-   * 时间戳
-   */
-  timestamp?: number
-
-  /**
    * 数据块类型
    */
   type: 'text.delta'
@@ -158,36 +123,6 @@ export interface TextCompleteChunk {
    * 数据块ID
    */
   chunk_id?: number
-
-  /**
-   * 消息ID
-   */
-  messageId?: string
-
-  /**
-   * 块ID
-   */
-  blockId?: string
-
-  /**
-   * 主题ID
-   */
-  topicId?: string
-
-  /**
-   * 模型提供商
-   */
-  modelProvider?: string
-
-  /**
-   * 模型ID
-   */
-  modelId?: string
-
-  /**
-   * 是否是DeepSeek模型
-   */
-  isDeepSeekModel?: boolean
 
   /**
    * 数据块类型

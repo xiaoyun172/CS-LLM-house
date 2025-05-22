@@ -2,13 +2,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { approximateTokenSize } from 'tokenx';
 
 /**
- * 生成UUID
+ * 生成UUID - 用于重要实体（话题、助手、消息等）
  * @returns {string} UUID
  */
 export const uuid = (): string => uuidv4();
 
 /**
- * 生成唯一ID
+ * 生成唯一ID - 用于一般场景
  * @returns {string} 唯一ID
  */
 export const generateId = (): string => {
@@ -16,11 +16,36 @@ export const generateId = (): string => {
 };
 
 /**
- * 生成短唯一ID，与generateId类似但更短
+ * 生成短唯一ID - 用于临时或短期使用的ID
  * @returns {string} 短唯一ID
  */
 export const nanoid = (): string => {
   return Math.random().toString(36).substring(2, 10);
+};
+
+/**
+ * 生成消息ID - 专门用于消息
+ * @returns {string} 消息ID
+ */
+export const generateMessageId = (): string => {
+  return uuid(); // 消息使用UUID确保全局唯一
+};
+
+/**
+ * 生成块ID - 专门用于消息块
+ * @param prefix 可选前缀
+ * @returns {string} 块ID
+ */
+export const generateBlockId = (prefix: string = 'block'): string => {
+  return `${prefix}-${Date.now()}-${nanoid()}`;
+};
+
+/**
+ * 生成版本ID - 专门用于版本管理
+ * @returns {string} 版本ID
+ */
+export const generateVersionId = (): string => {
+  return uuid(); // 版本使用UUID确保全局唯一
 };
 
 /**

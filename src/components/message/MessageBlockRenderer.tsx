@@ -68,10 +68,10 @@ const MessageBlockRenderer: React.FC<Props> = ({
   // 从Redux状态中获取块实体
   const blockEntities = useSelector((state: RootState) => messageBlocksSelectors.selectEntities(state));
 
-  // 添加强制更新机制
+  // 添加强制更新机制 - 简化版本，参考电脑版
   const [updateCounter, forceUpdate] = useReducer(state => state + 1, 0);
 
-  // 添加流式输出事件监听
+  // 添加流式输出事件监听 - 简化版本，只监听完成事件
   useEffect(() => {
     // 检查是否有正在流式输出的消息
     const isStreaming = message.status === 'streaming';
@@ -79,26 +79,14 @@ const MessageBlockRenderer: React.FC<Props> = ({
     if (isStreaming) {
       // 监听流式输出事件
       const textDeltaHandler = () => {
-        console.log('[MessageBlockRenderer] 收到流式输出事件，强制更新UI');
         forceUpdate();
       };
 
-      // 订阅事件
-      const unsubscribeTextDelta = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_DELTA, textDeltaHandler);
+      // 只订阅完成事件，减少重复更新
       const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, textDeltaHandler);
-      const unsubscribeThinkingDelta = EventEmitter.on(EVENT_NAMES.STREAM_THINKING_DELTA, textDeltaHandler);
-
-      // 定期强制更新UI，确保流式输出显示
-      const updateInterval = setInterval(() => {
-        console.log('[MessageBlockRenderer] 定期更新流式输出');
-        forceUpdate();
-      }, 50); // 每50ms更新一次，更频繁地更新
 
       return () => {
-        unsubscribeTextDelta();
         unsubscribeTextComplete();
-        unsubscribeThinkingDelta();
-        clearInterval(updateInterval);
       };
     }
   }, [message.status]);

@@ -5,7 +5,8 @@ import type { ChatTopic } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
 import { dexieStorage } from '../../../../shared/services/DexieStorageService';
 import { getStorageItem, getAllStorageKeys } from '../../../../shared/utils/storage';
-import { getMainTextContent } from '../../../../shared/utils/messageUtils';
+import { TopicStatsService } from '../../../../shared/services/TopicStatsService';
+// 使用统一的话题验证服务，不再重复实现验证逻辑
 
 // 默认备份目录
 export const DEFAULT_BACKUP_DIRECTORY = 'AetherLink/backups';
@@ -36,7 +37,7 @@ export async function ensureBackupDirectory(): Promise<boolean> {
   try {
     const backupLocation = await getBackupLocation();
     const backupStorageType = await getBackupStorageType();
-    
+
     try {
       await Filesystem.mkdir({
         path: backupLocation,
@@ -74,7 +75,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
         // 继续尝试其他方法
       }
     }
-    
+
     // 备用方法1: 使用document.execCommand
     try {
       const textarea = document.createElement('textarea');
@@ -92,7 +93,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     } catch (execCommandError) {
       console.warn('使用document.execCommand复制失败:', execCommandError);
     }
-    
+
     // 如果上述方法都失败，返回false
     console.warn('所有剪贴板方法都失败');
     return false;
@@ -106,8 +107,8 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * 保存到下载目录
  */
 export async function saveToDownloadDirectory(
-  fileName: string, 
-  jsonString: string, 
+  fileName: string,
+  jsonString: string,
   onSuccess: (uri?: string, copied?: boolean) => void,
   onError: (error: Error) => void
 ): Promise<void> {
@@ -127,7 +128,7 @@ export async function saveToDownloadDirectory(
         console.error('创建下载目录失败:', mkdirError);
       }
     }
-    
+
     // 写入文件到下载目录
     const filePath = `${downloadDir}/${fileName}`;
     await Filesystem.writeFile({
@@ -136,13 +137,13 @@ export async function saveToDownloadDirectory(
       directory: Directory.External,
       encoding: Encoding.UTF8
     });
-    
+
     // 获取完整URI以显示
     const uriResult = await Filesystem.getUri({
       path: filePath,
       directory: Directory.External
     });
-    
+
     if (uriResult && uriResult.uri) {
       // 尝试使用FileOpener打开文件所在目录
       try {
@@ -150,22 +151,22 @@ export async function saveToDownloadDirectory(
           filePath: uriResult.uri,
           contentType: 'application/json'
         });
-        
+
         const copied = await copyToClipboard(uriResult.uri);
         onSuccess(uriResult.uri, copied);
       } catch (openError) {
         console.error('打开文件失败，但文件已保存:', openError);
-        
+
         let copied = false;
         try {
           copied = await copyToClipboard(uriResult.uri);
         } catch (clipboardError) {
           console.error('复制到剪贴板失败:', clipboardError);
         }
-        
+
         // 即使FileOpener失败，仍然提示成功，但告知用户手动查找文件
         onSuccess(
-          uriResult.uri, 
+          uriResult.uri,
           copied,
         );
       }
@@ -174,7 +175,7 @@ export async function saveToDownloadDirectory(
     }
   } catch (error) {
     console.error('保存到下载目录失败:', error);
-    
+
     // 回退到保存到内部存储根目录
     try {
       await Filesystem.writeFile({
@@ -183,12 +184,12 @@ export async function saveToDownloadDirectory(
         directory: Directory.External,
         encoding: Encoding.UTF8
       });
-      
+
       const uriResult = await Filesystem.getUri({
         path: fileName,
         directory: Directory.External
       });
-      
+
       if (uriResult && uriResult.uri) {
         let copied = false;
         try {
@@ -208,91 +209,13 @@ export async function saveToDownloadDirectory(
 }
 
 /**
- * 处理话题数据，修复可能的问题并去重
+ * 处理话题数据，修复可能的问题并去重 - 使用统一的去重逻辑
  * @param topics 原始话题数组
  * @returns 处理后的话题数组
  */
 function processTopics(topics: ChatTopic[]): ChatTopic[] {
-  if (!Array.isArray(topics)) return [];
-  
-  console.log(`处理前话题数量: ${topics.length}`);
-  
-  // 使用Map进行话题去重，以id为key
-  const uniqueTopicsMap = new Map<string, ChatTopic>();
-  
-  topics.forEach(topic => {
-    // 检查话题基本有效性
-    if (!topic || typeof topic !== 'object' || !topic.id) {
-      console.log('跳过无效话题:', topic);
-      return;
-    }
-    
-    // 检查这个话题是否有效 - 至少有一条消息或有标题
-    const hasMessages = Array.isArray(topic.messages) && topic.messages.length > 0;
-    const hasTitle = !!topic.title && topic.title.trim() !== '';
-    
-    if (!hasMessages && !hasTitle) {
-      console.log(`跳过空话题 ${topic.id}`);
-      return;
-    }
-    
-    // 创建话题的深拷贝，避免修改原始数据
-    const processedTopic = { ...topic };
-    
-    // 确保消息数组存在
-    if (Array.isArray(processedTopic.messages)) {
-      // 处理消息数组
-      processedTopic.messages = processedTopic.messages.map(msg => {
-        const mainTextContent = getMainTextContent(msg);
-        return {
-          ...msg,
-          status: 'success',
-          // 使用blocks系统检查消息内容，不再直接引用content
-          blocks: msg.blocks || [{
-            id: Math.random().toString(36).substring(2, 15),
-            messageId: msg.id,
-            type: 'main_text',
-            content: 
-              (msg.role === 'assistant' && (
-                !mainTextContent ||
-                mainTextContent === '很抱歉，请求处理失败，请稍后再试。' ||
-                mainTextContent === '网络连接问题，请检查网络并重试' ||
-                mainTextContent === 'API密钥无效或已过期，请更新API密钥' ||
-                mainTextContent === '请求超时，服务器响应时间过长' ||
-                mainTextContent.includes('请求失败') ||
-                mainTextContent.includes('错误')
-              ))
-                ? '您好！有什么我可以帮助您的吗？ (Hello! Is there anything I can assist you with?)'
-                : mainTextContent,
-            createdAt: msg.createdAt || (msg as any).timestamp || new Date().toISOString(),
-            status: 'success'
-          }]
-        } as any;
-      });
-    } else {
-      // 如果消息数组不存在，初始化为空数组
-      processedTopic.messages = [];
-    }
-    
-    // 确保话题有标题
-    if (!processedTopic.title) {
-      processedTopic.title = '未命名对话';
-    }
-    
-    // 如果没有最后消息时间，使用当前时间
-    if (!processedTopic.lastMessageTime) {
-      processedTopic.lastMessageTime = new Date().toISOString();
-    }
-    
-    // 放入Map，如果有重复的话题ID，后面的会覆盖前面的
-    uniqueTopicsMap.set(processedTopic.id, processedTopic);
-  });
-  
-  // 将Map转回数组
-  const uniqueTopics = Array.from(uniqueTopicsMap.values());
-  console.log(`处理后话题数量: ${uniqueTopics.length}`);
-  
-  return uniqueTopics;
+  // 使用统一的话题验证和过滤逻辑
+  return TopicStatsService.getValidTopics(topics);
 }
 
 /**
@@ -304,18 +227,18 @@ export async function getLocalStorageItems(excludeKeys: string[] = []): Promise<
   try {
     // 获取所有键
     const allKeys = await getAllStorageKeys();
-    
+
     // 过滤排除的键
     const filteredKeys = allKeys.filter(key => !excludeKeys.includes(key));
-    
+
     // 构建结果对象
     const result: Record<string, any> = {};
-    
+
     // 遍历键并获取值
     for (const key of filteredKeys) {
       result[key] = await getStorageItem(key);
     }
-    
+
     return result;
   } catch (error) {
     console.error('获取所有localStorage项失败:', error);
@@ -342,16 +265,16 @@ export async function prepareBasicBackupData(): Promise<{
     console.log('开始获取话题数据...');
     const topics = await dexieStorage.getAllTopics();
     console.log(`获取到 ${topics.length} 个话题`);
-    
+
     // 获取助手数据
     console.log('开始获取助手数据...');
     const assistants = await dexieStorage.getAllAssistants();
     console.log(`获取到 ${assistants.length} 个助手`);
-    
+
     // 处理话题数据 - 确保数据一致性
     const processedTopics = processTopics(topics);
     console.log(`处理后话题数量: ${processedTopics.length}`);
-    
+
     // 构建备份数据
     const backupData = {
       topics: processedTopics,
@@ -363,11 +286,11 @@ export async function prepareBasicBackupData(): Promise<{
         backupVersion: CURRENT_BACKUP_VERSION
       }
     };
-    
+
     return backupData;
   } catch (error) {
     console.error('准备备份数据时出错:', error);
-    
+
     // 即使出错也返回空的备份结构
     return {
       topics: [],
@@ -398,32 +321,32 @@ export async function prepareFullBackupData(): Promise<{
   try {
     // 获取基础备份数据
     const basicData = await prepareBasicBackupData();
-    
+
     // 获取设置数据
     const appSettings = await getStorageItem('settings') || {};
-    
+
     // 获取备份设置
     const backupSettings = {
       location: await getBackupLocation(),
       storageType: await getBackupStorageType()
     };
-    
+
     // 获取LocalStorage数据，排除一些敏感和不必要的项
     const excludeKeys = [
       // 排除敏感信息
       'apiKey', 'openaiKey', 'anthropicKey', 'googleAiKey', 'siliconstudioKey',
       'azureApiKey', 'awsAccessKey', 'awsSecretKey',
-      
+
       // 排除临时性数据
       'currentChatId', '_lastSaved', '_sessionData', 'temp_', 'debug_',
       '_topicsLoaded',
-      
+
       // 排除设置和备份设置（已单独保存）
       'settings', 'backup-location', 'backup-storage-type'
     ];
-    
+
     const localStorageItems = await getLocalStorageItems(excludeKeys);
-    
+
     // 构建完整备份数据
     const fullBackupData = {
       ...basicData,
@@ -435,14 +358,14 @@ export async function prepareFullBackupData(): Promise<{
         fullBackup: true
       }
     };
-    
+
     return fullBackupData;
   } catch (error) {
     console.error('准备完整备份数据时出错:', error);
-    
+
     // 创建基础备份数据
     const basicData = await prepareBasicBackupData();
-    
+
     // 即使出错也返回部分备份数据
     return {
       ...basicData,
@@ -472,7 +395,7 @@ export async function createAndShareBackupFile(
     console.log(`开始创建备份文件: ${fileName}`);
     const jsonString = JSON.stringify(jsonData, null, 2); // 使用格式化的JSON便于调试
     const tempPath = fileName;
-    
+
     // 创建临时文件
     await Filesystem.writeFile({
       path: tempPath,
@@ -481,13 +404,13 @@ export async function createAndShareBackupFile(
       encoding: Encoding.UTF8
     });
     console.log('已创建临时备份文件');
-    
+
     // 获取临时文件URI
     const tempFileResult = await Filesystem.getUri({
       path: tempPath,
       directory: Directory.Cache
     });
-    
+
     if (tempFileResult && tempFileResult.uri) {
       console.log(`临时文件URI: ${tempFileResult.uri}`);
       try {
@@ -499,24 +422,24 @@ export async function createAndShareBackupFile(
           dialogTitle: '选择保存位置'
         });
         console.log('系统分享对话框已显示');
-        
+
         // 备份完成后，通知调用者刷新文件列表
         if (onBackupComplete) {
           setTimeout(() => {
             onBackupComplete();
           }, 1000); // 稍微延迟以确保文件已保存
         }
-        
+
         onSuccess('请在系统分享菜单中选择"保存到设备"或文件管理器应用');
       } catch (shareError) {
         // 分享可能被用户取消或失败
         console.error('分享文件失败:', shareError);
         const errorMsg = shareError instanceof Error ? shareError.message : String(shareError);
-        
+
         // 如果是用户取消分享，不要视为错误，直接尝试其他方法
         if (errorMsg.includes('canceled') || errorMsg.includes('cancelled')) {
           console.log('用户取消了分享，尝试备用方法');
-          
+
           // 备份完成后，仍然通知调用者刷新文件列表
           if (onBackupComplete) {
             onBackupComplete();
@@ -525,7 +448,7 @@ export async function createAndShareBackupFile(
           // 其他错误则向用户显示
           onSuccess('分享功能不可用，尝试其他保存方法...');
         }
-        
+
         // 尝试使用文件打开器
         try {
           await FileOpener.open({
@@ -533,20 +456,20 @@ export async function createAndShareBackupFile(
             contentType: 'application/json'
           });
           console.log('已使用文件打开器打开文件');
-          
+
           // 备份完成后，通知调用者刷新文件列表
           if (onBackupComplete) {
             setTimeout(() => {
               onBackupComplete();
             }, 1000);
           }
-          
+
           onSuccess('文件已打开，请使用"另存为"保存到您想要的位置');
         } catch (openError) {
           console.error('打开文件失败:', openError);
           // 回退到保存到下载目录
           await saveToDownloadDirectory(
-            fileName, 
+            fileName,
             jsonString,
             (uri, copied) => {
               if (uri) {
@@ -554,7 +477,7 @@ export async function createAndShareBackupFile(
               } else {
                 onSuccess('备份已保存到下载目录，请查看您的文件管理器');
               }
-              
+
               // 备份完成后，通知调用者刷新文件列表
               if (onBackupComplete) {
                 setTimeout(() => {
@@ -570,7 +493,7 @@ export async function createAndShareBackupFile(
       console.warn('无法获取临时文件URI，尝试直接保存到下载目录');
       // 无法获取临时文件URI，回退到下载目录
       await saveToDownloadDirectory(
-        fileName, 
+        fileName,
         jsonString,
         (uri, copied) => {
           if (uri) {
@@ -578,7 +501,7 @@ export async function createAndShareBackupFile(
           } else {
             onSuccess('备份已保存到下载目录，请查看您的文件管理器');
           }
-          
+
           // 备份完成后，通知调用者刷新文件列表
           if (onBackupComplete) {
             setTimeout(() => {
@@ -601,20 +524,20 @@ export async function createAndShareBackupFile(
 export async function getBackupFilesList(): Promise<{name: string, path: string, uri: string, ctime: number}[]> {
   try {
     const downloadDir = "Download";
-    
+
     // 检查目录是否存在
     try {
       const result = await Filesystem.readdir({
         path: downloadDir,
         directory: Directory.External
       });
-      
+
       // 过滤只保留JSON备份文件
-      const backupFiles = result.files.filter(file => 
-        file.name.startsWith('AetherLink_Backup') && 
+      const backupFiles = result.files.filter(file =>
+        file.name.startsWith('AetherLink_Backup') &&
         file.name.endsWith('.json')
       );
-      
+
       // 获取每个文件的详细信息和URI
       const fileDetailsPromises = backupFiles.map(async (file) => {
         try {
@@ -622,12 +545,12 @@ export async function getBackupFilesList(): Promise<{name: string, path: string,
             path: `${downloadDir}/${file.name}`,
             directory: Directory.External
           });
-          
+
           const stat = await Filesystem.stat({
             path: `${downloadDir}/${file.name}`,
             directory: Directory.External
           });
-          
+
           return {
             name: file.name,
             path: `${downloadDir}/${file.name}`,
@@ -644,9 +567,9 @@ export async function getBackupFilesList(): Promise<{name: string, path: string,
           };
         }
       });
-      
+
       const fileDetails = await Promise.all(fileDetailsPromises);
-      
+
       // 按创建时间倒序排序
       return fileDetails.sort((a, b) => b.ctime - a.ctime);
     } catch (error) {
@@ -658,4 +581,4 @@ export async function getBackupFilesList(): Promise<{name: string, path: string,
     console.error('获取备份文件列表失败:', error);
     return [];
   }
-} 
+}

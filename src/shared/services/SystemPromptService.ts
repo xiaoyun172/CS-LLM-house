@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { uuid } from '../utils';
 import { getStorageItem, setStorageItem } from '../utils/storage';
 import { ASSISTANT_PROMPT_TEMPLATES, DEFAULT_SYSTEM_PROMPT } from '../config/prompts';
 
@@ -85,7 +85,7 @@ export class SystemPromptService {
       // 尝试从localStorage迁移数据 (旧版本兼容)
       const localStorageKey = 'aetherlink-system-prompt-templates';
       const localStorageTemplates = localStorage.getItem(localStorageKey);
-      
+
       if (localStorageTemplates) {
         const parsedTemplates = JSON.parse(localStorageTemplates);
         if (Array.isArray(parsedTemplates) && parsedTemplates.length > 0) {
@@ -169,7 +169,7 @@ export class SystemPromptService {
   public async setDefaultPrompt(prompt: string): Promise<void> {
     this.defaultPrompt = prompt;
     await this.saveDefaultPrompt();
-    
+
     // 同时更新默认模板的内容
     const defaultTemplateIndex = this.templates.findIndex(t => t.isDefault);
     if (defaultTemplateIndex !== -1) {
@@ -179,14 +179,14 @@ export class SystemPromptService {
         content: prompt,
         updatedAt: Date.now()
       };
-      
+
       // 使用新数组替换原数组
       this.templates = [
         ...this.templates.slice(0, defaultTemplateIndex),
         updatedTemplate,
         ...this.templates.slice(defaultTemplateIndex + 1)
       ];
-      
+
       await this.saveTemplates();
     }
   }
@@ -205,7 +205,7 @@ export class SystemPromptService {
   public async addTemplate(name: string, content: string, isDefault: boolean = false): Promise<SystemPromptTemplate> {
     const now = Date.now();
     const newTemplate: SystemPromptTemplate = {
-      id: uuidv4(),
+      id: uuid(),
       name,
       content,
       isDefault,
@@ -243,12 +243,12 @@ export class SystemPromptService {
       ...template,
       updatedAt: now
     };
-    
+
     const index = this.templates.findIndex(t => t.id === template.id);
-    
+
     if (index !== -1) {
       const wasDefault = this.templates[index].isDefault;
-      
+
       // 如果设置为默认，更新其他模板
       if (template.isDefault && !wasDefault) {
         this.templates = this.templates.map(t => ({
@@ -257,21 +257,21 @@ export class SystemPromptService {
           updatedAt: t.id === template.id ? now : t.updatedAt
         }));
       }
-      
+
       // 使用不可变更新替换特定索引的元素
       this.templates = [
         ...this.templates.slice(0, index),
         updatedTemplate,
         ...this.templates.slice(index + 1)
       ];
-      
+
       await this.saveTemplates();
-      
+
       // 如果是默认模板，更新默认提示词
       if (template.isDefault) {
         await this.setDefaultPrompt(template.content);
       }
-      
+
       return updatedTemplate;
     } else {
       throw new Error(`找不到ID为${template.id}的模板`);
@@ -286,37 +286,37 @@ export class SystemPromptService {
     if (templateIndex === -1) {
       return;
     }
-    
+
     const template = this.templates[templateIndex];
-    
+
     // 不允许删除最后一个模板
     if (this.templates.length <= 1) {
       console.error('不能删除最后一个提示词模板');
       return;
     }
-    
+
     // 如果删除的是默认模板，选择另一个模板作为默认
     if (template.isDefault) {
       const anotherTemplateIndex = this.templates.findIndex(t => t.id !== id);
       if (anotherTemplateIndex !== -1) {
         // 使用不可变更新模式
         const updatedTemplates = [...this.templates];
-        
+
         // 创建更新后的模板对象
         const updatedTemplate = {
           ...updatedTemplates[anotherTemplateIndex],
           isDefault: true
         };
-        
+
         // 替换模板数组中的对象
         updatedTemplates[anotherTemplateIndex] = updatedTemplate;
         this.templates = updatedTemplates;
-        
+
         // 更新默认提示词
         await this.setDefaultPrompt(updatedTemplate.content);
       }
     }
-    
+
     // 使用不可变方式过滤掉要删除的模板
     this.templates = this.templates.filter(t => t.id !== id);
     await this.saveTemplates();
@@ -330,14 +330,14 @@ export class SystemPromptService {
     if (!template) {
       return;
     }
-    
+
     const now = Date.now();
     this.templates = this.templates.map(t => ({
       ...t,
       isDefault: t.id === id,
       updatedAt: t.id === id ? now : t.updatedAt
     }));
-    
+
     await this.saveTemplates();
     await this.setDefaultPrompt(template.content);
   }
@@ -350,21 +350,21 @@ export class SystemPromptService {
     if (!template) {
       return null;
     }
-    
+
     const now = Date.now();
     const duplicate: SystemPromptTemplate = {
-      id: uuidv4(),
+      id: uuid(),
       name: `${template.name} (复制)`,
       content: template.content,
       isDefault: false,
       createdAt: now,
       updatedAt: now
     };
-    
+
     // 使用不可变方式添加新模板
     this.templates = [...this.templates, duplicate];
     await this.saveTemplates();
-    
+
     return duplicate;
   }
 
@@ -375,4 +375,4 @@ export class SystemPromptService {
   public getActiveSystemPrompt(): string {
     return this.useDefaultPrompt ? this.defaultPrompt : '';
   }
-} 
+}

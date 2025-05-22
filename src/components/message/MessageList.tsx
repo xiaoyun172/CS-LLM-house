@@ -15,6 +15,8 @@ import { newMessagesActions } from '../../shared/store/slices/newMessagesSlice';
 import useScrollPosition from '../../hooks/useScrollPosition';
 import { getGroupedMessages, MessageGroupingType } from '../../shared/utils/messageGrouping';
 import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventEmitter';
+import { deduplicateMessages } from '../../shared/services/MessageFilters';
+import { generateBlockId } from '../../shared/utils';
 
 interface MessageListProps {
   messages: Message[];
@@ -264,7 +266,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
           try {
             // 如果助手消息没有块但有内容，创建一个新块
             console.log(`[MessageList] 为没有块的助手消息 ${message.id} 创建新块`);
-            const newBlockId = `block-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const newBlockId = generateBlockId('block');
             const newBlock = {
               id: newBlockId,
               messageId: message.id,
@@ -309,45 +311,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     loadAllBlocks();
   }, [messages, messageBlocks, dispatch, forceUpdate]);
 
-  // 过滤消息，去除重复消息
+  // 过滤消息，去除重复消息 - 使用统一的去重逻辑
   const filteredMessages = useMemo(() => {
-    // 创建一个Map来存储已处理的消息，按照askId分组
-    const messageGroups = new Map<string, Message[]>();
-
-    // 按照askId分组消息
-    messages.forEach(message => {
-      // 用户消息使用自己的ID作为key
-      const key = message.role === 'user' ? message.id : (message.askId || message.id);
-
-      if (!messageGroups.has(key)) {
-        messageGroups.set(key, []);
-      }
-
-      messageGroups.get(key)?.push(message);
-    });
-
-    // 从每个组中选择最新的消息
-    const deduplicated: Message[] = [];
-
-    messageGroups.forEach(group => {
-      // 按创建时间排序
-      const sorted = [...group].sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
-      // 用户消息只保留最新的一条
-      if (sorted[0].role === 'user') {
-        deduplicated.push(sorted[0]);
-      } else {
-        // 助手消息可能有多条（如重新生成的情况），全部保留
-        deduplicated.push(...sorted);
-      }
-    });
-
-    // 按创建时间排序
-    return deduplicated.sort((a, b) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
+    return deduplicateMessages(messages);
   }, [messages]);
 
   // 这些回调在使用虚拟滚动和消息分组后不再直接使用

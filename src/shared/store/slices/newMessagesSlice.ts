@@ -84,6 +84,13 @@ interface SetErrorPayload {
   topicId?: string; // 可选的主题ID，用于按主题分组错误
 }
 
+// 添加块引用的Payload类型
+interface UpsertBlockReferencePayload {
+  messageId: string;
+  blockId: string;
+  status?: string;
+}
+
 // 4. 创建 Slice
 const newMessagesSlice = createSlice({
   name: 'normalizedMessages',
@@ -225,6 +232,31 @@ const newMessagesSlice = createSlice({
 
       // 清空主题的消息ID数组
       state.messageIdsByTopic[topicId] = [];
+    },
+
+    // 添加或更新块引用
+    upsertBlockReference(state, action: PayloadAction<UpsertBlockReferencePayload>) {
+      const { messageId, blockId } = action.payload;
+
+      const messageToUpdate = state.entities[messageId];
+      if (!messageToUpdate) {
+        console.error(`[upsertBlockReference] 消息 ${messageId} 不存在.`);
+        return;
+      }
+
+      // 获取当前块列表
+      const currentBlocks = [...(messageToUpdate.blocks || [])];
+
+      // 如果块ID不在列表中，添加它
+      if (!currentBlocks.includes(blockId)) {
+        // 更新消息的blocks数组
+        messagesAdapter.updateOne(state as any, {
+          id: messageId,
+          changes: {
+            blocks: [...currentBlocks, blockId]
+          }
+        });
+      }
     }
   }
 });
@@ -307,43 +339,9 @@ export const loadTopicMessagesThunk = createAsyncThunk(
       // 获取消息
       const messages = await dexieStorage.getMessagesByTopicId(topicId);
 
-      // 去重处理 - 按照askId分组，保留最新的消息
-      const messageGroups = new Map<string, Message[]>();
-
-      // 按照askId分组消息
-      messages.forEach(message => {
-        // 用户消息使用自己的ID作为key
-        const key = message.role === 'user' ? message.id : (message.askId || message.id);
-
-        if (!messageGroups.has(key)) {
-          messageGroups.set(key, []);
-        }
-
-        messageGroups.get(key)?.push(message);
-      });
-
-      // 从每个组中选择最新的消息
-      const deduplicated: Message[] = [];
-
-      messageGroups.forEach(group => {
-        // 按创建时间排序
-        const sorted = [...group].sort((a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-
-        // 用户消息只保留最新的一条
-        if (sorted[0].role === 'user') {
-          deduplicated.push(sorted[0]);
-        } else {
-          // 助手消息可能有多条（如重新生成的情况），全部保留
-          deduplicated.push(...sorted);
-        }
-      });
-
-      // 按创建时间排序
-      const sortedMessages = deduplicated.sort((a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      );
+      // 去重处理 - 使用统一的去重逻辑
+      const { deduplicateMessages } = await import('../../services/MessageFilters');
+      const sortedMessages = deduplicateMessages(messages);
 
       // 加载消息块
       const messageIds = sortedMessages.map(msg => msg.id);

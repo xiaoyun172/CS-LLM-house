@@ -232,17 +232,22 @@ function App() {
         console.error('[App] 数据库版本检查出错:', error);
       });
 
-    // 执行数据修复，确保助手和话题关联正确
+    // 执行统一数据修复
     const repairData = async () => {
       try {
         // 先检查数据一致性
         const hasIssues = await DataRepairService.checkDataConsistency();
 
         if (hasIssues) {
-          console.log('[App] 检测到数据一致性问题，开始修复...');
-          // 启用自动清理虚空话题功能
-          const result = await DataRepairService.repairAllAssistantsAndTopics(true);
-          console.log(`[App] 数据修复完成，已清理 ${result.orphanTopicsRemoved} 个虚空话题，剩余 ${result.totalTopics} 个话题`);
+          console.log('[App] 检测到数据一致性问题，开始统一修复...');
+          // 使用新的统一修复方法
+          const result = await DataRepairService.repairAllData({
+            fixAssistantTopicRelations: true,
+            fixDuplicateMessages: true,
+            fixOrphanTopics: true,
+            migrateMessages: true
+          });
+          console.log(`[App] 统一数据修复完成:`, result);
         } else {
           console.log('[App] 数据一致性检查通过，无需修复');
         }
@@ -282,20 +287,8 @@ function App() {
 
       loadAllTopics();
 
-      // 修复重复话题
-      DataManager.fixDuplicateTopics()
-        .then(result => {
-          if (result.fixed > 0) {
-            console.log(`[App] 已修复 ${result.fixed} 个重复话题，共 ${result.total} 个话题`);
-            // 重新加载话题
-            loadAllTopics();
-          } else {
-            console.log('[App] 未发现重复话题');
-          }
-        })
-        .catch(error => {
-          console.error('[App] 修复重复话题失败:', error);
-        });
+      // 重复话题修复已整合到统一数据修复中，这里只是记录
+      console.log('[App] 重复话题修复已整合到统一数据修复流程中');
     } else {
       console.log('[App] 话题已在本次会话中加载，跳过重复加载');
     }

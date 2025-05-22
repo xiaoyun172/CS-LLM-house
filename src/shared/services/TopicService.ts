@@ -14,6 +14,7 @@ import { createUserMessage } from '../utils/messageUtils';
 import { newMessagesActions } from '../store/slices/newMessagesSlice';
 // 导入助手类型模块，避免动态导入
 import { getDefaultTopic } from './assistant/types';
+import { handleError } from '../utils/error';
 
 /**
  * 话题服务 - 集中处理话题的创建、关联和管理
@@ -27,7 +28,9 @@ export class TopicService {
       const topics = await dexieStorage.getAllTopics();
       return topics;
     } catch (error) {
-      console.error('[TopicService] 获取话题失败:', error);
+      handleError(error, 'TopicService.getAllTopics', {
+        logLevel: 'ERROR'
+      });
       return [];
     }
   }
@@ -40,7 +43,10 @@ export class TopicService {
       const topic = await dexieStorage.getTopic(id);
       return topic || null;
     } catch (error) {
-      console.error(`[TopicService] 获取话题 ${id} 失败:`, error);
+      handleError(error, 'TopicService.getTopicById', {
+        logLevel: 'ERROR',
+        additionalData: { topicId: id }
+      });
       return null;
     }
   }
@@ -91,7 +97,9 @@ export class TopicService {
 
       return topic;
     } catch (error) {
-      console.error('[TopicService] 创建新话题失败:', error);
+      handleError(error, 'TopicService.createNewTopic', {
+        logLevel: 'ERROR'
+      });
       return null;
     }
   }

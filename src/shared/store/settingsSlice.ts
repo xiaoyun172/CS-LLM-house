@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { Model } from '../types';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { GeneratedImage } from '../types';
-import { ThinkingDisplayStyle } from '../../components/message/ThinkingProcess';
+import { ThinkingDisplayStyle } from '../../components/message/blocks/ThinkingBlock';
 import { getStorageItem, setStorageItem } from '../utils/storage';
 
 export interface ModelProvider {

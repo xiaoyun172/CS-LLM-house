@@ -106,7 +106,7 @@ AetherLink/
 │   │   │   ├── openai/     # OpenAI API集成
 │   │   │   ├── siliconflow/ # 硅基流动API集成
 │   │   │   ├── volcengine/ # 火山方舟API集成
-│   │   │   ├── deepseek/   # DeepSeek API集成
+
 │   │   │   └── index.ts    # API统一入口和路由
 │   │   ├── data/           # 静态数据和预设配置
 │   │   │   ├── models/     # 预设模型配置

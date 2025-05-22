@@ -1,7 +1,7 @@
-import { 
-  getAllTopicsFromDB, 
-  saveTopicToDB, 
-  getTopicFromDB, 
+import {
+  getAllTopicsFromDB,
+  saveTopicToDB,
+  getTopicFromDB,
   deleteTopicFromDB,
   getAllAssistantsFromDB,
   saveAssistantToDB,
@@ -9,7 +9,7 @@ import {
   deleteAssistantFromDB
 } from '../services/storageService';
 import type { ChatTopic } from '../types';
-import type { Message } from '../types';
+// Message类型已移至DataRepairService中使用
 import type { Assistant } from '../types/Assistant';
 
 /**
@@ -162,73 +162,20 @@ export class DataAdapter {
 
   /**
    * 查找并修复重复消息问题
+   * @deprecated 请使用 DataRepairService.repairDuplicateMessages() 方法
    * @param topicId 话题ID（可选，如果不提供则检查所有话题）
    * @returns 修复结果：{fixed: 修复的消息数, total: 总消息数}
    */
   public async fixDuplicateMessages(topicId?: string): Promise<{fixed: number, total: number}> {
-    this.log(`修复重复消息 ${topicId ? `话题ID: ${topicId}` : '所有话题'}`);
-    
-    let fixed = 0;
-    let total = 0;
-    
+    this.log(`fixDuplicateMessages 已废弃，请使用 DataRepairService.repairDuplicateMessages()`);
+
+    // 简化逻辑，委托给DataRepairService
     try {
-      // 获取需要处理的话题
-      const topics = topicId 
-        ? [await this.getTopic(topicId)].filter(Boolean) as ChatTopic[]
-        : await this.getAllTopics();
-      
-      this.log(`开始处理 ${topics.length} 个话题`);
-      
-      // 遍历话题修复重复消息
-      for (const topic of topics) {
-        if (!topic.messages || !Array.isArray(topic.messages)) {
-          topic.messages = [];
-          await this.saveTopic(topic);
-          continue;
-        }
-        
-        total += topic.messages.length;
-        
-        // 查找并修复重复消息ID
-        const messageIds = new Set<string>();
-        const uniqueMessages: Message[] = [];
-        let hasChanges = false;
-        
-        for (const message of topic.messages) {
-          // 如果消息没有ID，生成一个
-          if (!message.id) {
-            message.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            hasChanges = true;
-            fixed++;
-          }
-          
-          // 如果ID已存在，生成一个新ID
-          else if (messageIds.has(message.id)) {
-            const originalId = message.id;
-            message.id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            this.log(`修复重复消息ID: ${originalId} -> ${message.id}`);
-            hasChanges = true;
-            fixed++;
-          }
-          
-          messageIds.add(message.id);
-          uniqueMessages.push(message);
-        }
-        
-        // 如果有修改，保存话题
-        if (hasChanges) {
-          topic.messages = uniqueMessages;
-          await this.saveTopic(topic);
-          this.log(`话题 ${topic.id} 修复了 ${fixed} 条消息`);
-        }
-      }
-      
-      this.log(`修复完成: 总计 ${fixed} 条消息被修复，共 ${total} 条消息`);
-      return { fixed, total };
-      
+      const { DataRepairService } = await import('../services/DataRepairService');
+      return await DataRepairService.repairDuplicateMessages(topicId);
     } catch (error) {
       this.log('修复重复消息失败', error);
-      throw error;
+      return { fixed: 0, total: 0 };
     }
   }
-} 
+}

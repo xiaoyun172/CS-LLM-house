@@ -47,7 +47,7 @@ const AddProviderPage: React.FC = () => {
   const handleProviderTypeChange = (event: React.ChangeEvent<{ value: unknown }> | any) => {
     const type = event.target.value as string;
     setProviderType(type);
-    
+
     // 自动设置头像字母
     if (type === 'custom') {
       if (providerName) {
@@ -64,7 +64,7 @@ const AddProviderPage: React.FC = () => {
   const handleProviderNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const name = event.target.value;
     setProviderName(name);
-    
+
     // 如果是自定义类型，自动更新头像字母
     if (providerType === 'custom' && name) {
       setAvatarLetter(name.charAt(0).toUpperCase());
@@ -75,7 +75,7 @@ const AddProviderPage: React.FC = () => {
     // 获取一个随机颜色
     const colors = ['#10a37f', '#4285f4', '#b83280', '#8b5cf6', '#6366f1', '#ef4444', '#f59e0b', '#22c55e'];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    
+
     // 创建新的供应商对象
     const newProvider = {
       id: generateId(), // 始终使用随机ID避免冲突
@@ -84,19 +84,20 @@ const AddProviderPage: React.FC = () => {
       color: randomColor,
       isEnabled: true,
       apiKey: '',
-      baseUrl: providerType === 'openai' ? 'https://api.openai.com/v1' : 
+      baseUrl: providerType === 'openai' ? 'https://api.openai.com/v1' :
                providerType === 'anthropic' ? 'https://api.anthropic.com/v1' :
                providerType === 'gemini' ? 'https://generativelanguage.googleapis.com/v1' :
-               providerType === 'grok' ? 'https://api.x.ai/v1' : 
+               providerType === 'grok' ? 'https://api.x.ai/v1' :
+               providerType === 'deepseek' ? 'https://api.deepseek.com' :
                providerType === 'siliconflow' ? 'https://api.siliconflow.cn/v1' :
                providerType === 'volcengine' ? 'https://ark.cn-beijing.volces.com/api/v3/' : '',
       models: [],
       providerType: providerType // 保存供应商类型以便后续判断API调用
     };
-    
+
     // 添加到Redux状态
     dispatch(addProvider(newProvider));
-    
+
     // 添加成功后跳转到该供应商的详情页面
     navigate(`/settings/model-provider/${newProvider.id}`);
   };
@@ -104,16 +105,16 @@ const AddProviderPage: React.FC = () => {
   const isSubmitDisabled = !providerName || !providerType;
 
   return (
-    <Box sx={{ 
-      flexGrow: 1, 
-      display: 'flex', 
-      flexDirection: 'column', 
+    <Box sx={{
+      flexGrow: 1,
+      display: 'flex',
+      flexDirection: 'column',
       height: '100vh',
       bgcolor: (theme) => theme.palette.mode === 'light'
         ? alpha(theme.palette.primary.main, 0.02)
         : alpha(theme.palette.background.default, 0.9),
     }}>
-      <AppBar 
+      <AppBar
         position="fixed"
         elevation={0}
         sx={{
@@ -152,9 +153,9 @@ const AddProviderPage: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
+      <Box
+        sx={{
+          flexGrow: 1,
           overflowY: 'auto',
           p: 2,
           mt: 8,
@@ -182,9 +183,9 @@ const AddProviderPage: React.FC = () => {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
             <Avatar
-              sx={{ 
-                width: 64, 
-                height: 64, 
+              sx={{
+                width: 64,
+                height: 64,
                 bgcolor: '#9333EA',
                 fontSize: '1.7rem',
                 mr: 2,
@@ -193,7 +194,7 @@ const AddProviderPage: React.FC = () => {
             >
               {avatarLetter || 'P'}
             </Avatar>
-            <Typography 
+            <Typography
               variant="h5"
               sx={{
                 fontWeight: 600,
@@ -206,10 +207,10 @@ const AddProviderPage: React.FC = () => {
             </Typography>
           </Box>
 
-          <Typography 
-            variant="subtitle1" 
+          <Typography
+            variant="subtitle1"
             gutterBottom
-            sx={{ 
+            sx={{
               fontWeight: 600,
               color: 'text.primary',
               mb: 3
@@ -241,7 +242,7 @@ const AddProviderPage: React.FC = () => {
             <Typography variant="subtitle2" gutterBottom color="text.secondary">
               提供商类型
             </Typography>
-            <FormControl 
+            <FormControl
               fullWidth
               size="small"
               sx={{
@@ -264,15 +265,16 @@ const AddProviderPage: React.FC = () => {
               </Select>
             </FormControl>
             {providerType && (
-              <Typography 
-                variant="body2" 
-                color="text.secondary" 
+              <Typography
+                variant="body2"
+                color="text.secondary"
                 sx={{ mt: 1, fontSize: '0.8rem' }}
               >
-                {providerType === 'openai' ? '添加OpenAI兼容的API服务' : 
+                {providerType === 'openai' ? '添加OpenAI兼容的API服务' :
                  providerType === 'anthropic' ? '添加Anthropic Claude API服务' :
-                 providerType === 'gemini' ? '添加Google Gemini API服务' : 
-                 providerType === 'grok' ? '添加xAI (Grok) API服务' : 
+                 providerType === 'gemini' ? '添加Google Gemini API服务' :
+                 providerType === 'grok' ? '添加xAI (Grok) API服务' :
+                 providerType === 'deepseek' ? '添加DeepSeek API服务（使用OpenAI兼容格式）' :
                  providerType === 'siliconflow' ? '添加硅基流动 (SiliconFlow) API服务' :
                  providerType === 'volcengine' ? '添加火山引擎 (豆包/DeepSeek) API服务' :
                  '添加自定义API服务'}
@@ -280,16 +282,16 @@ const AddProviderPage: React.FC = () => {
             )}
           </Box>
 
-          <Box 
-            sx={{ 
-              mt: 4, 
-              display: 'flex', 
+          <Box
+            sx={{
+              mt: 4,
+              display: 'flex',
               justifyContent: 'flex-end',
               gap: 2
             }}
           >
-            <Button 
-              variant="outlined" 
+            <Button
+              variant="outlined"
               onClick={handleBack}
               sx={{
                 borderRadius: 2,
@@ -298,7 +300,7 @@ const AddProviderPage: React.FC = () => {
             >
               取消
             </Button>
-            <Button 
+            <Button
               onClick={handleSubmit}
               disabled={isSubmitDisabled}
               sx={{
@@ -320,4 +322,4 @@ const AddProviderPage: React.FC = () => {
   );
 };
 
-export default AddProviderPage; 
+export default AddProviderPage;

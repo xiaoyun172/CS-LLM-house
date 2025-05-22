@@ -95,72 +95,41 @@ export type OpenAIStreamChunk =
  * @returns 文本增量或思考增量对象
  */
 export async function* openAIChunkToTextDelta(stream: AsyncIterable<any>): AsyncGenerator<OpenAIStreamChunk> {
-  // 跟踪已处理的完整内容，用于检测重复
-  let processedContent = '';
+  // 用于跟踪已经收到的完整推理消息，避免重复处理
   let processedReasoning = '';
 
   for await (const chunk of stream) {
     if (chunk.choices && chunk.choices.length > 0) {
-      // 检查是否为DeepSeek的完整响应（非增量）
-      const isCompleteResponse = chunk.choices[0].message && !chunk.choices[0].delta;
-
-      if (isCompleteResponse) {
-        console.log('[openAIChunkToTextDelta] 检测到DeepSeek完整响应，非增量模式');
-
-        // 处理完整的思考内容
-        if (chunk.choices[0].message.reasoning_content) {
-          const reasoningContent = chunk.choices[0].message.reasoning_content;
-          // 检查是否已处理过此内容
-          if (reasoningContent !== processedReasoning) {
-            processedReasoning = reasoningContent;
-            yield { type: 'reasoning', textDelta: reasoningContent };
-          }
-        }
-
-        // 处理完整的文本内容
-        if (chunk.choices[0].message.content) {
-          const content = chunk.choices[0].message.content;
-          // 检查是否已处理过此内容
-          if (content !== processedContent) {
-            processedContent = content;
-            yield { type: 'text-delta', textDelta: content };
-          }
-        }
-
-        continue; // 处理完完整响应后，跳过当前循环
-      }
-
       const delta = chunk.choices[0].delta;
 
-      // 处理DeepSeek特有的思考内容字段 - 优先处理，避免与文本内容混淆
-      if (chunk.choices[0]?.message?.reasoning_content) {
-        const reasoningContent = chunk.choices[0].message.reasoning_content;
-        // 检查是否已处理过此内容
-        if (reasoningContent !== processedReasoning) {
-          processedReasoning = reasoningContent;
-          yield { type: 'reasoning', textDelta: reasoningContent };
-        }
-        continue; // 处理完思考内容后，跳过当前循环
+      // 处理文本内容
+      if (delta?.content) {
+        // 确保只处理新增的内容
+        const textDelta = delta.content;
+        yield { type: 'text-delta', textDelta };
       }
 
       // 处理思考内容 - 支持多种字段名
       if (delta?.reasoning_content || delta?.reasoning) {
-        const reasoningDelta = delta.reasoning_content || delta.reasoning;
-        processedReasoning += reasoningDelta;
-        yield { type: 'reasoning', textDelta: reasoningDelta };
-        continue; // 处理完思考内容后，跳过当前循环
+        const reasoningContent = delta.reasoning_content || delta.reasoning;
+        // 确保只处理新增的思考内容
+        yield { type: 'reasoning', textDelta: reasoningContent };
       }
 
-      // 处理文本内容 - 只有在没有思考内容时才处理
-      if (delta?.content) {
-        // 检查是否为重复内容
-        if (processedContent.endsWith(delta.content)) {
-          console.log('[openAIChunkToTextDelta] 跳过重复内容:', delta.content);
-          continue;
-        }
+      // 处理DeepSeek特有的思考内容字段
+      // 特别注意：DeepSeek有时会发送完整消息而非增量
+      if (chunk.choices[0]?.message?.reasoning_content) {
+        const fullReasoning = chunk.choices[0].message.reasoning_content;
 
-        processedContent += delta.content;
-        yield { type: 'text-delta', textDelta: delta.content };
+        // 如果收到的是完整消息，且与已处理内容不同，仅处理新增部分
+        if (fullReasoning !== processedReasoning) {
+          // 找出新增的部分
+          const newContent = fullReasoning.slice(processedReasoning.length);
+          if (newContent) {
+            processedReasoning = fullReasoning;
+            yield { type: 'reasoning', textDelta: newContent };
+          }
+        }
       }
     }
   }

@@ -1,7 +1,8 @@
 /**
- * 错误处理工具类
- * 提供错误格式化、错误详情提取等功能
+ * 错误处理工具类 - 参考电脑版架构
+ * 提供错误格式化、错误详情提取、统一错误处理等功能
  */
+import LoggerService from '../services/LoggerService';
 
 /**
  * 从错误对象中提取详细信息
@@ -129,6 +130,130 @@ export function isAbortError(error: any): boolean {
   }
 
   return false;
+}
+
+/**
+ * 统一错误处理函数 - 参考电脑版架构
+ * @param error 错误对象
+ * @param context 错误上下文信息
+ * @param options 处理选项
+ */
+export function handleError(
+  error: any,
+  context: string,
+  options: {
+    logLevel?: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+    showUser?: boolean;
+    rethrow?: boolean;
+    additionalData?: any;
+  } = {}
+): void {
+  const {
+    logLevel = 'ERROR',
+    showUser = false,
+    rethrow = false,
+    additionalData
+  } = options;
+
+  // 检查是否为中止错误，如果是则不记录
+  if (isAbortError(error)) {
+    LoggerService.log('DEBUG', `[${context}] 请求被中止`, { error: getErrorMessage(error) });
+    return;
+  }
+
+  // 构建错误信息
+  const errorMessage = getErrorMessage(error);
+  const errorType = getErrorType(error);
+  const errorDetails = formatMessageError(error);
+
+  // 构建日志数据
+  const logData = {
+    context,
+    errorType,
+    errorMessage,
+    errorDetails,
+    ...additionalData
+  };
+
+  // 使用LoggerService记录错误
+  LoggerService.log(logLevel, `[${context}] ${errorMessage}`, logData);
+
+  // 如果需要显示给用户（可以在这里集成Toast或其他用户通知）
+  if (showUser) {
+    // 这里可以集成用户通知系统
+    console.warn(`用户错误提示: ${errorMessage}`);
+  }
+
+  // 如果需要重新抛出错误
+  if (rethrow) {
+    throw error;
+  }
+}
+
+/**
+ * 异步函数错误包装器 - 参考电脑版架构
+ * @param fn 异步函数
+ * @param context 错误上下文
+ * @param options 处理选项
+ * @returns 包装后的函数
+ */
+export function withErrorHandling<T extends (...args: any[]) => Promise<any>>(
+  fn: T,
+  context: string,
+  options: {
+    logLevel?: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+    showUser?: boolean;
+    defaultReturn?: any;
+    additionalData?: any;
+  } = {}
+): T {
+  return (async (...args: any[]) => {
+    try {
+      return await fn(...args);
+    } catch (error) {
+      handleError(error, context, {
+        logLevel: options.logLevel,
+        showUser: options.showUser,
+        additionalData: options.additionalData
+      });
+
+      // 返回默认值而不是抛出错误
+      return options.defaultReturn;
+    }
+  }) as T;
+}
+
+/**
+ * 同步函数错误包装器
+ * @param fn 同步函数
+ * @param context 错误上下文
+ * @param options 处理选项
+ * @returns 包装后的函数
+ */
+export function withSyncErrorHandling<T extends (...args: any[]) => any>(
+  fn: T,
+  context: string,
+  options: {
+    logLevel?: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+    showUser?: boolean;
+    defaultReturn?: any;
+    additionalData?: any;
+  } = {}
+): T {
+  return ((...args: any[]) => {
+    try {
+      return fn(...args);
+    } catch (error) {
+      handleError(error, context, {
+        logLevel: options.logLevel,
+        showUser: options.showUser,
+        additionalData: options.additionalData
+      });
+
+      // 返回默认值而不是抛出错误
+      return options.defaultReturn;
+    }
+  }) as T;
 }
 
 /**

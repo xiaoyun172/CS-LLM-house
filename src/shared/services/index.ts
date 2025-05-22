@@ -85,29 +85,17 @@ export const DataManager = {
 
   /**
    * 检查并修复重复话题
+   * @deprecated 请使用 DataRepairService.repairAllData() 方法
    * @returns 返回修复结果的Promise
    */
   async fixDuplicateTopics() {
+    console.log('[DataManager] fixDuplicateTopics 已废弃，请使用 DataRepairService.repairAllData()');
+    // 简化逻辑，不再实际修复，只是检查
     try {
-      // 获取所有话题
       const topics = await dexieStorage.getAllTopics();
-      
-      // 检查是否有重复话题
-      const topicIds = new Set<string>();
-      const duplicates: string[] = [];
-      
-      topics.forEach(topic => {
-        if (topicIds.has(topic.id)) {
-          duplicates.push(topic.id);
-        } else {
-          topicIds.add(topic.id);
-        }
-      });
-      
-      // 不需要实际修复，DexieStorageService会自动处理重复保存的情况
-      return { fixed: 0, total: duplicates.length };
+      return { fixed: 0, total: topics.length };
     } catch (error) {
-      console.error('修复重复话题失败:', error);
+      console.error('检查话题失败:', error);
       return { fixed: 0, total: 0 };
     }
   },
@@ -120,22 +108,22 @@ export const DataManager = {
     try {
       // 获取所有话题
       const topics = await dexieStorage.getAllTopics();
-      
+
       // 检查是否有重复话题
       const topicMap = new Map<string, number>();
       const duplicates: string[] = [];
-      
+
       topics.forEach(topic => {
         topicMap.set(topic.id, (topicMap.get(topic.id) || 0) + 1);
       });
-      
+
       // 找出重复的ID
       topicMap.forEach((count, id) => {
         if (count > 1) {
           duplicates.push(id);
         }
       });
-      
+
       return duplicates;
     } catch (error) {
       console.error('查找重复话题失败:', error);

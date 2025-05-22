@@ -5,7 +5,7 @@
  */
 import type { Message, Model } from '../../types';
 import { logApiRequest } from '../../services/LoggerService';
-import { createProvider } from './createProvider';
+import { OpenAIProvider } from './provider';
 
 
 
@@ -102,7 +102,7 @@ export async function sendChatRequest(
     });
 
     // 创建Provider实例
-    const provider = createProvider(model);
+    const provider = new OpenAIProvider(model);
 
     // 记录工具状态
     if (enableTools) {

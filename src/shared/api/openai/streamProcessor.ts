@@ -56,6 +56,10 @@ export class OpenAIStreamProcessor {
   private startTime: number;
   private reasoningStartTime: number = 0;
 
+  // 用于检测和处理DeepSeek流式输出重复问题
+  private isDeepSeekProvider: boolean = false;
+  private previousCompleteResponse: string = '';
+
   // 消息和块相关属性
   private messageId?: string;
   private blockId?: string;
@@ -75,6 +79,10 @@ export class OpenAIStreamProcessor {
     this.thinkingBlockId = options.thinkingBlockId;
     this.topicId = options.topicId;
     this.startTime = Date.now();
+
+    // 检查是否为DeepSeek提供商
+    this.isDeepSeekProvider = this.model.provider === 'deepseek' ||
+                           (typeof this.model.id === 'string' && this.model.id.includes('deepseek'));
   }
 
   /**
@@ -138,32 +146,30 @@ export class OpenAIStreamProcessor {
     }
   }
 
-
-
   /**
    * 处理处理后的流式响应块
    * @param chunk 流式响应块
    */
   private async handleProcessedChunk(chunk: CompleteOpenAIStreamChunk): Promise<void> {
     if (chunk.type === 'text-delta') {
-      // 检查是否为DeepSeek模型
-      const isDeepSeekModel = this.model.provider === 'deepseek' || this.model.id.includes('deepseek');
+      // 处理文本增量
+      if (this.isDeepSeekProvider) {
+        // DeepSeek特殊处理：检查是否是完整响应重新发送
+        const potentialCompleteResponse = this.content + chunk.textDelta;
 
-      // 检查是否为完整响应（长文本块）
-      const isCompleteResponse = chunk.textDelta.length > 100 &&
-                                (this.content.length === 0 || chunk.textDelta.length > this.content.length);
+        // 如果新内容是之前内容的子集，可能是重复发送
+        if (this.previousCompleteResponse &&
+            potentialCompleteResponse.length < this.previousCompleteResponse.length &&
+            this.previousCompleteResponse.startsWith(potentialCompleteResponse)) {
+          // 跳过这个块，可能是重复发送的起始部分
+          console.log('[OpenAIStreamProcessor] 跳过疑似重复内容块');
+          return;
+        }
 
-      // 记录日志
-      console.log(`[OpenAIStreamProcessor] 模型 ${this.model.provider}/${this.model.id} 处理文本增量: ${chunk.textDelta.substring(0, 30)}${chunk.textDelta.length > 30 ? '...' : ''}`);
-
-      // 如果是DeepSeek模型的完整响应，直接替换内容
-      if (isDeepSeekModel && isCompleteResponse) {
-        console.log(`[OpenAIStreamProcessor] 检测到DeepSeek完整响应，长度: ${chunk.textDelta.length}，直接替换内容`);
-        this.content = chunk.textDelta;
-      } else {
-        // 正常情况：累加文本内容
-        this.content += chunk.textDelta;
+        this.previousCompleteResponse = potentialCompleteResponse;
       }
+
+      this.content += chunk.textDelta;
 
       // 通知内容更新
       if (this.onUpdate) {
@@ -174,16 +180,9 @@ export class OpenAIStreamProcessor {
       EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
         text: chunk.textDelta,
         isFirstChunk: this.content === chunk.textDelta, // 如果内容等于当前增量，则是第一个块
-        isCompleteResponse: isDeepSeekModel && isCompleteResponse, // 标记是否为完整响应
         messageId: this.messageId,
         blockId: this.blockId,
-        topicId: this.topicId,
-        // 添加调试信息
-        chunkLength: chunk.textDelta.length,
-        fullContentLength: this.content.length,
-        modelProvider: this.model.provider,
-        modelId: this.model.id,
-        timestamp: Date.now()
+        topicId: this.topicId
       });
 
     } else if (chunk.type === 'reasoning') {
@@ -207,6 +206,10 @@ export class OpenAIStreamProcessor {
         blockId: this.thinkingBlockId,
         topicId: this.topicId
       });
+
+      // 添加调试日志
+      console.log(`[OpenAIStreamProcessor] 发送思考增量事件，长度: ${chunk.textDelta.length}, 思考块ID: ${this.thinkingBlockId || '未设置'}, 消息ID: ${this.messageId || '未设置'}`);
+
 
     } else if (chunk.type === 'tool-calls') {
       // 处理工具调用
@@ -273,6 +276,9 @@ export class OpenAIStreamProcessor {
           blockId: this.thinkingBlockId,
           topicId: this.topicId
         });
+
+        // 添加调试日志
+        console.log(`[OpenAIStreamProcessor] 发送思考完成事件，长度: ${this.reasoning.length}, 思考块ID: ${this.thinkingBlockId || '未设置'}, 消息ID: ${this.messageId || '未设置'}`);
       }
 
       // 发送文本完成事件
@@ -292,6 +298,34 @@ export class OpenAIStreamProcessor {
           reasoningTime: this.reasoningStartTime ? (Date.now() - this.reasoningStartTime) : 0
         }
       });
+    }
+  }
+
+  /**
+   * 获取当前内容
+   * @returns 当前内容
+   */
+  public getContent(): string {
+    return this.content;
+  }
+
+  /**
+   * 获取当前推理内容
+   * @returns 当前推理内容
+   */
+  public getReasoning(): string {
+    return this.reasoning;
+  }
+
+  /**
+   * 设置思考块ID
+   * 允许ResponseHandler在创建思考块后更新流处理器中的thinkingBlockId
+   * @param blockId 思考块ID
+   */
+  public setThinkingBlockId(blockId: string): void {
+    if (blockId && blockId !== this.thinkingBlockId) {
+      console.log(`[OpenAIStreamProcessor] 更新思考块ID: ${blockId}`);
+      this.thinkingBlockId = blockId;
     }
   }
 }

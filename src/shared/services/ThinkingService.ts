@@ -74,8 +74,14 @@ export function extractThinkingFromResponse(
       break;
 
     case ThinkingSourceType.DEEPSEEK:
-      // DeepSeek Reasoner模型的思考过程提取
-      if (response.choices?.[0]?.message?.reasoning_content) {
+      // DeepSeek推理模型的思考过程提取
+      if (response.choices?.[0]?.message?.reasoning) {
+        return {
+          content: response.choices[0].message.reasoning,
+          sourceType: ThinkingSourceType.DEEPSEEK,
+          timeMs: response.reasoning_time || 0
+        };
+      } else if (response.choices?.[0]?.message?.reasoning_content) {
         return {
           content: response.choices[0].message.reasoning_content,
           sourceType: ThinkingSourceType.DEEPSEEK,
@@ -89,6 +95,13 @@ export function extractThinkingFromResponse(
           sourceType: ThinkingSourceType.DEEPSEEK,
           timeMs: response.reasoningTime || 0,
           tokens: response.usage.completion_tokens_details.reasoning_tokens
+        };
+      } else if (response.reasoning) {
+        // 直接从response.reasoning提取
+        return {
+          content: response.reasoning,
+          sourceType: ThinkingSourceType.DEEPSEEK,
+          timeMs: response.reasoningTime || response.reasoning_time || 0
         };
       }
       break;
@@ -131,6 +144,13 @@ export function extractThinkingFromResponse(
           content: response.choices[0].message.reasoning,
           sourceType: ThinkingSourceType.OPENAI,
           timeMs: response.thinking_time || 0
+        };
+      } else if (response.reasoning) {
+        // 直接从response.reasoning提取
+        return {
+          content: response.reasoning,
+          sourceType: ThinkingSourceType.OPENAI,
+          timeMs: response.reasoning_time || response.thinking_time || 0
         };
       } else if (response.choices?.[0]?.delta?.reasoning_content) {
         // 流式响应中的reasoning_content字段

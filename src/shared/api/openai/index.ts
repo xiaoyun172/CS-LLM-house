@@ -5,7 +5,7 @@
 
 // 导入必要的类型
 import type { Model, Message } from '../../types';
-import { createProvider } from './createProvider';
+import { OpenAIProvider } from './provider';
 
 // 导出客户端模块
 export {
@@ -55,9 +55,6 @@ export {
   OpenAIProvider
 } from './provider';
 
-// 导出Provider创建函数
-export { createProvider } from './createProvider';
-
 // 包装聊天请求函数以添加调试信息
 export async function sendChatRequest(
   messages: any[],
@@ -101,7 +98,7 @@ export async function sendChatRequest(
  */
 export function createOpenAIAPI(model: Model) {
   console.log(`[openai/index.ts] 创建OpenAI API适配器 - 模型ID: ${model.id}`);
-  const provider = createProvider(model);
+  const provider = new OpenAIProvider(model);
 
   return {
     /**

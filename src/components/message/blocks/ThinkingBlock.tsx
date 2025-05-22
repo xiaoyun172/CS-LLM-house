@@ -21,6 +21,16 @@ import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventEmitter
 import { useDeepMemo } from '../../../hooks/useMemoization';
 import { formatThinkingTimeSeconds } from '../../../shared/utils/thinkingUtils';
 
+// 思考过程显示样式类型
+export type ThinkingDisplayStyle = 'compact' | 'full' | 'hidden';
+
+// 思考过程显示样式常量
+export const ThinkingDisplayStyle = {
+  COMPACT: 'compact' as ThinkingDisplayStyle,
+  FULL: 'full' as ThinkingDisplayStyle,
+  HIDDEN: 'hidden' as ThinkingDisplayStyle
+};
+
 interface Props {
   block: ThinkingMessageBlock;
 }
@@ -79,34 +89,21 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
     setContent(block.content || '');
   }, [block.content]);
 
-  // 添加流式输出事件监听
+  // 添加流式输出事件监听 - 简化版本，参考电脑版
   useEffect(() => {
     // 检查是否正在流式输出
     if (isThinking) {
-      console.log('[ThinkingBlock] 块正在流式输出，设置更新机制');
-
       // 监听流式输出事件
       const thinkingDeltaHandler = () => {
-        console.log('[ThinkingBlock] 收到流式输出事件，更新内容');
         setContent(block.content || '');
         forceUpdate();
       };
 
-      // 订阅事件
-      const unsubscribeThinkingDelta = EventEmitter.on(EVENT_NAMES.STREAM_THINKING_DELTA, thinkingDeltaHandler);
-      const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, thinkingDeltaHandler);
-
-      // 定期强制更新UI，确保流式输出显示
-      const updateInterval = setInterval(() => {
-        console.log('[ThinkingBlock] 定期更新流式输出内容');
-        setContent(block.content || '');
-        forceUpdate();
-      }, 50); // 每50ms更新一次，更频繁地更新
+      // 只订阅思考完成事件，减少重复更新
+      const unsubscribeThinkingComplete = EventEmitter.on(EVENT_NAMES.STREAM_THINKING_COMPLETE, thinkingDeltaHandler);
 
       return () => {
-        unsubscribeThinkingDelta();
-        unsubscribeTextComplete();
-        clearInterval(updateInterval);
+        unsubscribeThinkingComplete();
       };
     }
   }, [isThinking, block.content]);

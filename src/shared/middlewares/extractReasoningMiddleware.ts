@@ -105,11 +105,9 @@ export function extractReasoningMiddleware<
                     chunk.type === 'reasoning' &&
                     'textDelta' in chunk) {
                   // 直接发送reasoning类型的块，不需要进行标签处理
-                  console.log(`[extractReasoningMiddleware] DeepSeek Reasoner思考内容: ${chunk.textDelta.substring(0, 30)}...`);
                   controller.enqueue(chunk);
                   isReasoning = true;
                   isFirstReasoning = false;
-                  afterSwitch = false; // 重置切换标志，避免添加分隔符
                 } else {
                   controller.enqueue(chunk);
                 }

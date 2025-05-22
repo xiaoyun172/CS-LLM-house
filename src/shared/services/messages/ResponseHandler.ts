@@ -12,9 +12,7 @@ import { versionService } from '../VersionService';
 import type {
   Chunk,
   TextDeltaChunk,
-  TextCompleteChunk,
-  ThinkingDeltaChunk,
-  ThinkingCompleteChunk
+  ThinkingDeltaChunk
 } from '../../types/chunk';
 
 /**
@@ -93,25 +91,11 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
 
       console.log(`[ResponseHandler] 接收块数据 - 长度: ${chunk.length}, 总长度: ${accumulatedContent.length}`);
 
-      // 使用流处理器处理数据块
+      // 简化流处理 - 只处理Redux状态更新，不重复发送事件
       const streamProcessor = createStreamProcessor({
-        // 文本块处理
+        // 文本块处理 - 简化逻辑
         onTextChunk: (_text) => {
-          // 检查是否是第一个文本块，如果是，立即替换占位符文本
-          const currentBlock = store.getState().messageBlocks.entities[blockId];
-          // 安全地检查内容，处理不同类型的块
-          const blockContent = currentBlock &&
-                              currentBlock.type === MessageBlockType.MAIN_TEXT ?
-                              (currentBlock as any).content : '';
-
-          const isFirstChunk = blockContent === '正在生成回复...' &&
-                              accumulatedContent !== '正在生成回复...';
-
-          if (isFirstChunk) {
-            console.log('[ResponseHandler] 收到第一个文本块，替换占位符文本');
-          }
-
-          // 使用新的 action 更新消息状态
+          // 更新消息状态
           store.dispatch(newMessagesActions.updateMessage({
             id: messageId,
             changes: {
@@ -125,7 +109,7 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
             streaming: true
           }));
 
-          // 更新Redux状态中的消息块
+          // 更新消息块状态
           store.dispatch(updateOneBlock({
             id: blockId,
             changes: {
@@ -134,32 +118,14 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
             }
           }));
 
-          // 如果是第一个文本块，立即保存到数据库，不使用节流
-          if (isFirstChunk) {
-            dexieStorage.updateMessageBlock(blockId, {
-              content: accumulatedContent,
-              status: MessageBlockStatus.STREAMING
-            }).then(() => {
-              console.log('[ResponseHandler] 成功替换占位符文本');
-              // 强制触发一个额外的事件，确保UI更新
-              EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
-                text: accumulatedContent,
-                messageId,
-                blockId,
-                topicId,
-                isFirstChunk: true
-              });
-            });
-          } else {
-            // 保存到数据库(使用节流防止过多写操作)
-            throttledUpdateBlock(blockId, {
-              content: accumulatedContent,
-              status: MessageBlockStatus.STREAMING
-            });
-          }
+          // 保存到数据库(使用节流防止过多写操作)
+          throttledUpdateBlock(blockId, {
+            content: accumulatedContent,
+            status: MessageBlockStatus.STREAMING
+          });
         },
 
-        // 思考块处理
+        // 思考块处理 - 简化逻辑
         onThinkingChunk: (text, thinking_millsec) => {
           // 检查是否已经有思考块
           if (!thinkingBlockId) {
@@ -183,6 +149,13 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
 
             // 保存到数据库
             dexieStorage.saveMessageBlock(newThinkingBlock);
+
+            // 将思考块ID添加到消息的blocks数组
+            store.dispatch(newMessagesActions.upsertBlockReference({
+              messageId,
+              blockId: thinkingBlockId,
+              status: MessageBlockStatus.STREAMING
+            }));
           } else {
             // 更新现有思考块
             store.dispatch(updateOneBlock({
@@ -199,14 +172,13 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
             throttledUpdateBlock(thinkingBlockId, {
               content: text,
               thinking_millsec: thinking_millsec,
-              status: MessageBlockStatus.STREAMING,
-              updatedAt: new Date().toISOString()
+              status: MessageBlockStatus.STREAMING
             });
           }
         }
       });
 
-      // 根据内容类型创建不同的数据块
+      // 简化数据块处理 - 只调用流处理器，不重复发送事件
       if (isThinking) {
         // 创建思考增量数据块
         const thinkingDeltaChunk: ThinkingDeltaChunk = {
@@ -217,106 +189,15 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
 
         // 处理思考数据块
         streamProcessor(thinkingDeltaChunk);
-
-        // 发送事件通知
-        EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_DELTA, {
-          text: thinkingContent,
-          thinking_millsec: thinkingTime,
-          messageId,
-          blockId: thinkingBlockId,
-          topicId
-        });
       } else {
-        // 检查是否是第一个文本块
-        const currentBlock = store.getState().messageBlocks.entities[blockId];
-        // 安全地检查内容，处理不同类型的块
-        const blockContent = currentBlock &&
-                            currentBlock.type === MessageBlockType.MAIN_TEXT ?
-                            (currentBlock as any).content : '';
-
-        const isFirstChunk = blockContent === '正在生成回复...' &&
-                            accumulatedContent !== '正在生成回复...';
-
-        // 获取当前消息的模型信息
-        const message = store.getState().messages.entities[messageId];
-        const modelInfo = message?.model || {};
-
         // 创建文本增量数据块
-        const textDeltaChunk: any = {
+        const textDeltaChunk: TextDeltaChunk = {
           type: 'text.delta',
-          text: chunk,
-          isFirstChunk: isFirstChunk,
-          messageId: messageId,
-          blockId: blockId,
-          topicId: topicId,
-          // 添加调试信息
-          chunkLength: chunk.length,
-          accumulatedLength: accumulatedContent.length,
-          timestamp: Date.now()
+          text: chunk
         };
-
-        // 添加模型信息（如果有）
-        if (modelInfo && typeof modelInfo === 'object') {
-          if ('provider' in modelInfo) {
-            textDeltaChunk.modelProvider = modelInfo.provider;
-          }
-          if ('id' in modelInfo) {
-            textDeltaChunk.modelId = modelInfo.id;
-          }
-          // 检查是否是DeepSeek模型
-          const provider = 'provider' in modelInfo ? String(modelInfo.provider) : '';
-          const id = 'id' in modelInfo ? String(modelInfo.id) : '';
-          textDeltaChunk.isDeepSeekModel = provider === 'deepseek' || (id && id.indexOf('deepseek') >= 0);
-        }
 
         // 处理文本数据块
         streamProcessor(textDeltaChunk);
-
-        // 如果是第一个文本块，立即更新数据库，不使用节流
-        if (isFirstChunk) {
-          console.log('[ResponseHandler] 发送第一个文本块事件，替换占位符文本');
-
-          // 立即更新数据库
-          dexieStorage.updateMessageBlock(blockId, {
-            content: chunk, // 直接使用第一个文本块的内容
-            status: MessageBlockStatus.STREAMING
-          }).then(() => {
-
-            // 发送特殊事件，通知UI立即替换占位符
-            EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_FIRST_CHUNK, {
-              text: chunk,
-              fullContent: chunk,
-              messageId,
-              blockId,
-              topicId,
-              // 添加模型信息
-              modelProvider: textDeltaChunk.modelProvider,
-              modelId: textDeltaChunk.modelId,
-              isDeepSeekModel: textDeltaChunk.isDeepSeekModel,
-              timestamp: Date.now()
-            });
-
-          });
-        }
-
-        // 发送事件通知 - 只发送当前文本块，而不是累积内容
-        // 这样可以实现累加效果
-        EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
-          text: chunk, // 只发送当前文本块
-          isFirstChunk: isFirstChunk,
-          messageId,
-          blockId,
-          topicId,
-          // 添加模型信息
-          modelProvider: textDeltaChunk.modelProvider,
-          modelId: textDeltaChunk.modelId,
-          isDeepSeekModel: textDeltaChunk.isDeepSeekModel,
-          // 添加调试信息
-          chunkLength: chunk.length,
-          accumulatedLength: accumulatedContent.length,
-          timestamp: Date.now()
-        });
-
       }
 
       // 返回当前累积的内容，这样流式响应处理函数可以获取到最新内容
@@ -337,125 +218,69 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         accumulatedContent = finalContent;
       }
 
-      // 创建文本完成数据块
-      const textCompleteChunk: TextCompleteChunk = {
-        type: 'text.complete',
-        text: accumulatedContent
-      };
-
       const now = new Date().toISOString();
 
-      // 使用流处理器处理完成数据块
-      const streamProcessor = createStreamProcessor({
-        onTextComplete: (finalText) => {
-          // 使用新的 action 更新消息状态
-          store.dispatch(newMessagesActions.updateMessage({
-            id: messageId,
-            changes: {
-              status: AssistantMessageStatus.SUCCESS,
-              updatedAt: now
-            }
-          }));
-
-          // 更新消息块状态 - 同时更新Redux状态和数据库
-          store.dispatch(updateOneBlock({
-            id: blockId,
-            changes: {
-              content: finalText,
-              status: MessageBlockStatus.SUCCESS,
-              updatedAt: now
-            }
-          }));
-
-          // 设置主题为非流式响应状态
-          store.dispatch(newMessagesActions.setTopicStreaming({
-            topicId,
-            streaming: false
-          }));
-
-          // 设置主题为非加载状态
-          store.dispatch(newMessagesActions.setTopicLoading({
-            topicId,
-            loading: false
-          }));
-        },
-
-        // 思考块完成处理
-        onThinkingComplete: (finalThinkingText, thinking_millsec) => {
-          // 如果有思考块，更新其状态为完成
-          if (thinkingBlockId) {
-            // 更新Redux状态
-            store.dispatch(updateOneBlock({
-              id: thinkingBlockId,
-              changes: {
-                content: finalThinkingText,
-                thinking_millsec: thinking_millsec,
-                status: MessageBlockStatus.SUCCESS,
-                updatedAt: now
-              }
-            }));
-
-            // 保存到数据库
-            dexieStorage.updateMessageBlock(thinkingBlockId, {
-              content: finalThinkingText,
-              thinking_millsec: thinking_millsec,
-              status: MessageBlockStatus.SUCCESS,
-              updatedAt: now
-            });
-
-            // 发送思考完成事件
-            EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_COMPLETE, {
-              text: finalThinkingText,
-              thinking_millsec: thinking_millsec,
-              messageId,
-              blockId: thinkingBlockId,
-              topicId
-            });
-          }
+      // 简化完成处理 - 直接更新状态，不使用流处理器
+      // 更新消息状态
+      store.dispatch(newMessagesActions.updateMessage({
+        id: messageId,
+        changes: {
+          status: AssistantMessageStatus.SUCCESS,
+          updatedAt: now
         }
-      });
+      }));
 
-      // 处理完成数据块
-      streamProcessor(textCompleteChunk);
+      // 更新消息块状态
+      store.dispatch(updateOneBlock({
+        id: blockId,
+        changes: {
+          content: accumulatedContent,
+          status: MessageBlockStatus.SUCCESS,
+          updatedAt: now
+        }
+      }));
 
-      // 如果有思考块，也发送思考完成数据块
+      // 设置主题为非流式响应状态
+      store.dispatch(newMessagesActions.setTopicStreaming({
+        topicId,
+        streaming: false
+      }));
+
+      // 设置主题为非加载状态
+      store.dispatch(newMessagesActions.setTopicLoading({
+        topicId,
+        loading: false
+      }));
+
+      // 处理思考块完成
       if (thinkingBlockId) {
         // 获取思考块
         const thinkingBlock = store.getState().messageBlocks.entities[thinkingBlockId];
 
         if (thinkingBlock && thinkingBlock.type === MessageBlockType.THINKING) {
-          // 类型断言为思考块
-          const typedThinkingBlock = thinkingBlock as any;
+          // 更新思考块状态为完成
+          store.dispatch(updateOneBlock({
+            id: thinkingBlockId,
+            changes: {
+              status: MessageBlockStatus.SUCCESS,
+              updatedAt: now
+            }
+          }));
 
-          const thinkingCompleteChunk: ThinkingCompleteChunk = {
-            type: 'thinking.complete',
-            text: typedThinkingBlock.content || '',
-            thinking_millsec: typedThinkingBlock.thinking_millsec || 0
-          };
-
-          streamProcessor(thinkingCompleteChunk);
+          // 保存到数据库
+          dexieStorage.updateMessageBlock(thinkingBlockId, {
+            status: MessageBlockStatus.SUCCESS,
+            updatedAt: now
+          });
         }
       }
 
-      // 获取当前消息的模型信息
-      const message = store.getState().messages.entities[messageId];
-      const modelInfo = message?.model || {};
-
-      // 检查是否是DeepSeek模型
-      const provider = modelInfo && 'provider' in modelInfo ? String(modelInfo.provider) : '';
-      const id = modelInfo && 'id' in modelInfo ? String(modelInfo.id) : '';
-      const isDeepSeekModel = provider === 'deepseek' || (id && id.indexOf('deepseek') >= 0);
-
-      // 发送事件通知
+      // 发送完成事件
       EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
         text: accumulatedContent,
         messageId,
         blockId,
-        topicId,
-        // 添加模型信息
-        modelProvider: provider,
-        modelId: id,
-        isDeepSeekModel: isDeepSeekModel
+        topicId
       });
 
       // 保存最终状态到数据库

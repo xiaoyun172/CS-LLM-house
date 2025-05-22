@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
-import { generateId } from '../../../shared/utils';
+import { generateBlockId } from '../../../shared/utils';
 import {
   createUserMessage,
   createAssistantMessage
@@ -137,7 +137,7 @@ export const useChatFeatures = (
 
             // 创建图像块
             const imageBlock = {
-              id: generateId(),
+              id: generateBlockId('image'),
               messageId: assistantMessage.id,
               type: MessageBlockType.IMAGE,
               createdAt: new Date().toISOString(),

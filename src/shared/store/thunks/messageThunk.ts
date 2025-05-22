@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid';
-import { dexieStorage } from '../../services/DexieStorageService';
+import { DataRepository } from '../../services/DataRepository';
+import { dexieStorage } from '../../services/DexieStorageService'; // 保持兼容性，逐步迁移
 import { createUserMessage, createAssistantMessage } from '../../utils/messageUtils';
 import { getMainTextContent } from '../../utils/blockUtils';
 import { newMessagesActions } from '../slices/newMessagesSlice';
@@ -94,7 +95,7 @@ export const sendMessage = (
   try {
     // 获取当前助手ID
     // 直接从数据库获取主题信息
-    const topic = await dexieStorage.getTopic(topicId);
+    const topic = await DataRepository.topics.getById(topicId);
     if (!topic) {
       throw new Error(`主题 ${topicId} 不存在`);
     }
@@ -202,10 +203,10 @@ const processAssistantResponse = async (
 
     // 5. 保存块到Redux和数据库
     dispatch(upsertOneBlock(mainBlock));
-    await dexieStorage.saveMessageBlock(mainBlock);
+    await DataRepository.blocks.save(mainBlock);
 
     // 6. 更新消息
-    await dexieStorage.updateMessage(assistantMessage.id, {
+    await DataRepository.messages.update(assistantMessage.id, {
       blocks: [mainTextBlockId]
     });
 
