@@ -3,7 +3,7 @@
  * 提供各种模型能力检测函数
  */
 import type { Model } from '../types';
-import { REASONING_REGEX, VISION_REGEX } from '../config/modelPatterns';
+import { REASONING_REGEX } from '../config/modelPatterns';
 
 /**
  * 检查模型是否支持OpenAI风格的推理
@@ -12,9 +12,9 @@ import { REASONING_REGEX, VISION_REGEX } from '../config/modelPatterns';
  */
 export function isOpenAIReasoningModel(model?: Model): boolean {
   if (!model) return false;
-  
-  return model.id.includes('o1') || 
-         model.id.includes('o3') || 
+
+  return model.id.includes('o1') ||
+         model.id.includes('o3') ||
          model.id.includes('o4') ||
          model.id.includes('gpt-4') ||
          model.id.includes('gpt-4o');
@@ -27,7 +27,7 @@ export function isOpenAIReasoningModel(model?: Model): boolean {
  */
 export function isClaudeReasoningModel(model?: Model): boolean {
   if (!model) return false;
-  
+
   return model.id.includes('claude-3');
 }
 
@@ -38,8 +38,8 @@ export function isClaudeReasoningModel(model?: Model): boolean {
  */
 export function isGeminiReasoningModel(model?: Model): boolean {
   if (!model) return false;
-  
-  return model.id.includes('gemini-2.5') || 
+
+  return model.id.includes('gemini-2.5') ||
          model.id.includes('gemini-1.5-pro');
 }
 
@@ -50,9 +50,9 @@ export function isGeminiReasoningModel(model?: Model): boolean {
  */
 export function isQwenReasoningModel(model?: Model): boolean {
   if (!model) return false;
-  
-  return model.id.includes('qwen3') || 
-         model.id.includes('qwen-max') || 
+
+  return model.id.includes('qwen3') ||
+         model.id.includes('qwen-max') ||
          model.id.includes('qwen-plus');
 }
 
@@ -63,7 +63,7 @@ export function isQwenReasoningModel(model?: Model): boolean {
  */
 export function isGrokReasoningModel(model?: Model): boolean {
   if (!model) return false;
-  
+
   return model.id.includes('grok-3-mini');
 }
 
@@ -74,8 +74,8 @@ export function isGrokReasoningModel(model?: Model): boolean {
  */
 export function isDeepSeekReasoningModel(model?: Model): boolean {
   if (!model) return false;
-  
-  return model.id.includes('deepseek-reasoner') || 
+
+  return model.id.includes('deepseek-reasoner') ||
          model.id.includes('deepseek-coder');
 }
 
@@ -86,7 +86,7 @@ export function isDeepSeekReasoningModel(model?: Model): boolean {
  */
 export function isSupportedReasoningEffortModel(model?: Model): boolean {
   if (!model) return false;
-  
+
   return isOpenAIReasoningModel(model) || isGrokReasoningModel(model);
 }
 
@@ -97,9 +97,9 @@ export function isSupportedReasoningEffortModel(model?: Model): boolean {
  */
 export function isSupportedThinkingTokenModel(model?: Model): boolean {
   if (!model) return false;
-  
-  return isClaudeReasoningModel(model) || 
-         isGeminiReasoningModel(model) || 
+
+  return isClaudeReasoningModel(model) ||
+         isGeminiReasoningModel(model) ||
          isQwenReasoningModel(model);
 }
 
@@ -110,23 +110,23 @@ export function isSupportedThinkingTokenModel(model?: Model): boolean {
  */
 export function isReasoningModel(model?: Model): boolean {
   if (!model) return false;
-  
+
   // 检查模型类型是否包含推理类型
   if (model.modelTypes?.includes('reasoning')) {
     return true;
   }
-  
+
   // 检查模型能力是否包含推理
   if (model.capabilities?.reasoning) {
     return true;
   }
-  
+
   // 检查提供商特定逻辑
   if (model.provider === 'doubao') {
-    return REASONING_REGEX.test(model.name || '') || 
+    return REASONING_REGEX.test(model.name || '') ||
            Boolean(model.modelTypes?.includes('reasoning'));
   }
-  
+
   // 检查特定模型类型
   if (
     isClaudeReasoningModel(model) ||
@@ -139,9 +139,9 @@ export function isReasoningModel(model?: Model): boolean {
   ) {
     return true;
   }
-  
+
   // 使用正则表达式检查模型ID
-  return REASONING_REGEX.test(model.id) || 
+  return REASONING_REGEX.test(model.id) ||
          Boolean(model.modelTypes?.includes('reasoning'));
 }
 

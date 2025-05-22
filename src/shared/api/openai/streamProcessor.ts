@@ -21,16 +21,13 @@ export type OpenAIStreamChunkType =
   | 'finish';
 
 /**
- * OpenAI流式响应块
+ * 完整的OpenAI流式响应块
  */
-export interface OpenAIStreamChunk {
-  type: OpenAIStreamChunkType;
-  textDelta?: string;
-  delta?: any;
-  finishReason?: string;
-  usage?: any;
-  chunk?: any;
-}
+export type CompleteOpenAIStreamChunk =
+  | { type: 'text-delta'; textDelta: string }
+  | { type: 'reasoning'; textDelta: string }
+  | { type: 'tool-calls'; delta: any }
+  | { type: 'finish'; finishReason?: string; usage?: any; delta?: any; chunk?: any };
 
 /**
  * OpenAI流式响应处理器选项
@@ -53,7 +50,6 @@ export class OpenAIStreamProcessor {
   private reasoning: string = '';
   private startTime: number;
   private reasoningStartTime: number = 0;
-  private firstTokenTime: number = 0;
 
   /**
    * 构造函数
@@ -82,7 +78,7 @@ export class OpenAIStreamProcessor {
       this.reasoningStartTime = 0;
 
       // 使用中间件处理流式响应
-      const { stream: processedStream } = await extractReasoningMiddleware<OpenAIStreamChunk>({
+      const { stream: processedStream } = await extractReasoningMiddleware<CompleteOpenAIStreamChunk>({
         openingTag: reasoningTag.openingTag,
         closingTag: reasoningTag.closingTag,
         separator: reasoningTag.separator,
@@ -127,16 +123,14 @@ export class OpenAIStreamProcessor {
    * 处理处理后的流式响应块
    * @param chunk 流式响应块
    */
-  private async handleProcessedChunk(chunk: OpenAIStreamChunk): Promise<void> {
+  private async handleProcessedChunk(chunk: CompleteOpenAIStreamChunk): Promise<void> {
     if (chunk.type === 'text-delta') {
       // 处理文本增量
-      if (chunk.textDelta) {
-        this.content += chunk.textDelta;
+      this.content += chunk.textDelta;
 
-        // 通知内容更新
-        if (this.onUpdate) {
-          this.onUpdate(this.content, this.reasoning);
-        }
+      // 通知内容更新
+      if (this.onUpdate) {
+        this.onUpdate(this.content, this.reasoning);
       }
     } else if (chunk.type === 'reasoning') {
       // 处理思考增量
@@ -144,13 +138,11 @@ export class OpenAIStreamProcessor {
         this.reasoningStartTime = Date.now();
       }
 
-      if (chunk.textDelta) {
-        this.reasoning += chunk.textDelta;
+      this.reasoning += chunk.textDelta;
 
-        // 通知内容更新
-        if (this.onUpdate) {
-          this.onUpdate(this.content, this.reasoning);
-        }
+      // 通知内容更新
+      if (this.onUpdate) {
+        this.onUpdate(this.content, this.reasoning);
       }
     } else if (chunk.type === 'tool-calls') {
       // 处理工具调用

@@ -33,9 +33,13 @@ export function asyncGeneratorToReadableStream<T>(generator: AsyncGenerator<T>):
         controller.error(error);
       }
     },
-    cancel() {
-      // 尝试取消生成器
-      return generator.return?.({} as T).catch(() => {});
+    async cancel() {
+      // 尝试取消生成器，忽略返回值
+      try {
+        await generator.return?.({} as T);
+      } catch (e) {
+        // 忽略错误
+      }
     }
   });
 }
@@ -79,20 +83,27 @@ export function textToReasoningDelta(text: string): { type: 'reasoning'; textDel
 }
 
 /**
- * 将OpenAI块转换为文本增量
- * @param chunk OpenAI块
- * @returns 文本增量对象
+ * OpenAI流式响应块类型
  */
-export async function* openAIChunkToTextDelta(stream: AsyncIterable<any>): AsyncGenerator<{ type: 'text-delta'; textDelta: string }> {
+export type OpenAIStreamChunk =
+  | { type: 'text-delta'; textDelta: string }
+  | { type: 'reasoning'; textDelta: string };
+
+/**
+ * 将OpenAI块转换为文本增量或思考增量
+ * @param chunk OpenAI块
+ * @returns 文本增量或思考增量对象
+ */
+export async function* openAIChunkToTextDelta(stream: AsyncIterable<any>): AsyncGenerator<OpenAIStreamChunk> {
   for await (const chunk of stream) {
     if (chunk.choices && chunk.choices.length > 0) {
       const delta = chunk.choices[0].delta;
-      
+
       // 处理文本内容
       if (delta?.content) {
         yield { type: 'text-delta', textDelta: delta.content };
       }
-      
+
       // 处理思考内容
       if (delta?.reasoning_content || delta?.reasoning) {
         yield { type: 'reasoning', textDelta: delta.reasoning_content || delta.reasoning };
