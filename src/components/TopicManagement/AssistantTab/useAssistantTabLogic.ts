@@ -187,7 +187,7 @@ export function useAssistantTabLogic(
     setEditDialogOpen(false);
   };
 
-  // 保存编辑后的助手
+  // 保存编辑后的助手 - 简化版，不再同步更新话题提示词
   const handleSaveAssistant = async () => {
     if (!selectedMenuAssistant) return;
 
@@ -216,6 +216,9 @@ export function useAssistantTabLogic(
 
       // 显示成功通知
       showNotification('助手已更新');
+
+      // 添加提示，说明系统提示词更改不会影响现有话题
+      console.log('[useAssistantTabLogic] 注意：系统提示词更改不会影响现有话题，只会应用于新创建的话题');
 
       handleCloseEditDialog();
     } catch (error) {

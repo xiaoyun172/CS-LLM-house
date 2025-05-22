@@ -254,12 +254,21 @@ export function findMainTextBlocks(message: Message): MainTextMessageBlock[] {
         content = (message as any).content;
       }
 
-      // 创建一个默认的主文本块
+      // 尝试从版本的metadata中获取内容
+      if (!content && message.versions && message.versions.length > 0) {
+        const activeVersion = message.versions.find(v => v.isActive);
+        if (activeVersion && activeVersion.metadata && activeVersion.metadata.content) {
+          content = activeVersion.metadata.content;
+          console.log(`[findMainTextBlocks] 从版本metadata中获取内容`);
+        }
+      }
+
+      // 创建一个默认的主文本块，但不显示"你好"这样的默认内容
       const defaultBlock: MainTextMessageBlock = {
         id: 'default-block-' + Date.now(),
         messageId: message.id,
         type: MessageBlockType.MAIN_TEXT,
-        content: content || '你好', // 使用默认内容
+        content: content || '', // 使用空字符串而不是默认内容
         createdAt: new Date().toISOString(),
         status: MessageBlockStatus.SUCCESS
       };
@@ -369,10 +378,35 @@ export function findCitationBlocks(message: Message): CitationMessageBlock[] {
 
 /**
  * 获取消息的主要文本内容
+ * 简化版本：直接从消息块中获取内容，与电脑版保持一致
  */
 export function getMainTextContent(message: Message): string {
-  const textBlocks = findMainTextBlocks(message);
-  return textBlocks.map(block => block.content).join('\n\n');
+  // 安全检查
+  if (!message) {
+    return '';
+  }
+
+  try {
+    // 从消息块中获取内容
+    const textBlocks = findMainTextBlocks(message);
+
+    // 过滤掉空内容的块
+    const nonEmptyBlocks = textBlocks.filter(block => block.content && block.content.trim());
+
+    if (nonEmptyBlocks.length === 0) {
+      // 如果没有文本块，尝试从content属性获取
+      if (typeof (message as any).content === 'string' && (message as any).content.trim()) {
+        return (message as any).content;
+      }
+      return '';
+    }
+
+    // 连接所有文本块的内容
+    return nonEmptyBlocks.map(block => block.content).join('\n\n');
+  } catch (error) {
+    console.error('[getMainTextContent] 获取消息内容失败:', error);
+    return '';
+  }
 }
 
 /**
@@ -922,7 +956,7 @@ export function findMathBlocks(message: Message): MathMessageBlock[] {
 
 /**
  * 重置助手消息，创建一个干净的消息对象，为重新生成做准备
- * 
+ *
  * @param originalMessage 原始助手消息
  * @param updates 可选的更新内容，例如状态、模型等
  * @returns 重置后的消息对象

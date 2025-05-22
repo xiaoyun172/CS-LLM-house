@@ -1,32 +1,25 @@
-import Emittery from 'emittery';
+import { EventEmitter as EmitteryInstance, EVENT_NAMES as COMMON_EVENT_NAMES } from './EventEmitter';
 
-// 创建全局事件发射器
-export const EventEmitter = new Emittery();
+// 重新导出 EventEmitter，以保持向后兼容性
+export const EventEmitter = EmitteryInstance;
 
-// 定义事件名称常量
+// 定义事件名称常量，合并通用事件名称和特定于服务的事件名称
 export const EVENT_NAMES = {
+  ...COMMON_EVENT_NAMES,
+
+  // 服务特定事件
   SEND_MESSAGE: 'SEND_MESSAGE',
-  MESSAGE_COMPLETE: 'MESSAGE_COMPLETE',
   CLEAR_MESSAGES: 'CLEAR_MESSAGES',
   ADD_NEW_TOPIC: 'ADD_NEW_TOPIC',
-  TOPIC_CREATED: 'TOPIC_CREATED',
-  TOPIC_DELETED: 'TOPIC_DELETED',
   SHOW_TOPIC_SIDEBAR: 'SHOW_TOPIC_SIDEBAR',
   SWITCH_TOPIC_SIDEBAR: 'SWITCH_TOPIC_SIDEBAR',
   FORCE_MESSAGES_UPDATE: 'FORCE_MESSAGES_UPDATE',
   SERVICE_ERROR: 'SERVICE_ERROR',
   IMAGE_PROCESSING_DEPRECATED: 'IMAGE_PROCESSING_DEPRECATED',
   TOPICS_CLEARED: 'TOPICS_CLEARED',
-  MESSAGE_CREATED: 'message:created',
-  MESSAGE_UPDATED: 'message:updated',
-  MESSAGE_DELETED: 'MESSAGE_DELETED',
   MESSAGE_ERROR: 'message:error',
-  BLOCK_UPDATED: 'block:updated',
   STREAMING_STARTED: 'streaming:started',
-  STREAMING_ENDED: 'streaming:ended',
-  CONTENT_UPDATED: 'content:updated',
-  RESPONSE_COMPLETED: 'response:completed',
-  RESPONSE_ERROR: 'response:error'
+  STREAMING_ENDED: 'streaming:ended'
 };
 
 // 提供一个更简洁的事件服务使用方式

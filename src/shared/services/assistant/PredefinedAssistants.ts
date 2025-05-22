@@ -124,9 +124,9 @@ export function getUserAgents(): Assistant[] {
  * 获取所有可用的助手来源
  */
 export function getAllAgentSources(): Assistant[] {
-  const defaultAssistant = getDefaultAssistant();
+  // 不再单独添加默认助手，因为它已经包含在systemAgents中
   const systemAgents = getSystemAgents();
   const userAgents = getUserAgents();
 
-  return [defaultAssistant, ...systemAgents, ...userAgents];
+  return [...systemAgents, ...userAgents];
 }

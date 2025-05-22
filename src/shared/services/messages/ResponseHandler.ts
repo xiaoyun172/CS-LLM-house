@@ -1,12 +1,21 @@
 import { throttle } from 'lodash';
 import store from '../../store';
 import { dexieStorage } from '../DexieStorageService';
-// 注意：移除了事件系统导入，完全依赖Redux状态更新
-import { MessageBlockStatus, AssistantMessageStatus } from '../../types/newMessage';
+import { EventEmitter, EVENT_NAMES } from '../EventEmitter';
+import { createStreamProcessor } from '../StreamProcessingService';
+import { MessageBlockStatus, AssistantMessageStatus, MessageBlockType } from '../../types/newMessage';
 import { newMessagesActions } from '../../store/slices/newMessagesSlice';
 import type { ErrorInfo } from '../../store/slices/newMessagesSlice';
 import { formatErrorMessage, getErrorType } from '../../utils/error';
-import { updateOneBlock } from '../../store/slices/messageBlocksSlice';
+import { updateOneBlock, addOneBlock } from '../../store/slices/messageBlocksSlice';
+import { versionService } from '../VersionService';
+import type {
+  Chunk,
+  TextDeltaChunk,
+  TextCompleteChunk,
+  ThinkingDeltaChunk,
+  ThinkingCompleteChunk
+} from '../../types/chunk';
 
 /**
  * 响应处理器配置类型
@@ -50,47 +59,235 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
   // 创建节流更新函数
   const throttledUpdateBlock = createThrottledUpdateBlock();
 
+  // 思考块ID
+  let thinkingBlockId: string | null = null;
+
   return {
     /**
      * 处理流式响应片段
      * @param chunk 响应片段
      */
     handleChunk(chunk: string) {
-      // 附加新内容
-      accumulatedContent += chunk;
+      // 尝试解析JSON，检查是否包含思考内容
+      let parsedChunk: any = null;
+      let isThinking = false;
+      let thinkingContent = '';
+      let thinkingTime = 0;
+
+      try {
+        parsedChunk = JSON.parse(chunk);
+        if (parsedChunk && parsedChunk.reasoning) {
+          isThinking = true;
+          thinkingContent = parsedChunk.reasoning;
+          thinkingTime = parsedChunk.reasoningTime || 0;
+        }
+      } catch (e) {
+        // 不是JSON，按普通文本处理
+        parsedChunk = null;
+      }
+
+      // 如果是普通文本，附加到累积内容
+      if (!isThinking) {
+        accumulatedContent += chunk;
+      }
 
       console.log(`[ResponseHandler] 接收块数据 - 长度: ${chunk.length}, 总长度: ${accumulatedContent.length}`);
 
-      // 使用新的 action 更新消息状态
-      store.dispatch(newMessagesActions.updateMessage({
-        id: messageId,
-        changes: {
-          status: AssistantMessageStatus.STREAMING
+      // 使用流处理器处理数据块
+      const streamProcessor = createStreamProcessor({
+        // 文本块处理
+        onTextChunk: (_text) => {
+          // 检查是否是第一个文本块，如果是，立即替换占位符文本
+          const currentBlock = store.getState().messageBlocks.entities[blockId];
+          // 安全地检查内容，处理不同类型的块
+          const blockContent = currentBlock &&
+                              currentBlock.type === MessageBlockType.MAIN_TEXT ?
+                              (currentBlock as any).content : '';
+
+          const isFirstChunk = blockContent === '正在生成回复...' &&
+                              accumulatedContent !== '正在生成回复...';
+
+          if (isFirstChunk) {
+            console.log('[ResponseHandler] 收到第一个文本块，替换占位符文本');
+          }
+
+          // 使用新的 action 更新消息状态
+          store.dispatch(newMessagesActions.updateMessage({
+            id: messageId,
+            changes: {
+              status: AssistantMessageStatus.STREAMING
+            }
+          }));
+
+          // 设置主题为流式响应状态
+          store.dispatch(newMessagesActions.setTopicStreaming({
+            topicId,
+            streaming: true
+          }));
+
+          // 更新Redux状态中的消息块
+          store.dispatch(updateOneBlock({
+            id: blockId,
+            changes: {
+              content: accumulatedContent,
+              status: MessageBlockStatus.STREAMING
+            }
+          }));
+
+          // 如果是第一个文本块，立即保存到数据库，不使用节流
+          if (isFirstChunk) {
+            dexieStorage.updateMessageBlock(blockId, {
+              content: accumulatedContent,
+              status: MessageBlockStatus.STREAMING
+            }).then(() => {
+              console.log('[ResponseHandler] 成功替换占位符文本');
+              // 强制触发一个额外的事件，确保UI更新
+              EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
+                text: accumulatedContent,
+                messageId,
+                blockId,
+                topicId,
+                isFirstChunk: true
+              });
+            });
+          } else {
+            // 保存到数据库(使用节流防止过多写操作)
+            throttledUpdateBlock(blockId, {
+              content: accumulatedContent,
+              status: MessageBlockStatus.STREAMING
+            });
+          }
+        },
+
+        // 思考块处理
+        onThinkingChunk: (text, thinking_millsec) => {
+          // 检查是否已经有思考块
+          if (!thinkingBlockId) {
+            // 创建新的思考块
+            const newThinkingBlock = {
+              id: `thinking-${Date.now()}`,
+              messageId,
+              type: MessageBlockType.THINKING,
+              content: text,
+              thinking_millsec: thinking_millsec,
+              status: MessageBlockStatus.STREAMING,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+
+            // 保存思考块ID
+            thinkingBlockId = newThinkingBlock.id;
+
+            // 添加到Redux状态
+            store.dispatch(addOneBlock(newThinkingBlock));
+
+            // 保存到数据库
+            dexieStorage.saveMessageBlock(newThinkingBlock);
+          } else {
+            // 更新现有思考块
+            store.dispatch(updateOneBlock({
+              id: thinkingBlockId,
+              changes: {
+                content: text,
+                thinking_millsec: thinking_millsec,
+                status: MessageBlockStatus.STREAMING,
+                updatedAt: new Date().toISOString()
+              }
+            }));
+
+            // 保存到数据库(使用节流防止过多写操作)
+            throttledUpdateBlock(thinkingBlockId, {
+              content: text,
+              thinking_millsec: thinking_millsec,
+              status: MessageBlockStatus.STREAMING,
+              updatedAt: new Date().toISOString()
+            });
+          }
         }
-      }));
-
-      // 设置主题为流式响应状态
-      store.dispatch(newMessagesActions.setTopicStreaming({
-        topicId,
-        streaming: true
-      }));
-
-      // 更新Redux状态中的消息块
-      store.dispatch(updateOneBlock({
-        id: blockId,
-        changes: {
-          content: accumulatedContent,
-          status: MessageBlockStatus.STREAMING
-        }
-      }));
-
-      // 保存到数据库(使用节流防止过多写操作)
-      throttledUpdateBlock(blockId, {
-        content: accumulatedContent,
-        status: MessageBlockStatus.STREAMING
       });
 
-      // 注意：移除了事件系统通知，完全依赖Redux状态更新触发UI更新
+      // 根据内容类型创建不同的数据块
+      if (isThinking) {
+        // 创建思考增量数据块
+        const thinkingDeltaChunk: ThinkingDeltaChunk = {
+          type: 'thinking.delta',
+          text: thinkingContent,
+          thinking_millsec: thinkingTime
+        };
+
+        // 处理思考数据块
+        streamProcessor(thinkingDeltaChunk);
+
+        // 发送事件通知
+        EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_DELTA, {
+          text: thinkingContent,
+          thinking_millsec: thinkingTime,
+          messageId,
+          blockId: thinkingBlockId,
+          topicId
+        });
+      } else {
+        // 检查是否是第一个文本块
+        const currentBlock = store.getState().messageBlocks.entities[blockId];
+        // 安全地检查内容，处理不同类型的块
+        const blockContent = currentBlock &&
+                            currentBlock.type === MessageBlockType.MAIN_TEXT ?
+                            (currentBlock as any).content : '';
+
+        const isFirstChunk = blockContent === '正在生成回复...' &&
+                            accumulatedContent !== '正在生成回复...';
+
+        // 创建文本增量数据块
+        const textDeltaChunk: TextDeltaChunk = {
+          type: 'text.delta',
+          text: chunk,
+          isFirstChunk: isFirstChunk,
+          messageId: messageId,
+          blockId: blockId,
+          topicId: topicId
+        };
+
+        // 处理文本数据块
+        streamProcessor(textDeltaChunk);
+
+        // 如果是第一个文本块，立即更新数据库，不使用节流
+        if (isFirstChunk) {
+          console.log('[ResponseHandler] 发送第一个文本块事件，替换占位符文本');
+
+          // 立即更新数据库
+          dexieStorage.updateMessageBlock(blockId, {
+            content: chunk, // 直接使用第一个文本块的内容
+            status: MessageBlockStatus.STREAMING
+          }).then(() => {
+
+            // 发送特殊事件，通知UI立即替换占位符
+            EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_FIRST_CHUNK, {
+              text: chunk,
+              fullContent: chunk,
+              messageId,
+              blockId,
+              topicId,
+              timestamp: Date.now()
+            });
+
+          });
+        }
+
+        // 发送事件通知 - 只发送当前文本块，而不是累积内容
+        // 这样可以实现累加效果
+        EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
+          text: chunk, // 只发送当前文本块
+          isFirstChunk: isFirstChunk,
+          messageId,
+          blockId,
+          topicId,
+          // 添加调试信息
+          chunkLength: chunk.length,
+          accumulatedLength: accumulatedContent.length,
+          timestamp: Date.now()
+        });
+
+      }
 
       // 返回当前累积的内容，这样流式响应处理函数可以获取到最新内容
       return accumulatedContent;
@@ -110,38 +307,113 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         accumulatedContent = finalContent;
       }
 
+      // 创建文本完成数据块
+      const textCompleteChunk: TextCompleteChunk = {
+        type: 'text.complete',
+        text: accumulatedContent
+      };
+
       const now = new Date().toISOString();
 
-      // 使用新的 action 更新消息状态
-      store.dispatch(newMessagesActions.updateMessage({
-        id: messageId,
-        changes: {
-          status: AssistantMessageStatus.SUCCESS,
-          updatedAt: now
+      // 使用流处理器处理完成数据块
+      const streamProcessor = createStreamProcessor({
+        onTextComplete: (finalText) => {
+          // 使用新的 action 更新消息状态
+          store.dispatch(newMessagesActions.updateMessage({
+            id: messageId,
+            changes: {
+              status: AssistantMessageStatus.SUCCESS,
+              updatedAt: now
+            }
+          }));
+
+          // 更新消息块状态 - 同时更新Redux状态和数据库
+          store.dispatch(updateOneBlock({
+            id: blockId,
+            changes: {
+              content: finalText,
+              status: MessageBlockStatus.SUCCESS,
+              updatedAt: now
+            }
+          }));
+
+          // 设置主题为非流式响应状态
+          store.dispatch(newMessagesActions.setTopicStreaming({
+            topicId,
+            streaming: false
+          }));
+
+          // 设置主题为非加载状态
+          store.dispatch(newMessagesActions.setTopicLoading({
+            topicId,
+            loading: false
+          }));
+        },
+
+        // 思考块完成处理
+        onThinkingComplete: (finalThinkingText, thinking_millsec) => {
+          // 如果有思考块，更新其状态为完成
+          if (thinkingBlockId) {
+            // 更新Redux状态
+            store.dispatch(updateOneBlock({
+              id: thinkingBlockId,
+              changes: {
+                content: finalThinkingText,
+                thinking_millsec: thinking_millsec,
+                status: MessageBlockStatus.SUCCESS,
+                updatedAt: now
+              }
+            }));
+
+            // 保存到数据库
+            dexieStorage.updateMessageBlock(thinkingBlockId, {
+              content: finalThinkingText,
+              thinking_millsec: thinking_millsec,
+              status: MessageBlockStatus.SUCCESS,
+              updatedAt: now
+            });
+
+            // 发送思考完成事件
+            EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_COMPLETE, {
+              text: finalThinkingText,
+              thinking_millsec: thinking_millsec,
+              messageId,
+              blockId: thinkingBlockId,
+              topicId
+            });
+          }
         }
-      }));
+      });
 
-      // 更新消息块状态 - 同时更新Redux状态和数据库
-      store.dispatch(updateOneBlock({
-        id: blockId,
-        changes: {
-          content: accumulatedContent,
-          status: MessageBlockStatus.SUCCESS,
-          updatedAt: now
+      // 处理完成数据块
+      streamProcessor(textCompleteChunk);
+
+      // 如果有思考块，也发送思考完成数据块
+      if (thinkingBlockId) {
+        // 获取思考块
+        const thinkingBlock = store.getState().messageBlocks.entities[thinkingBlockId];
+
+        if (thinkingBlock && thinkingBlock.type === MessageBlockType.THINKING) {
+          // 类型断言为思考块
+          const typedThinkingBlock = thinkingBlock as any;
+
+          const thinkingCompleteChunk: ThinkingCompleteChunk = {
+            type: 'thinking.complete',
+            text: typedThinkingBlock.content || '',
+            thinking_millsec: typedThinkingBlock.thinking_millsec || 0
+          };
+
+          streamProcessor(thinkingCompleteChunk);
         }
-      }));
+      }
 
-      // 设置主题为非流式响应状态
-      store.dispatch(newMessagesActions.setTopicStreaming({
-        topicId,
-        streaming: false
-      }));
-
-      // 设置主题为非加载状态
-      store.dispatch(newMessagesActions.setTopicLoading({
-        topicId,
-        loading: false
-      }));
+      // 发送事件通知
+      EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
+        text: accumulatedContent,
+        messageId,
+        blockId,
+        topicId
+      });
 
       // 保存最终状态到数据库
       await Promise.all([
@@ -150,13 +422,56 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
           status: MessageBlockStatus.SUCCESS,
           updatedAt: now
         }),
-        dexieStorage.updateMessage(messageId, {
-          status: AssistantMessageStatus.SUCCESS,
-          updatedAt: now
-        })
+        (async () => {
+          // 获取当前消息
+          const message = await dexieStorage.getMessage(messageId);
+          if (message) {
+            // 如果消息没有版本历史，创建一个初始版本
+            if (!message.versions || message.versions.length === 0) {
+              console.log(`[ResponseHandler] 创建初始版本历史记录 - 消息ID: ${messageId}`);
+
+              // 使用VersionService创建初始版本
+              try {
+                await versionService.createInitialVersion(
+                  messageId,
+                  blockId,
+                  accumulatedContent,
+                  message.model
+                );
+
+                // 更新消息状态
+                await dexieStorage.updateMessage(messageId, {
+                  status: AssistantMessageStatus.SUCCESS,
+                  updatedAt: now
+                });
+
+                console.log(`[ResponseHandler] 初始版本创建成功 - 消息ID: ${messageId}`);
+              } catch (versionError) {
+                console.error(`[ResponseHandler] 创建初始版本失败:`, versionError);
+
+                // 如果版本创建失败，仍然更新消息状态
+                await dexieStorage.updateMessage(messageId, {
+                  status: AssistantMessageStatus.SUCCESS,
+                  updatedAt: now
+                });
+              }
+            } else {
+              // 如果已有版本历史，只更新状态
+              await dexieStorage.updateMessage(messageId, {
+                status: AssistantMessageStatus.SUCCESS,
+                updatedAt: now
+              });
+            }
+          }
+        })()
       ]);
 
-      // 注意：移除了事件系统通知，完全依赖Redux状态更新触发UI更新
+      // 发送完成事件
+      EventEmitter.emit(EVENT_NAMES.MESSAGE_COMPLETE, {
+        id: messageId,
+        topicId,
+        status: 'success'
+      });
 
       return accumulatedContent;
     },
@@ -199,40 +514,66 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         }
       };
 
-      // 使用新的 action 更新消息状态
-      store.dispatch(newMessagesActions.updateMessage({
-        id: messageId,
-        changes: {
-          status: AssistantMessageStatus.ERROR
+      // 创建错误数据块
+      const errorChunk: Chunk = {
+        type: 'error',
+        error: {
+          message: errorMessage,
+          details: errorDetails,
+          type: errorType
         }
-      }));
+      };
 
-      // 设置主题为非流式响应状态
-      store.dispatch(newMessagesActions.setTopicStreaming({
-        topicId,
-        streaming: false
-      }));
+      // 使用流处理器处理错误数据块
+      const streamProcessor = createStreamProcessor({
+        onError: (_err) => {
+          // 使用新的 action 更新消息状态
+          store.dispatch(newMessagesActions.updateMessage({
+            id: messageId,
+            changes: {
+              status: AssistantMessageStatus.ERROR
+            }
+          }));
 
-      // 设置主题为非加载状态
-      store.dispatch(newMessagesActions.setTopicLoading({
-        topicId,
-        loading: false
-      }));
+          // 设置主题为非流式响应状态
+          store.dispatch(newMessagesActions.setTopicStreaming({
+            topicId,
+            streaming: false
+          }));
 
-      // 记录错误到Redux状态
-      store.dispatch(newMessagesActions.setError({
+          // 设置主题为非加载状态
+          store.dispatch(newMessagesActions.setTopicLoading({
+            topicId,
+            loading: false
+          }));
+
+          // 记录错误到Redux状态
+          store.dispatch(newMessagesActions.setError({
+            error: errorInfo,
+            topicId
+          }));
+
+          // 更新Redux状态中的消息块
+          store.dispatch(updateOneBlock({
+            id: blockId,
+            changes: {
+              status: MessageBlockStatus.ERROR,
+              error: errorRecord
+            }
+          }));
+        }
+      });
+
+      // 处理错误数据块
+      streamProcessor(errorChunk);
+
+      // 发送错误事件通知
+      EventEmitter.emit(EVENT_NAMES.STREAM_ERROR, {
         error: errorInfo,
+        messageId,
+        blockId,
         topicId
-      }));
-
-      // 更新Redux状态中的消息块
-      store.dispatch(updateOneBlock({
-        id: blockId,
-        changes: {
-          status: MessageBlockStatus.ERROR,
-          error: errorRecord
-        }
-      }));
+      });
 
       // 保存错误状态到数据库
       await Promise.all([
@@ -245,7 +586,13 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         })
       ]);
 
-      // 注意：移除了事件系统通知，完全依赖Redux状态更新触发UI更新
+      // 发送消息完成事件（错误状态）
+      EventEmitter.emit(EVENT_NAMES.MESSAGE_COMPLETE, {
+        id: messageId,
+        topicId,
+        status: 'error',
+        error: errorMessage
+      });
 
       throw error;
     }
@@ -272,5 +619,18 @@ export const setResponseState = ({ topicId, status, loading }: { topicId: string
     loading
   }));
 
-  // 注意：移除了事件系统通知，完全依赖Redux状态更新触发UI更新
+  // 发送事件通知
+  if (streaming) {
+    EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
+      topicId,
+      status,
+      streaming
+    });
+  } else {
+    EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
+      topicId,
+      status,
+      streaming
+    });
+  }
 };

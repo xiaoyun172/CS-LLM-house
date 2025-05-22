@@ -3,7 +3,8 @@
  * 集中处理不同AI模型的思考过程数据
  */
 
-import type { Message } from '../types';
+import type { Message, Model } from '../types';
+import { isReasoningModel } from '../utils/modelDetection';
 
 // 思考过程源类型 - 使用常量对象而不是enum（解决编译错误）
 export const ThinkingSourceType = {
@@ -38,7 +39,13 @@ export function getGrokThinkingConfig(effort: 'low' | 'high' = 'high'): any {
   };
 }
 
-// 从API响应中提取思考过程
+/**
+ * 从API响应中提取思考过程
+ * 支持多种模型的思考过程提取
+ * @param response API响应对象
+ * @param sourceType 思考过程源类型
+ * @returns 思考过程结果对象或null
+ */
 export function extractThinkingFromResponse(
   response: any,
   sourceType: ThinkingSourceTypeValue
@@ -92,11 +99,21 @@ export function extractThinkingFromResponse(
           sourceType: ThinkingSourceType.CLAUDE,
           timeMs: response.thinkingTime
         };
+      } else if (response.content && Array.isArray(response.content)) {
+        // 检查Claude响应中的content数组
+        const thinkingBlock = response.content.find((block: any) => block.type === 'thinking');
+        if (thinkingBlock && 'thinking' in thinkingBlock) {
+          return {
+            content: thinkingBlock.thinking,
+            sourceType: ThinkingSourceType.CLAUDE,
+            timeMs: response.thinkingTime || 0
+          };
+        }
       }
       break;
 
     case ThinkingSourceType.OPENAI:
-      // OpenAI思考过程提取逻辑 (当他们实现此功能时)
+      // OpenAI思考过程提取逻辑
       if (response.thinking || response.tool_calls?.find((tool: any) => tool.name === 'thinking')) {
         const thinking = response.thinking ||
           response.tool_calls?.find((tool: any) => tool.name === 'thinking')?.arguments;
@@ -105,6 +122,20 @@ export function extractThinkingFromResponse(
           content: typeof thinking === 'string' ? thinking : JSON.stringify(thinking),
           sourceType: ThinkingSourceType.OPENAI,
           timeMs: response.thinking_time
+        };
+      } else if (response.choices?.[0]?.message?.reasoning) {
+        // OpenAI o1/o3/o4模型的reasoning字段
+        return {
+          content: response.choices[0].message.reasoning,
+          sourceType: ThinkingSourceType.OPENAI,
+          timeMs: response.thinking_time || 0
+        };
+      } else if (response.choices?.[0]?.delta?.reasoning_content) {
+        // 流式响应中的reasoning_content字段
+        return {
+          content: response.choices[0].delta.reasoning_content,
+          sourceType: ThinkingSourceType.OPENAI,
+          timeMs: response.thinking_time || 0
         };
       }
       break;
@@ -117,51 +148,183 @@ export function extractThinkingFromResponse(
           sourceType: ThinkingSourceType.CUSTOM,
           timeMs: response.thinkingTime || response.reasoningTime
         };
+      } else if (response.reasoning_content) {
+        return {
+          content: response.reasoning_content,
+          sourceType: ThinkingSourceType.CUSTOM,
+          timeMs: response.thinkingTime || response.reasoningTime || 0
+        };
       }
       break;
+  }
+
+  // 通用检测 - 检查各种可能的字段名
+  const possibleFields = [
+    'thinking', 'reasoning', 'reasoning_content',
+    'thought_process', 'chain_of_thought', 'cot'
+  ];
+
+  // 检查顶层字段
+  for (const field of possibleFields) {
+    if (response[field]) {
+      return {
+        content: response[field],
+        sourceType: ThinkingSourceType.CUSTOM,
+        timeMs: response.thinking_time || response.reasoningTime || 0
+      };
+    }
+  }
+
+  // 检查choices数组中的message对象
+  if (response.choices && response.choices.length > 0) {
+    const message = response.choices[0].message || response.choices[0].delta;
+    if (message) {
+      for (const field of possibleFields) {
+        if (message[field]) {
+          return {
+            content: message[field],
+            sourceType: ThinkingSourceType.CUSTOM,
+            timeMs: response.thinking_time || response.reasoningTime || 0
+          };
+        }
+      }
+    }
   }
 
   return null;
 }
 
-// 从模型提供商类型获取思考源类型
+/**
+ * 从模型提供商类型获取思考源类型
+ * 根据提供商名称判断对应的思考过程源类型
+ * @param provider 提供商ID
+ * @returns 思考过程源类型
+ */
 export function getThinkingSourceTypeFromProvider(provider: string): ThinkingSourceTypeValue {
   const providerLower = provider.toLowerCase();
 
-  if (providerLower.includes('grok') || providerLower.includes('xai')) {
+  // Grok模型
+  if (providerLower.includes('grok') ||
+      providerLower.includes('xai') ||
+      providerLower.includes('x.ai')) {
     return ThinkingSourceType.GROK;
-  } else if (providerLower.includes('claude') || providerLower.includes('anthropic')) {
+  }
+
+  // Claude模型
+  else if (providerLower.includes('claude') ||
+           providerLower.includes('anthropic') ||
+           providerLower.includes('sonnet') ||
+           providerLower.includes('opus') ||
+           providerLower.includes('haiku')) {
     return ThinkingSourceType.CLAUDE;
-  } else if (providerLower.includes('openai') || providerLower.includes('gpt')) {
+  }
+
+  // OpenAI模型
+  else if (providerLower.includes('openai') ||
+           providerLower.includes('gpt') ||
+           providerLower.includes('o1') ||
+           providerLower.includes('o3') ||
+           providerLower.includes('o4') ||
+           providerLower.includes('azure')) {
     return ThinkingSourceType.OPENAI;
-  } else if (providerLower.includes('deepseek') || providerLower.includes('deepseek-reasoner')) {
+  }
+
+  // DeepSeek模型
+  else if (providerLower.includes('deepseek') ||
+           providerLower.includes('deepseek-reasoner') ||
+           providerLower.includes('deepseek-coder')) {
     return ThinkingSourceType.DEEPSEEK;
   }
 
+  // 其他模型 - 根据名称判断
+  else if (providerLower.includes('gemini') ||
+           providerLower.includes('google') ||
+           providerLower.includes('palm')) {
+    return ThinkingSourceType.CUSTOM;
+  }
+  else if (providerLower.includes('qwen') ||
+           providerLower.includes('tongyi') ||
+           providerLower.includes('alibaba')) {
+    return ThinkingSourceType.CUSTOM;
+  }
+  else if (providerLower.includes('glm') ||
+           providerLower.includes('chatglm') ||
+           providerLower.includes('zhipu')) {
+    return ThinkingSourceType.CUSTOM;
+  }
+
+  // 默认返回自定义类型
   return ThinkingSourceType.CUSTOM;
 }
 
-// 为指定模型和提供商获取适当的思考过程配置
-export function getThinkingConfig(provider: string, effort: 'low' | 'medium' | 'high' = 'high'): any {
-  const sourceType = getThinkingSourceTypeFromProvider(provider);
+/**
+ * 为指定模型和提供商获取适当的思考过程配置
+ * 根据不同模型类型返回对应的思考过程配置
+ * @param provider 提供商ID或模型对象
+ * @param effort 思考深度
+ * @returns 思考过程配置对象
+ */
+export function getThinkingConfig(
+  provider: string | Model,
+  effort: 'low' | 'medium' | 'high' | 'auto' = 'high'
+): any {
+  // 如果传入的是模型对象，提取提供商ID
+  const providerId = typeof provider === 'string' ? provider : provider.provider;
+  const modelId = typeof provider === 'string' ? '' : provider.id;
 
+  // 获取思考过程源类型
+  const sourceType = getThinkingSourceTypeFromProvider(providerId);
+
+  // 根据模型ID判断特殊情况
+  if (modelId) {
+    // DeepSeek Reasoner模型
+    if (modelId.includes('deepseek-reasoner')) {
+      return {}; // DeepSeek Reasoner模型默认启用思考过程，不需要额外配置
+    }
+
+    // Gemini模型
+    if (modelId.includes('gemini')) {
+      return {
+        thinking: true,
+        thinking_depth: effort,
+        thinking_mode: effort === 'auto' ? 'auto' : 'manual'
+      };
+    }
+
+    // Qwen模型
+    if (modelId.includes('qwen')) {
+      return {
+        thinking: true,
+        thinking_depth: effort,
+        qwenThinkMode: true
+      };
+    }
+  }
+
+  // 根据源类型返回配置
   switch (sourceType) {
     case ThinkingSourceType.GROK:
       // Grok只支持"low"和"high"
-      const grokEffort = effort === 'medium' ? 'high' : effort;
+      const grokEffort = effort === 'medium' || effort === 'auto' ? 'high' : effort;
       return getGrokThinkingConfig(grokEffort as 'low' | 'high');
 
     case ThinkingSourceType.CLAUDE:
-      // Claude的思考过程配置 (当支持时)
-      return { thinking: true, thinking_depth: effort };
+      // Claude的思考过程配置
+      return {
+        thinking: true,
+        thinking_depth: effort === 'auto' ? 'high' : effort
+      };
 
     case ThinkingSourceType.OPENAI:
-      // OpenAI的思考过程配置 (当支持时)
-      return { thinking: true, thinking_depth: effort };
+      // OpenAI的思考过程配置
+      return {
+        thinking: true,
+        thinking_depth: effort === 'auto' ? 'high' : effort
+      };
 
     case ThinkingSourceType.DEEPSEEK:
-      // DeepSeek Reasoner模型的思考过程配置
-      return {}; // DeepSeek Reasoner模型默认启用思考过程，不需要额外配置
+      // DeepSeek模型的思考过程配置
+      return {}; // DeepSeek模型默认启用思考过程，不需要额外配置
 
     default:
       // 默认配置
@@ -169,18 +332,20 @@ export function getThinkingConfig(provider: string, effort: 'low' | 'medium' | '
   }
 }
 
-// 获取指定模型是否支持思考过程
-export function isThinkingSupported(model: string): boolean {
-  // 目前支持思考过程的模型
-  const supportedModels = [
-    'grok-3-mini-beta',
-    'grok-3-mini-fast-beta',
-    'deepseek-reasoner'  // 添加DeepSeek Reasoner模型
-  ];
+/**
+ * 获取指定模型是否支持思考过程
+ * 使用更全面的模型检测方法，与电脑版保持一致
+ * @param model 模型对象或模型ID
+ * @returns 是否支持思考过程
+ */
+export function isThinkingSupported(model: Model | string): boolean {
+  // 如果传入的是字符串（模型ID），创建一个临时模型对象
+  if (typeof model === 'string') {
+    return isReasoningModel({ id: model, name: model, provider: '' });
+  }
 
-  return supportedModels.some(supported =>
-    model.toLowerCase().includes(supported.toLowerCase())
-  );
+  // 如果传入的是模型对象，直接使用isReasoningModel函数判断
+  return isReasoningModel(model);
 }
 
 // 将思考过程添加到消息中

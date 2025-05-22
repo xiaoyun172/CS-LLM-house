@@ -116,7 +116,7 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
         const detectedTypes = matchModelTypes(preset.id, preset.provider);
         setModelTypes(detectedTypes);
       }
-      
+
       setAutoDetectTypes(true);
 
       console.log(`选择预设模型: ${preset.name}, ID: ${preset.id}, 提供商: ${!editModel ? preset.provider : modelData.provider}`);
@@ -166,7 +166,7 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
   const handleAutoDetectToggle = () => {
     const newAutoDetect = !autoDetectTypes;
     setAutoDetectTypes(newAutoDetect);
-    
+
     if (newAutoDetect) {
       const detectedTypes = matchModelTypes(modelData.id, modelData.provider);
       setModelTypes(detectedTypes);
@@ -196,15 +196,18 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
       const finalModelData = {
         ...modelData,
         modelTypes: autoDetectTypes ? undefined : modelTypes,
-        // 如果是多模态类型，确保设置capabilities.multimodal为true
+        // 更新模型能力
         capabilities: {
           ...modelData.capabilities,
-          multimodal: modelTypes.includes(ModelType.Vision) || Boolean(modelData.multimodal)
+          // 如果是多模态类型，确保设置capabilities.multimodal为true
+          multimodal: modelTypes.includes(ModelType.Vision) || Boolean(modelData.multimodal),
+          // 如果是推理类型，确保设置capabilities.reasoning为true
+          reasoning: modelTypes.includes(ModelType.Reasoning) || Boolean(modelData.capabilities?.reasoning)
         },
         // 向下兼容
         multimodal: modelTypes.includes(ModelType.Vision) || Boolean(modelData.multimodal)
       };
-      
+
       onSave(finalModelData);
       onClose();
     }
@@ -299,15 +302,15 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
           <Box sx={{ mt: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle2">模型类型</Typography>
-              <FormControlLabel 
+              <FormControlLabel
                 control={
-                  <Switch 
-                    checked={autoDetectTypes} 
-                    onChange={handleAutoDetectToggle} 
+                  <Switch
+                    checked={autoDetectTypes}
+                    onChange={handleAutoDetectToggle}
                     size="small"
                   />
-                } 
-                label="自动检测" 
+                }
+                label="自动检测"
               />
             </Box>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
@@ -323,8 +326,8 @@ const ModelDialog: React.FC<ModelDialogProps> = ({
               ))}
             </Box>
             <FormHelperText>
-              {autoDetectTypes 
-                ? '根据模型ID和提供商自动检测模型类型' 
+              {autoDetectTypes
+                ? '根据模型ID和提供商自动检测模型类型'
                 : '点击类型标签来添加或移除'}
             </FormHelperText>
           </Box>

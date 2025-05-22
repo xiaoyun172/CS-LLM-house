@@ -1,24 +1,29 @@
 import React, { useRef, useEffect, useMemo, useCallback, useState, useReducer } from 'react';
 import { Box, useTheme } from '@mui/material';
 import type { Message } from '../../shared/types/newMessage.ts';
-import MessageItem from './MessageItem';
-import MessageErrorBoundary from './MessageErrorBoundary';
+import MessageGroup from './MessageGroup';
 import SystemPromptBubble from '../SystemPromptBubble';
 import SystemPromptDialog from '../SystemPromptDialog';
+import VirtualScroller from '../common/VirtualScroller';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../../shared/store';
+import { throttle } from 'lodash';
 
 import { dexieStorage } from '../../shared/services/DexieStorageService';
 import { upsertManyBlocks } from '../../shared/store/slices/messageBlocksSlice';
 import { newMessagesActions } from '../../shared/store/slices/newMessagesSlice';
+import useScrollPosition from '../../hooks/useScrollPosition';
+import { getGroupedMessages, MessageGroupingType } from '../../shared/utils/messageGrouping';
+import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventEmitter';
 
 interface MessageListProps {
   messages: Message[];
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
+  onSwitchVersion?: (versionId: string) => void;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
   const dispatch = useDispatch();
@@ -69,10 +74,24 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
     state.settings.showSystemPromptBubble !== false
   );
 
-  // 滚动到最新消息
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // 使用优化的滚动位置钩子
+  const {
+    containerRef,
+    handleScroll,
+    scrollToBottom,
+  } = useScrollPosition('messageList', {
+    throttleTime: 100,
+    autoRestore: true,
+    onScroll: (_scrollPos) => {
+      // 可以在这里添加滚动位置相关的逻辑
+    }
+  });
+
+  // 节流的滚动到底部函数
+  const throttledScrollToBottom = useMemo(
+    () => throttle(scrollToBottom, 100, { leading: true, trailing: true }),
+    [scrollToBottom]
+  );
 
   // 监听消息块状态变化，实现流式输出过程中的自动滚动
   useEffect(() => {
@@ -88,19 +107,78 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
 
     // 如果有正在流式输出的块或消息，滚动到底部
     if (hasStreamingBlock || hasStreamingMessage) {
-      console.log('[MessageList] 检测到流式输出，滚动到底部');
-      scrollToBottom();
+      // 使用 setTimeout 确保在DOM更新后滚动
+      setTimeout(() => {
+        throttledScrollToBottom();
+      }, 10);
 
       // 强制更新UI以确保最新状态显示
       forceUpdate();
     }
-  }, [messageBlocks, messages, forceUpdate]);
+  }, [messageBlocks, messages, forceUpdate, throttledScrollToBottom]);
+
+  // 添加流式输出事件监听
+  useEffect(() => {
+    // 监听流式输出事件
+    const textDeltaHandler = () => {
+      forceUpdate();
+
+      // 使用 setTimeout 确保在DOM更新后滚动
+      setTimeout(() => {
+        throttledScrollToBottom();
+      }, 10);
+    };
+
+    // 监听滚动到底部事件
+    const scrollToBottomHandler = () => {
+      // 尝试使用 messagesEndRef 滚动到底部
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+      } else {
+        // 如果 messagesEndRef 不可用，使用 throttledScrollToBottom
+        throttledScrollToBottom();
+      }
+    };
+
+    // 订阅事件
+    const unsubscribeTextDelta = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_DELTA, textDeltaHandler);
+    const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, textDeltaHandler);
+    const unsubscribeThinkingDelta = EventEmitter.on(EVENT_NAMES.STREAM_THINKING_DELTA, textDeltaHandler);
+    const unsubscribeScrollToBottom = EventEmitter.on(EVENT_NAMES.UI_SCROLL_TO_BOTTOM, scrollToBottomHandler);
+
+    // 定期强制更新UI，确保流式输出显示
+    const updateInterval = setInterval(() => {
+      const hasStreamingMessage = messages.some(message => message.status === 'streaming');
+      if (hasStreamingMessage) {
+        forceUpdate();
+
+        // 定期滚动到底部，确保在长时间流式输出时保持滚动
+        throttledScrollToBottom();
+      }
+    }, 100); // 每100ms更新一次
+
+    return () => {
+      unsubscribeTextDelta();
+      unsubscribeTextComplete();
+      unsubscribeThinkingDelta();
+      unsubscribeScrollToBottom();
+      clearInterval(updateInterval);
+    };
+  }, [forceUpdate, messages, throttledScrollToBottom]);
 
   // 当消息列表更新时滚动到底部
   useEffect(() => {
-    console.log('[MessageList] 消息列表更新，滚动到底部');
-    scrollToBottom();
-  }, [messages.length]);
+    // 使用 setTimeout 确保在DOM更新后滚动
+    setTimeout(() => {
+      // 尝试使用 messagesEndRef 滚动到底部
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+      } else {
+        // 如果 messagesEndRef 不可用，使用 throttledScrollToBottom
+        throttledScrollToBottom();
+      }
+    }, 10);
+  }, [messages.length, throttledScrollToBottom]);
 
   // 处理系统提示词气泡点击
   const handlePromptBubbleClick = useCallback(() => {
@@ -110,6 +188,13 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
   // 处理系统提示词对话框关闭
   const handlePromptDialogClose = useCallback(() => {
     setPromptDialogOpen(false);
+  }, []);
+
+  // 处理系统提示词保存
+  const handlePromptSave = useCallback((updatedTopic: any) => {
+    console.log('[MessageList] 系统提示词已保存，更新当前话题:', updatedTopic);
+    // 直接更新当前话题状态，强制重新渲染
+    setCurrentTopic(updatedTopic);
   }, []);
 
   // 确保所有消息的块都已加载到Redux中
@@ -163,7 +248,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
                     id: blockId,
                     messageId: message.id,
                     type: 'main_text',
-                    content: (message as any).content || '(无内容)',
+                    content: (message as any).content || '',
                     createdAt: message.createdAt,
                     status: 'success'
                   };
@@ -184,7 +269,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
               id: newBlockId,
               messageId: message.id,
               type: 'main_text',
-              content: (message as any).content || '(无内容)',
+              content: (message as any).content || '',
               createdAt: message.createdAt,
               status: 'success'
             };
@@ -265,21 +350,40 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
     );
   }, [messages]);
 
-  // Memoize callback props for MessageItem
-  const handleRegenerate = useCallback((messageId: string) => {
-    if (onRegenerate) {
-      onRegenerate(messageId);
-    }
-  }, [onRegenerate]);
+  // 这些回调在使用虚拟滚动和消息分组后不再直接使用
+  // 但保留它们以便将来可能需要
 
-  const handleDelete = useCallback((messageId: string) => {
-    if (onDelete) {
-      onDelete(messageId);
-    }
-  }, [onDelete]);
+  // 获取消息分组设置
+  const messageGroupingType = useSelector((state: RootState) =>
+    (state.settings as any).messageGrouping || 'byDate'
+  );
+
+  // 对消息进行分组
+  const groupedMessages = useMemo(() => {
+    return Object.entries(getGroupedMessages(filteredMessages, messageGroupingType as MessageGroupingType));
+  }, [filteredMessages, messageGroupingType]);
+
+  // 这个函数在当前实现中未使用，但保留以便将来可能需要
+  // 计算消息项的高度（用于虚拟滚动）
+
+  // 渲染消息组
+  const renderMessageGroup = useCallback((item: any, _index: number) => {
+    const [date, messages] = item as [string, Message[]];
+    return (
+      <MessageGroup
+        key={date}
+        date={date}
+        messages={messages}
+        expanded={true}
+        // 传递forceUpdate函数给MessageGroup
+        forceUpdate={forceUpdate}
+      />
+    );
+  }, [forceUpdate]);
 
   return (
     <Box
+      ref={containerRef}
       sx={{
         display: 'flex',
         flexDirection: 'column',
@@ -287,6 +391,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
         overflowY: 'auto',
         px: 0,
         py: 2,
+        width: '100%', // 确保容器占满可用宽度
+        maxWidth: '100%', // 确保不超出父容器
         bgcolor: theme.palette.mode === 'dark'
           ? theme.palette.background.default
           : '#f5f5f5',
@@ -306,6 +412,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
           backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.3)' : '#cccccc',
         },
       }}
+      onScroll={handleScroll}
     >
       {/* 系统提示词气泡 - 根据设置显示或隐藏 */}
       {showSystemPromptBubble && (
@@ -313,6 +420,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
           topic={currentTopic}
           assistant={currentAssistant}
           onClick={handlePromptBubbleClick}
+          key={`prompt-bubble-${currentTopic?.id}-${currentTopic?.prompt?.substring(0, 10) || 'default'}`}
         />
       )}
 
@@ -322,6 +430,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
         onClose={handlePromptDialogClose}
         topic={currentTopic}
         assistant={currentAssistant}
+        onSave={handlePromptSave}
       />
 
       {filteredMessages.length === 0 ? (
@@ -339,72 +448,14 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
           新的对话开始了，请输入您的问题
         </Box>
       ) : (
-        filteredMessages.map((message, index) => (
-          <React.Fragment key={message.id}>
-            {index > 0 &&
-              new Date(message.createdAt).toLocaleDateString() !==
-              new Date(filteredMessages[index - 1].createdAt).toLocaleDateString() && (
-                <Box
-                  sx={{
-                    textAlign: 'center',
-                    my: 2,
-                    color: theme.palette.text.secondary,
-                    fontSize: '13px',
-                    position: 'relative',
-                    '&::before, &::after': {
-                      content: '""',
-                      position: 'absolute',
-                      top: '50%',
-                      width: '20%',
-                      height: '1px',
-                      backgroundColor: theme.palette.mode === 'dark'
-                        ? 'rgba(255,255,255,0.1)'
-                        : '#e1e1e1',
-                    },
-                    '&::before': {
-                      left: '20%',
-                    },
-                    '&::after': {
-                      right: '20%',
-                    }
-                  }}
-                >
-                  {new Date(message.createdAt).toLocaleDateString(undefined, {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </Box>
-            )}
-            {(index === 0 ||
-              new Date(message.createdAt).getTime() - new Date(filteredMessages[index - 1].createdAt).getTime() > 5 * 60000) && (
-              <Box
-                sx={{
-                  textAlign: 'center',
-                  fontSize: '12px',
-                  color: theme.palette.text.secondary,
-                  my: 1.5,
-                }}
-              >
-                {new Date(message.createdAt).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </Box>
-            )}
-            <Box sx={{ position: 'relative' }}>
-              <MessageErrorBoundary>
-                <MessageItem
-                  message={message}
-                  onRegenerate={handleRegenerate}
-                  onDelete={handleDelete}
-                  // 强制每次渲染使用最新状态
-                  forceUpdate={forceUpdate}
-                />
-              </MessageErrorBoundary>
-            </Box>
-          </React.Fragment>
-        ))
+        // 使用虚拟滚动优化大量消息的渲染
+        <VirtualScroller
+          items={groupedMessages}
+          itemHeight={200} // 估算的每个消息组的平均高度
+          renderItem={renderMessageGroup}
+          overscanCount={2}
+          itemKey={(item: any, _index: number) => (item as [string, Message[]])[0]} // 使用日期作为key
+        />
       )}
       <div ref={messagesEndRef} />
     </Box>

@@ -22,6 +22,7 @@ export default function SidebarTabsContent() {
     handleAddAssistant,
     handleUpdateAssistant,
     handleDeleteAssistant,
+    isPending, // 获取isPending状态
     handleSelectTopic,
     handleCreateTopic,
     handleDeleteTopic,
@@ -54,9 +55,10 @@ export default function SidebarTabsContent() {
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {loading ? (
+      {loading || isPending ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
           <CircularProgress />
+          {isPending && <Box sx={{ ml: 2 }}>切换助手中...</Box>}
         </Box>
       ) : (
         <>

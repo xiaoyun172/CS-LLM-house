@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { startTransition } from 'react';
 import {
   ListItemButton,
   ListItemText,
@@ -35,10 +35,11 @@ export default function AssistantItem({
     // 先触发切换到话题标签页事件，确保UI已经切换到话题标签页
     EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
 
-    // 然后选择助手，这会触发话题加载
-    setTimeout(() => {
+    // 使用startTransition包装状态更新，减少渲染阻塞，提高性能
+    // 这会告诉React这是一个低优先级更新，可以被中断
+    startTransition(() => {
       onSelectAssistant(assistant);
-    }, 50);
+    });
   };
 
   const handleOpenMenu = (event: React.MouseEvent) => {

@@ -6,6 +6,7 @@ import OpenAI from 'openai';
 import type { ClientOptions } from 'openai';
 import type { Model } from '../../types';
 import { logApiRequest } from '../../services/LoggerService';
+import { isReasoningModel } from '../../config/models';
 
 /**
  * 创建OpenAI客户端
@@ -22,17 +23,17 @@ export function createClient(model: Model): OpenAI {
 
     // 处理基础URL
     let baseURL = model.baseUrl || 'https://api.openai.com/v1';
-    
+
     // 确保baseURL格式正确
     if (baseURL.endsWith('/')) {
       baseURL = baseURL.slice(0, -1);
     }
-    
+
     // 确保baseURL包含/v1
     if (!baseURL.includes('/v1')) {
       baseURL = `${baseURL}/v1`;
     }
-    
+
     console.log(`[OpenAI createClient] 创建客户端, 模型ID: ${model.id}, baseURL: ${baseURL.substring(0, 20)}...`);
 
     // 创建配置对象
@@ -42,24 +43,24 @@ export function createClient(model: Model): OpenAI {
       timeout: 90000, // 90秒超时，处理长响应
       dangerouslyAllowBrowser: true // 允许在浏览器环境中使用
     };
-    
+
     // 添加组织信息（如果有）
     if ((model as any).organization) {
       config.organization = (model as any).organization;
       console.log(`[OpenAI createClient] 设置组织ID: ${(model as any).organization}`);
     }
-    
+
     // 添加额外头部（如果有）
     if (model.extraHeaders) {
       config.defaultHeaders = model.extraHeaders;
       console.log(`[OpenAI createClient] 设置额外头部: ${Object.keys(model.extraHeaders).join(', ')}`);
     }
-    
+
     // 创建客户端
     const client = new OpenAI(config);
     console.log(`[OpenAI createClient] 客户端创建成功`);
     return client;
-    
+
   } catch (error) {
     console.error('[OpenAI createClient] 创建客户端失败:', error);
     // 即使没有API密钥，也尝试创建一个客户端，以便调用代码不会崩溃
@@ -82,13 +83,13 @@ export function createClient(model: Model): OpenAI {
  */
 export function supportsMultimodal(model: Model): boolean {
   const modelId = model.id;
-  
+
   return Boolean(
-    model.capabilities?.multimodal || 
-    modelId.includes('gpt-4') || 
-    modelId.includes('gpt-4o') || 
-    modelId.includes('vision') || 
-    modelId.includes('gemini') || 
+    model.capabilities?.multimodal ||
+    modelId.includes('gpt-4') ||
+    modelId.includes('gpt-4o') ||
+    modelId.includes('vision') ||
+    modelId.includes('gemini') ||
     modelId.includes('claude-3')
   );
 }
@@ -100,10 +101,10 @@ export function supportsMultimodal(model: Model): boolean {
  */
 export function supportsWebSearch(model: Model): boolean {
   const modelId = model.id;
-  
+
   return Boolean(
     model.capabilities?.webSearch ||
-    modelId.includes('gpt-4o-search-preview') || 
+    modelId.includes('gpt-4o-search-preview') ||
     modelId.includes('gpt-4o-mini-search-preview')
   );
 }
@@ -114,14 +115,14 @@ export function supportsWebSearch(model: Model): boolean {
  * @returns 是否支持推理优化
  */
 export function supportsReasoning(model: Model): boolean {
-  const modelId = model.id;
-  
-  return Boolean(
-    model.capabilities?.reasoning ||
-    modelId.includes('o1') || 
-    modelId.includes('o3') || 
-    modelId.includes('o4')
-  );
+  // 首先检查模型类型是否包含推理类型
+  if (model.modelTypes && model.modelTypes.includes('reasoning')) {
+    return true;
+  }
+
+  // 如果没有明确设置modelTypes，则使用ID检测
+  // 使用导入的模型检测函数
+  return isReasoningModel(model);
 }
 
 /**

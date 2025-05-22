@@ -1,37 +1,68 @@
-import { configureStore } from '@reduxjs/toolkit';
+import { configureStore, combineReducers } from '@reduxjs/toolkit';
+import { persistStore, persistReducer } from 'redux-persist';
+import storage from 'redux-persist/lib/storage';
 // 移除旧的 messagesReducer 导入
 import messagesReducer from './slices/newMessagesSlice'; // 使用 normalizedMessagesReducer 作为唯一的消息状态管理
 import settingsReducer, { settingsMiddleware, loadSettings } from './settingsSlice';
+import { initSettingsAsync } from './slices/settingsSlice';
 import groupsReducer from './slices/groupsSlice';
 import webSearchReducer from './slices/webSearchSlice';
 import systemPromptsReducer from './slices/systemPromptsSlice';
 import assistantsReducer from './slices/assistantsSlice';
 import messageBlocksReducer from './slices/messageBlocksSlice';
+import uiReducer from './slices/uiSlice';
+import runtimeReducer from './slices/runtimeSlice';
+import { eventMiddleware } from './middleware/eventMiddleware';
 import { useDispatch, useSelector } from 'react-redux';
 import type { TypedUseSelectorHook } from 'react-redux';
 
+// 合并所有reducer
+const rootReducer = combineReducers({
+  messages: messagesReducer,
+  settings: settingsReducer,
+
+  groups: groupsReducer,
+  webSearch: webSearchReducer,
+  systemPrompts: systemPromptsReducer,
+  assistants: assistantsReducer,
+  messageBlocks: messageBlocksReducer,
+  ui: uiReducer,
+  runtime: runtimeReducer
+});
+
+// 配置Redux持久化
+const persistConfig = {
+  key: 'cherry-studio',
+  storage,
+  version: 2, // 增加版本号，因为我们添加了新的状态切片
+  // 与电脑端保持一致，不持久化messages和messageBlocks
+  // 同时排除assistants，因为它包含非序列化的React元素
+  // 排除runtime，因为它包含运行时状态
+  blacklist: ['messages', 'messageBlocks', 'assistants', 'runtime'],
+};
+
+// 创建持久化reducer
+const persistedReducer = persistReducer(persistConfig, rootReducer);
+
 // 配置Redux存储
 const store = configureStore({
-  reducer: {
-    messages: messagesReducer, // 只保留一个消息状态管理
-    settings: settingsReducer,
-    groups: groupsReducer,
-    webSearch: webSearchReducer,
-    systemPrompts: systemPromptsReducer,
-    assistants: assistantsReducer,
-    messageBlocks: messageBlocksReducer,
-  },
+  reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
+      // 完全禁用序列化检查，避免非序列化值警告
       serializableCheck: false
-    }).concat(settingsMiddleware)
+    }).concat(settingsMiddleware, eventMiddleware)
 });
+
+// 创建persistor
+export const persistor = persistStore(store);
 
 // 加载设置
 store.dispatch(loadSettings());
+store.dispatch(initSettingsAsync());
 
 // 导出类型
-export type RootState = ReturnType<typeof store.getState>;
+export type RootState = ReturnType<typeof rootReducer>;
 export type AppDispatch = typeof store.dispatch;
 
 // 创建类型化的 hooks

@@ -1,11 +1,10 @@
 /**
  * OpenAI流式响应模块
  * 负责处理流式响应
+ * 使用与电脑版一致的for await循环处理流式响应
  */
-// 使用any类型代替OpenAI类型，避免未使用的导入警告
-// import OpenAI from 'openai';
-// 使用console.log替代logApiResponse
-// import { logApiResponse } from '../../services/LoggerService';
+import { logApiRequest } from '../../services/LoggerService';
+import { EventEmitter, EVENT_NAMES } from '../../services/EventEmitter';
 
 /**
  * 流式完成请求
@@ -28,10 +27,6 @@ export async function streamCompletion(
   additionalParams?: Record<string, any>
 ): Promise<string> {
   try {
-    const startTime = new Date().getTime();
-    let firstTokenTime = 0;
-    let reasoningStartTime = 0;
-
     // 检查是否包含思考提示
     const hasThinkingPrompt = messages.some(msg =>
       msg.role === 'system' &&
@@ -41,7 +36,7 @@ export async function streamCompletion(
        msg.content.includes('思考过程'))
     );
 
-    console.log(`开始流式请求，模型ID: ${modelId}, 是否包含思考提示: ${hasThinkingPrompt}`);
+    console.log(`[streamCompletion] 开始流式请求，模型ID: ${modelId}, 是否包含思考提示: ${hasThinkingPrompt}`);
 
     // 创建流式请求参数
     const streamParams: any = {
@@ -59,287 +54,96 @@ export async function streamCompletion(
       Object.assign(streamParams, otherParams);
     }
 
-    // 如果模型支持思考提示，添加思考工具
-    if (modelId.includes('gpt-4') || modelId.includes('gpt-4o')) {
-      // 尝试添加思考工具
-      try {
-        streamParams.tools = [
-          {
-            "type": "function",
-            "function": {
-              "name": "thinking",
-              "description": "Display the step-by-step thinking process before answering a question",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "thinking": {
-                    "type": "string",
-                    "description": "The step-by-step reasoning process"
-                  }
-                },
-                "required": ["thinking"]
-              }
-            }
-          }
-        ];
-      } catch (e) {
-        console.log('思考工具添加失败，继续处理');
-      }
-    }
+    // 不添加任何工具
+    console.log('[streamCompletion] 跳过添加思考工具');
 
-    // 使用any类型代替OpenAI.Chat.ChatCompletionChunk
-    const stream = await openai.chat.completions.create(streamParams) as unknown as AsyncIterable<any>;
-
-    let content = '';
-    let reasoning = '';
-    let isCollectingReasoning = false;
-
-    for await (const chunk of stream) {
-      // 记录首个token的时间
-      if (content === '' && firstTokenTime === 0) {
-        firstTokenTime = new Date().getTime() - startTime;
-        console.log(`首个token响应时间: ${firstTokenTime}ms`);
-      }
-
-      // 检查是否有reasoning_content字段（DeepSeek Reasoner模型）
-      const reasoningContent = chunk.choices[0]?.delta?.reasoning_content;
-      if (reasoningContent !== undefined) {
-        // 记录思考开始时间
-        if (!reasoningStartTime) {
-          reasoningStartTime = new Date().getTime();
-          console.log('[思考过程] 开始接收reasoning_content思考过程');
-        }
-
-        // 收集思考过程
-        reasoning += reasoningContent;
-
-        // 通知思考过程更新
-        if (onUpdate) {
-          try {
-            // 使用类似电脑版的方法，创建一个类型化的对象
-            const reasoningChunk = {
-              type: 'reasoning',
-              content: content,
-              reasoning: reasoning
-            };
-            onUpdate(reasoningChunk.content, reasoningChunk.reasoning);
-          } catch (e) {
-            console.error('更新思考过程时出错:', e);
-            // 降级处理：只发送内容
-            onUpdate(content, '');
-          }
-        }
-
-        continue; // 跳过后续处理
-      }
-
-      // 检查工具调用
-      const toolCalls = chunk.choices[0]?.delta?.tool_calls;
-      if (toolCalls && toolCalls.length > 0) {
-        // 检查是否是思考工具调用
-        const toolCall = toolCalls[0];
-        if (toolCall.function?.name === 'thinking') {
-          try {
-            // 记录思考开始时间
-            if (!reasoningStartTime) {
-              reasoningStartTime = new Date().getTime();
-              console.log('[思考过程] 开始接收思考过程');
-            }
-
-            // 提取思考过程
-            if (toolCall.function?.arguments) {
-              const argumentsPart = toolCall.function.arguments;
-              try {
-                const parsedArgs = JSON.parse(argumentsPart);
-                if (parsedArgs.thinking) {
-                  reasoning += parsedArgs.thinking;
-
-                  // 通知思考过程更新
-                  if (onUpdate) {
-                    try {
-                      // 使用类似电脑版的方法，创建一个类型化的对象
-                      const reasoningChunk = {
-                        type: 'reasoning',
-                        content: content,
-                        reasoning: reasoning
-                      };
-                      onUpdate(reasoningChunk.content, reasoningChunk.reasoning);
-                    } catch (e) {
-                      console.error('更新思考过程时出错:', e);
-                      // 降级处理：只发送内容
-                      onUpdate(content, '');
-                    }
-                  }
-                }
-              } catch (e) {
-                // 如果JSON解析失败，直接添加到思考过程
-                reasoning += argumentsPart;
-                if (onUpdate) {
-                  try {
-                    // 使用类似电脑版的方法，创建一个类型化的对象
-                    const reasoningChunk = {
-                      type: 'reasoning',
-                      content: content,
-                      reasoning: reasoning
-                    };
-                    onUpdate(reasoningChunk.content, reasoningChunk.reasoning);
-                  } catch (e) {
-                    console.error('更新思考过程时出错:', e);
-                    // 降级处理：只发送内容
-                    onUpdate(content, '');
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.error('解析思考工具调用失败', e);
-          }
-          continue;
-        }
-      }
-
-      // 提取内容
-      const delta = chunk.choices[0]?.delta?.content || '';
-      if (delta) {
-        // 检查是否是思考过程
-        if (delta.includes('<thinking>') || delta.includes('<reasoning>')) {
-          isCollectingReasoning = true;
-          if (!reasoningStartTime) {
-            reasoningStartTime = new Date().getTime();
-            console.log('[思考过程] 收到思考过程开始标记');
-          }
-
-          // 立即触发UI更新以显示思考过程开始
-          if (onUpdate) {
-            try {
-              // 使用类似电脑版的方法，创建一个类型化的对象
-              const reasoningChunk = {
-                type: 'reasoning',
-                content: content,
-                reasoning: reasoning + delta
-              };
-              onUpdate(reasoningChunk.content, reasoningChunk.reasoning);
-            } catch (e) {
-              console.error('更新思考过程时出错:', e);
-              // 降级处理：只发送内容
-              onUpdate(content, '');
-            }
-          }
-        }
-
-        // 检查是否是思考过程结束
-        if (delta.includes('</thinking>') || delta.includes('</reasoning>')) {
-          isCollectingReasoning = false;
-
-          // 思考过程结束时也立即触发更新
-          if (onUpdate) {
-            try {
-              // 使用类似电脑版的方法，创建一个类型化的对象
-              const reasoningChunk = {
-                type: 'reasoning',
-                content: content,
-                reasoning: reasoning + delta
-              };
-              onUpdate(reasoningChunk.content, reasoningChunk.reasoning);
-            } catch (e) {
-              console.error('更新思考过程时出错:', e);
-              // 降级处理：只发送内容
-              onUpdate(content, '');
-            }
-          }
-        }
-
-        // 根据当前状态收集内容
-        if (isCollectingReasoning) {
-          // 收集思考过程
-          reasoning += delta;
-
-          // 每次收到思考过程内容都立即触发更新
-          if (onUpdate) {
-            try {
-              // 使用类似电脑版的方法，创建一个类型化的对象
-              const reasoningChunk = {
-                type: 'reasoning',
-                content: content,
-                reasoning: reasoning
-              };
-              onUpdate(reasoningChunk.content, reasoningChunk.reasoning);
-            } catch (e) {
-              console.error('更新思考过程时出错:', e);
-              // 降级处理：只发送内容
-              onUpdate(content, '');
-            }
-          }
-        } else {
-          // 普通内容收集
-          content += delta;
-
-          // 普通内容更新
-          if (onUpdate) {
-            try {
-              // 使用类似电脑版的方法，创建一个类型化的对象
-              const textChunk = {
-                type: 'text-delta',
-                content: content,
-                reasoning: reasoning
-              };
-              onUpdate(textChunk.content, textChunk.reasoning);
-            } catch (e) {
-              console.error('更新思考过程时出错:', e);
-              // 降级处理：只发送内容
-              onUpdate(content, '');
-            }
-          }
-        }
-      }
-    }
-
-    const completionTime = new Date().getTime() - startTime;
-    const reasoningTime = reasoningStartTime ? (new Date().getTime() - reasoningStartTime) : 0;
-
-    if (reasoning) {
-      console.log(`[API流式响应] 完成响应时间: ${completionTime}ms, 思考过程长度: ${reasoning.length}, 思考过程时间: ${reasoningTime}ms`);
-    }
-
-    console.log(`[API流式响应] 完整内容: ${content.substring(0, 100) + (content.length > 100 ? '...' : '')}`);
-
-    // 记录API响应（使用console.log替代logApiResponse）
-    console.log('OpenAI Chat Completions Stream 响应:', {
+    // 记录API请求
+    logApiRequest('OpenAI Chat Completions Stream', 'INFO', {
       model: modelId,
-      content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-      totalLength: content.length,
-      reasoning: reasoning ? `${reasoning.substring(0, 100)}... (${reasoning.length} chars)` : 'none',
-      reasoningTime,
-      completionTimeMs: completionTime
+      messages: messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content.substring(0, 50) + '...' : '[complex content]' })),
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+      ...streamParams
     });
 
-    // 如果包含思考过程，在完成时再次调用
-    if (reasoning && onUpdate) {
-      try {
-        // 使用类似电脑版的方法，创建一个类型化的对象
-        const completeChunk = {
-          type: 'finish',
-          content: content,
-          reasoning: reasoning,
-          reasoningTime: reasoningTime
-        };
-        onUpdate(completeChunk.content, completeChunk.reasoning);
-      } catch (e) {
-        console.error('最终更新思考过程时出错:', e);
-        // 降级处理：只发送内容
-        onUpdate(content, '');
+    // 创建流式响应
+    const stream = await openai.chat.completions.create(streamParams) as unknown as AsyncIterable<any>;
+
+    // 初始化变量
+    let fullContent = '';
+    let isFirstChunk = true;
+
+    try {
+      // 直接使用for await循环处理流式响应
+      for await (const chunk of stream) {
+        // 提取delta内容
+        const delta = chunk.choices[0]?.delta;
+        const content = delta?.content || '';
+
+        // 只处理有内容的delta
+        if (content) {
+          // 累加内容 - 这是关键步骤
+          fullContent += content;
+
+          // 调用回调函数 - 使用完整内容
+          if (onUpdate) {
+            onUpdate(fullContent);
+          }
+
+          // 发送事件通知 - 只包含当前文本块，这样UI层可以自行累加
+          EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
+            text: content, // 只发送当前文本块
+            isFirstChunk: isFirstChunk,
+            chunkLength: content.length,
+            fullContentLength: fullContent.length,
+            timestamp: Date.now()
+          });
+
+          // 处理首个文本块
+          if (isFirstChunk && content.trim()) {
+            // 发送特殊事件，通知UI立即替换占位符
+            EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_FIRST_CHUNK, {
+              text: content,
+              fullContent: content,
+              timestamp: Date.now()
+            });
+
+            // 标记为非首次，避免重复触发
+            isFirstChunk = false;
+          }
+        }
+
+        // 处理完成原因
+        const finishReason = chunk.choices[0]?.finish_reason;
+        if (finishReason) {
+          // 发送完成事件
+          EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
+            text: fullContent,
+            timestamp: Date.now()
+          });
+
+          break;
+        }
       }
+    } catch (error) {
+      // 发送错误事件
+      EventEmitter.emit(EVENT_NAMES.STREAM_ERROR, {
+        error,
+        timestamp: Date.now()
+      });
+
+      throw error;
     }
 
-    // 返回包含思考过程的内容
-    return content;
+    return fullContent;
   } catch (error: any) {
-    console.error('流式响应处理失败:', error);
-    console.error('错误详情:', error.message);
+    console.error('[streamCompletion] 流式响应处理失败:', error);
+    console.error('[streamCompletion] 错误详情:', error.message);
 
     // 如果是网络错误或API错误，尝试使用非流式响应
     if (error.message.includes('network') || error.message.includes('API')) {
-      console.log('流式响应失败，尝试使用非流式响应...');
+      console.log('[streamCompletion] 流式响应失败，尝试使用非流式响应...');
       try {
         const completion = await openai.chat.completions.create({
           model: modelId,
@@ -356,7 +160,7 @@ export async function streamCompletion(
 
         return content;
       } catch (fallbackError) {
-        console.error('非流式响应也失败:', fallbackError);
+        console.error('[streamCompletion] 非流式响应也失败:', fallbackError);
         throw fallbackError;
       }
     }

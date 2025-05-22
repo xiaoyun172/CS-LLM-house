@@ -39,13 +39,11 @@ export default function AssistantGroups({
             assistant => assistant && assistant.id && assistantGroupMap[assistant.id] === group.id
           );
 
-          // 如果分组中没有助手，不显示
-          if (groupAssistants.length === 0) {
-            return null;
-          }
+          // 即使分组中没有助手，也显示分组，但添加提示信息
+          // 不再返回null，而是显示空分组
 
           return (
-            <Accordion 
+            <Accordion
               key={group.id}
               defaultExpanded={Boolean(group.expanded)}
               disableGutters
@@ -62,7 +60,7 @@ export default function AssistantGroups({
             >
               <AccordionSummary
                 expandIcon={<ExpandMoreIcon />}
-                sx={{ 
+                sx={{
                   minHeight: '48px',
                   '& .MuiAccordionSummary-content': {
                     margin: '8px 0',
@@ -72,18 +70,34 @@ export default function AssistantGroups({
                 <Typography variant="body2">{group.name}</Typography>
               </AccordionSummary>
               <AccordionDetails sx={{ p: 1 }}>
-                <List disablePadding>
-                  {groupAssistants.map((assistant) => (
-                    <AssistantItem
-                      key={assistant.id}
-                      assistant={assistant}
-                      isSelected={currentAssistant?.id === assistant.id}
-                      onSelectAssistant={onSelectAssistant}
-                      onOpenMenu={onOpenMenu}
-                      onDeleteAssistant={onDeleteAssistant}
-                    />
-                  ))}
-                </List>
+                {groupAssistants.length > 0 ? (
+                  <List disablePadding>
+                    {groupAssistants.map((assistant) => (
+                      <AssistantItem
+                        key={assistant.id}
+                        assistant={assistant}
+                        isSelected={currentAssistant?.id === assistant.id}
+                        onSelectAssistant={onSelectAssistant}
+                        onOpenMenu={onOpenMenu}
+                        onDeleteAssistant={onDeleteAssistant}
+                      />
+                    ))}
+                  </List>
+                ) : (
+                  <Typography
+                    variant="body2"
+                    color="textSecondary"
+                    sx={{
+                      py: 1,
+                      px: 1,
+                      textAlign: 'center',
+                      fontStyle: 'italic',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    此分组暂无助手，请从未分组助手中添加
+                  </Typography>
+                )}
               </AccordionDetails>
             </Accordion>
           );
@@ -95,4 +109,4 @@ export default function AssistantGroups({
       )}
     </Box>
   );
-} 
+}

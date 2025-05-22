@@ -92,13 +92,13 @@ export async function sendChatRequest(
       messages = [{
         id: 'default-' + Date.now(),
         role: 'user',
-        content: '你好',
+        content: '您好，请问有什么可以帮助您的？', // 使用更友好的默认消息
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         blocks: []
       }];
 
-      console.log('[ProviderFactory.sendChatRequest] 添加默认用户消息: 你好');
+      console.log('[ProviderFactory.sendChatRequest] 添加默认用户消息: 您好，请问有什么可以帮助您的？');
     }
 
     // 记录消息数组

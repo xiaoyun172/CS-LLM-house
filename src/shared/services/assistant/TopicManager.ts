@@ -410,6 +410,7 @@ export class TopicManager {
 
   /**
    * 向话题添加助手的初始消息，并确保话题与助手正确关联
+   * 简化版，更接近电脑端实现
    */
   static async addAssistantMessagesToTopic({ assistant, topic }: { assistant: Assistant; topic: ChatTopic }): Promise<void> {
     try {
@@ -432,7 +433,10 @@ export class TopicManager {
       }
 
       // 获取助手的系统提示词并存储在话题的prompt字段中
-      topic.prompt = assistant.systemPrompt || DEFAULT_TOPIC_PROMPT;
+      // 简化：只在创建话题时设置提示词，不在后续同步
+      if (!topic.prompt) {
+        topic.prompt = assistant.systemPrompt || DEFAULT_TOPIC_PROMPT;
+      }
 
       // 如果话题已经有消息，则不添加新消息，但仍然确保关联关系正确
       if (topic.messages && topic.messages.length > 0) {

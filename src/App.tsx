@@ -1,10 +1,11 @@
 // React组件导入
 import { Provider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { useEffect, useState, memo, useMemo } from 'react';
 import { HashRouter } from 'react-router-dom';
 import AppRouter from './routes';
-import store from './shared/store';
+import store, { persistor } from './shared/store';
 import LoggerService from './shared/services/LoggerService';
 import ExitConfirmDialog from './components/ExitConfirmDialog';
 import BackButtonHandler from './components/BackButtonHandler';
@@ -239,8 +240,9 @@ function App() {
 
         if (hasIssues) {
           console.log('[App] 检测到数据一致性问题，开始修复...');
-          await DataRepairService.repairAllAssistantsAndTopics();
-          console.log('[App] 数据修复完成');
+          // 启用自动清理虚空话题功能
+          const result = await DataRepairService.repairAllAssistantsAndTopics(true);
+          console.log(`[App] 数据修复完成，已清理 ${result.orphanTopicsRemoved} 个虚空话题，剩余 ${result.totalTopics} 个话题`);
         } else {
           console.log('[App] 数据一致性检查通过，无需修复');
         }
@@ -254,6 +256,10 @@ function App() {
 
     // 加载话题数据并修复重复话题 - 使用标记避免重复加载
     const hasLoadedTopics = sessionStorage.getItem('_topicsLoaded');
+
+    // 始终加载分组数据，确保每次应用启动时都会加载
+    console.log('[App] 加载分组数据');
+    store.dispatch(initGroups());
 
     if (!hasLoadedTopics) {
       // 标记已加载话题，避免重复加载
@@ -275,9 +281,6 @@ function App() {
       };
 
       loadAllTopics();
-
-      // 加载分组数据
-      store.dispatch(initGroups());
 
       // 修复重复话题
       DataManager.fixDuplicateTopics()
@@ -394,11 +397,13 @@ function App() {
   );
 }
 
-// 包装App组件以提供Redux存储
+// 包装App组件以提供Redux存储和持久化
 function AppWithRedux() {
   return (
     <Provider store={store}>
-      <App />
+      <PersistGate loading={null} persistor={persistor}>
+        <App />
+      </PersistGate>
     </Provider>
   );
 }

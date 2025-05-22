@@ -9,6 +9,7 @@ import type { RootState } from '../shared/store';
 import { TopicService } from '../shared/services/TopicService';
 import { EventEmitter, EVENT_NAMES } from '../shared/services/EventService';
 import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
+import ToolsSwitch from './ToolsSwitch';
 
 interface ChatToolbarProps {
   onClearTopic?: () => void;
@@ -16,6 +17,8 @@ interface ChatToolbarProps {
   toggleImageGenerationMode?: () => void; // 切换图像生成模式
   webSearchActive?: boolean; // 是否处于网络搜索模式
   toggleWebSearch?: () => void; // 切换网络搜索模式
+  toolsEnabled?: boolean; // 是否启用工具调用
+  onToolsEnabledChange?: (enabled: boolean) => void; // 切换工具调用
 }
 
 /**
@@ -28,7 +31,9 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   imageGenerationMode = false,
   toggleImageGenerationMode,
   webSearchActive = false,
-  toggleWebSearch
+  toggleWebSearch,
+  toolsEnabled = false,
+  onToolsEnabledChange
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -167,7 +172,9 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
         zIndex: 1,
         marginBottom: '0',
         boxShadow: 'none',
-        backdropFilter: 'none'
+        backdropFilter: 'none',
+        display: 'flex',
+        justifyContent: 'center' // 居中显示
       }}
     >
       <Box
@@ -183,6 +190,9 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
           whiteSpace: 'nowrap',
           minHeight: '38px', // 稍微减小高度
           alignItems: 'center',
+          width: '100%',
+          maxWidth: '800px', // 设置最大宽度，与消息气泡一致
+          justifyContent: { xs: 'flex-start', md: 'center' }, // 移动端左对齐，桌面端居中
         }}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
@@ -192,6 +202,15 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
         onTouchEnd={handleTouchEnd}
         onTouchMove={handleTouchMove}
       >
+        {/* 工具开关 */}
+        {onToolsEnabledChange && (
+          <Box sx={{ marginRight: '8px' }}>
+            <ToolsSwitch
+              enabled={toolsEnabled}
+              onChange={onToolsEnabledChange}
+            />
+          </Box>
+        )}
         {buttons.map((button) => (
           <Box
             key={button.id}

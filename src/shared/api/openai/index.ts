@@ -5,8 +5,7 @@
 
 // 导入必要的类型
 import type { Model, Message } from '../../types';
-import type { ToolType } from './tools';
-import { createProvider } from './provider';
+import { createProvider } from './createProvider';
 
 // 导出客户端模块
 export {
@@ -37,15 +36,7 @@ export {
 
 // 导出工具调用模块
 export {
-  THINKING_TOOL,
-  WEB_SEARCH_TOOL,
-  CODE_TOOL,
-  ToolType,
-  createThinkingToolParams,
-  createToolsParams,
-  parseThinkingToolCall,
-  parseToolCall,
-  hasThinkingPrompt
+  WEB_SEARCH_TOOL
 } from './tools';
 
 // 导出流式响应模块
@@ -60,10 +51,12 @@ export {
 
 // 导出Provider类
 export {
-  BaseProvider,
-  OpenAIProvider,
-  createProvider
+  BaseOpenAIProvider,
+  OpenAIProvider
 } from './provider';
+
+// 导出Provider创建函数
+export { createProvider } from './createProvider';
 
 // 包装聊天请求函数以添加调试信息
 export async function sendChatRequest(
@@ -82,7 +75,6 @@ export async function sendChatRequest(
     const response = await originalSendChatRequest(messages, model, {
       onUpdate,
       enableWebSearch: model.capabilities?.webSearch,
-      enableThinking: model.capabilities?.reasoning, // 使用reasoning而不是thinking
       systemPrompt
     });
     console.log(`[openai/index.ts] sendChatRequest成功返回`);
@@ -103,7 +95,6 @@ export async function sendChatRequest(
  * const api = createOpenAIAPI(model);
  * const response = await api.sendMessage(messages, {
  *   enableWebSearch: true,
- *   enableThinking: true,
  *   systemPrompt: "你是一个有用的助手"
  * });
  * ```
@@ -121,9 +112,8 @@ export function createOpenAIAPI(model: Model) {
       options?: {
         onUpdate?: (content: string, reasoning?: string) => void;
         enableWebSearch?: boolean;
-        enableThinking?: boolean;
-        tools?: ToolType[];
         systemPrompt?: string;
+        enableTools?: boolean;
       }
     ) => {
       const systemPrompt = options?.systemPrompt || '';

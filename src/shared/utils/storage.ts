@@ -11,10 +11,26 @@ import { dexieStorage } from '../services/DexieStorageService';
  */
 export async function getStorageItem<T>(key: string): Promise<T | null> {
   try {
+    console.log(`[storage] 开始获取数据: ${key}`);
     const value = await dexieStorage.getSetting(key);
-    return value ?? null;
+
+    if (value === null || value === undefined) {
+      console.log(`[storage] 数据不存在: ${key}`);
+      return null;
+    }
+
+    console.log(`[storage] 数据获取成功: ${key}`);
+    return value;
   } catch (error) {
-    console.error(`Error getting item "${key}" from database:`, error);
+    console.error(`[storage] Error getting item "${key}" from database:`, error);
+
+    // 记录更详细的错误信息
+    if (error instanceof Error) {
+      console.error('[storage] 错误类型:', error.name);
+      console.error('[storage] 错误消息:', error.message);
+      console.error('[storage] 错误堆栈:', error.stack);
+    }
+
     return null;
   }
 }
@@ -23,12 +39,25 @@ export async function getStorageItem<T>(key: string): Promise<T | null> {
  * 向数据库保存数据
  * @param key 键名
  * @param value 要保存的值
+ * @returns 保存是否成功
  */
-export async function setStorageItem<T>(key: string, value: T): Promise<void> {
+export async function setStorageItem<T>(key: string, value: T): Promise<boolean> {
   try {
+    console.log(`[storage] 开始保存数据: ${key}`);
     await dexieStorage.saveSetting(key, value);
+    console.log(`[storage] 数据保存成功: ${key}`);
+    return true;
   } catch (error) {
-    console.error(`Error setting item "${key}" to database:`, error);
+    console.error(`[storage] Error setting item "${key}" to database:`, error);
+
+    // 记录更详细的错误信息
+    if (error instanceof Error) {
+      console.error('[storage] 错误类型:', error.name);
+      console.error('[storage] 错误消息:', error.message);
+      console.error('[storage] 错误堆栈:', error.stack);
+    }
+
+    return false;
   }
 }
 
@@ -77,17 +106,47 @@ export async function getAllStorageKeys(): Promise<string[]> {
 /**
  * 批量设置多个键值对
  * @param items 键值对对象
+ * @returns 保存是否成功
  */
-export async function setStorageItems(items: Record<string, any>): Promise<void> {
+export async function setStorageItems(items: Record<string, any>): Promise<boolean> {
   try {
+    console.log(`[storage] 开始批量保存数据，键数量: ${Object.keys(items).length}`);
+
     // 使用Dexie事务批量保存设置
     await dexieStorage.transaction('rw', dexieStorage.settings, async () => {
       for (const [key, value] of Object.entries(items)) {
+        console.log(`[storage] 批量保存 - 处理键: ${key}`);
         await dexieStorage.saveSetting(key, value);
       }
     });
+
+    console.log('[storage] 批量保存数据成功');
+    return true;
   } catch (error) {
-    console.error('Error setting multiple items to database:', error);
+    console.error('[storage] Error setting multiple items to database:', error);
+
+    // 记录更详细的错误信息
+    if (error instanceof Error) {
+      console.error('[storage] 错误类型:', error.name);
+      console.error('[storage] 错误消息:', error.message);
+      console.error('[storage] 错误堆栈:', error.stack);
+    }
+
+    // 尝试逐个保存，避免一个失败导致全部失败
+    console.log('[storage] 尝试逐个保存项目...');
+    let allSuccess = true;
+
+    for (const [key, value] of Object.entries(items)) {
+      try {
+        console.log(`[storage] 单独保存键: ${key}`);
+        await dexieStorage.saveSetting(key, value);
+      } catch (itemError) {
+        console.error(`[storage] 保存键 ${key} 失败:`, itemError);
+        allSuccess = false;
+      }
+    }
+
+    return allSuccess;
   }
 }
 
@@ -108,5 +167,5 @@ export function getAllKeys(): string[] {
     console.error('从localStorage获取所有键失败:', error);
     return [];
   }
-} 
-*/ 
+}
+*/

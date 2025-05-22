@@ -132,8 +132,37 @@ export class TopicService {
   static async clearTopicContent(topicId: string): Promise<boolean> {
     if (!topicId) return false;
     try {
-      // 从数据库中删除主题的所有消息
-      await dexieStorage.deleteMessagesByTopicId(topicId);
+      // 获取话题
+      const topic = await dexieStorage.getTopic(topicId);
+      if (!topic) {
+        console.warn(`[TopicService] 清空话题内容失败: 话题 ${topicId} 不存在`);
+        return false;
+      }
+
+      // 使用事务保证原子性
+      await dexieStorage.transaction('rw', [
+        dexieStorage.topics,
+        dexieStorage.messages,
+        dexieStorage.message_blocks
+      ], async () => {
+        // 1. 从数据库中删除主题的所有消息块
+        const messages = await dexieStorage.getMessagesByTopicId(topicId);
+        for (const message of messages) {
+          if (message.blocks && message.blocks.length > 0) {
+            await dexieStorage.deleteMessageBlocksByIds(message.blocks);
+          }
+        }
+
+        // 2. 从数据库中删除主题的所有消息
+        await dexieStorage.messages.where('topicId').equals(topicId).delete();
+
+        // 3. 清空话题的messages数组和messageIds数组
+        topic.messages = [];
+        topic.messageIds = [];
+        await dexieStorage.topics.put(topic);
+      });
+
+      console.log(`[TopicService] 已清空话题 ${topicId} 的所有消息`);
 
       // 更新 Redux 状态
       store.dispatch({ type: 'messages/setTopicMessages', payload: { topicId, messages: [] } });
@@ -543,15 +572,47 @@ export class TopicService {
             await dexieStorage.updateMessageBlock(block.id, { status: 'success' });
           }
 
-          // 主文本块内容为空时设置默认内容
+          // 主文本块内容为空时，不立即设置错误状态，而是保持原状态
+          // 这样可以避免在应用重启或进入设置页面时错误地将消息标记为失败
           if (block.type === 'main_text' && (!block.content || block.content.trim() === '')) {
-            console.log(`[TopicService] 为空主文本块设置默认内容: ${block.id}`);
-            block.content = '生成回复失败，请重试';
-            block.status = 'error';
-            await dexieStorage.updateMessageBlock(block.id, {
-              content: '生成回复失败，请重试',
-              status: 'error'
-            });
+            console.log(`[TopicService] 检测到空主文本块: ${block.id}，但不立即设置错误状态`);
+
+            // 获取关联的消息，检查是否有版本历史
+            const message = await dexieStorage.getMessage(block.messageId);
+
+            // 如果消息有版本历史，尝试从中恢复内容
+            if (message && message.versions && message.versions.length > 0) {
+              console.log(`[TopicService] 消息 ${message.id} 有 ${message.versions.length} 个版本，尝试恢复内容`);
+              let contentRestored = false;
+
+              // 首先尝试从活跃版本恢复
+              const activeVersion = message.versions.find(v => v.isActive);
+              if (activeVersion && activeVersion.metadata && activeVersion.metadata.content) {
+                console.log(`[TopicService] 从活跃版本 ${activeVersion.id} 恢复内容`);
+                block.content = activeVersion.metadata.content;
+                block.status = 'success';
+                contentRestored = true;
+              }
+              // 如果没有活跃版本或活跃版本没有内容，尝试从最新版本恢复
+              else if (message.versions[0] && message.versions[0].metadata && message.versions[0].metadata.content) {
+                console.log(`[TopicService] 从最新版本 ${message.versions[0].id} 恢复内容`);
+                block.content = message.versions[0].metadata.content;
+                block.status = 'success';
+                contentRestored = true;
+              }
+
+              if (contentRestored) {
+                await dexieStorage.updateMessageBlock(block.id, {
+                  content: block.content,
+                  status: block.status
+                });
+                console.log(`[TopicService] 成功从版本历史恢复内容: ${block.id}`);
+              }
+            }
+
+            // 即使无法从版本历史恢复内容，也不立即设置错误状态
+            // 这样可以避免在应用重启或进入设置页面时错误地将消息标记为失败
+            // 只有在用户尝试查看消息内容时，才会显示错误提示
           }
 
           blocks.push(block);
@@ -754,5 +815,148 @@ export class TopicService {
   private static isBlockSystemEnabled(): boolean {
     // 可以从配置或设置中读取是否启用块系统
     return true; // 默认启用
+  }
+
+  /**
+   * 创建主题分支
+   * 从当前主题的指定消息创建一个新的分支主题
+   * @param sourceTopicId 源主题ID
+   * @param branchPointMessageId 分支点消息ID
+   * @returns 创建的新主题，如果失败则返回null
+   */
+  static async createTopicBranch(sourceTopicId: string, branchPointMessageId: string): Promise<ChatTopic | null> {
+    try {
+      console.log(`[TopicService] 开始创建主题分支，源主题: ${sourceTopicId}, 分支点消息: ${branchPointMessageId}`);
+
+      // 获取源主题信息
+      const sourceTopic = await this.getTopicById(sourceTopicId);
+      if (!sourceTopic) {
+        console.error(`[TopicService] 找不到源主题: ${sourceTopicId}`);
+        return null;
+      }
+
+      // 创建新主题
+      const newTopic = await this.createTopic(`${sourceTopic.name} (分支)`);
+      if (!newTopic) {
+        console.error('[TopicService] 创建分支主题失败');
+        return null;
+      }
+
+      // 获取源主题的所有消息
+      const sourceMessages = await dexieStorage.getMessagesByTopicId(sourceTopicId);
+      if (!sourceMessages || sourceMessages.length === 0) {
+        console.warn(`[TopicService] 源主题 ${sourceTopicId} 没有消息可克隆`);
+        return newTopic; // 返回空主题
+      }
+
+      // 找到分支点消息的索引
+      const branchPointIndex = sourceMessages.findIndex(msg => msg.id === branchPointMessageId);
+      if (branchPointIndex === -1) {
+        console.error(`[TopicService] 找不到分支点消息 ${branchPointMessageId}`);
+        return newTopic; // 返回空主题
+      }
+
+      // 获取需要克隆的消息（包括分支点消息）
+      const messagesToClone = sourceMessages.slice(0, branchPointIndex + 1);
+      console.log(`[TopicService] 将克隆 ${messagesToClone.length} 条消息`);
+
+      // 克隆每条消息及其块
+      const clonedMessages: Message[] = [];
+      const allClonedBlocks: MessageBlock[] = [];
+
+      for (const originalMessage of messagesToClone) {
+        // 获取原始消息的块
+        const originalBlocks = await dexieStorage.getMessageBlocksByMessageId(originalMessage.id);
+
+        // 创建新消息ID
+        const newMessageId = uuid();
+
+        // 克隆消息
+        const clonedMessage: Message = {
+          ...originalMessage,
+          id: newMessageId,
+          topicId: newTopic.id,
+          blocks: [], // 先清空块列表，后面会重新添加
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        // 克隆块并关联到新消息
+        const clonedBlocks: MessageBlock[] = [];
+
+        for (const originalBlock of originalBlocks) {
+          const newBlockId = uuid();
+
+          const clonedBlock: MessageBlock = {
+            ...originalBlock,
+            id: newBlockId,
+            messageId: newMessageId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          clonedBlocks.push(clonedBlock);
+          clonedMessage.blocks.push(newBlockId);
+        }
+
+        // 添加到集合中
+        clonedMessages.push(clonedMessage);
+        allClonedBlocks.push(...clonedBlocks);
+      }
+
+      // 保存克隆的消息和块到数据库
+      await dexieStorage.transaction('rw', [
+        dexieStorage.topics,
+        dexieStorage.messages,
+        dexieStorage.message_blocks
+      ], async () => {
+        // 保存消息块
+        if (allClonedBlocks.length > 0) {
+          await dexieStorage.bulkSaveMessageBlocks(allClonedBlocks);
+        }
+
+        // 保存消息
+        for (const message of clonedMessages) {
+          await dexieStorage.messages.put(message);
+        }
+
+        // 更新主题
+        newTopic.messageIds = clonedMessages.map(m => m.id);
+        newTopic.messages = clonedMessages;
+
+        // 更新lastMessageTime
+        if (clonedMessages.length > 0) {
+          const lastMessage = clonedMessages[clonedMessages.length - 1];
+          newTopic.lastMessageTime = lastMessage.createdAt || lastMessage.updatedAt || new Date().toISOString();
+        }
+
+        // 保存更新后的主题
+        await dexieStorage.saveTopic(newTopic);
+      });
+
+      // 更新Redux状态
+      // 添加消息到Redux
+      for (const message of clonedMessages) {
+        store.dispatch(newMessagesActions.addMessage({
+          topicId: newTopic.id,
+          message
+        }));
+      }
+
+      // 添加块到Redux
+      if (allClonedBlocks.length > 0) {
+        store.dispatch(upsertManyBlocks(allClonedBlocks));
+      }
+
+      console.log(`[TopicService] 成功克隆 ${clonedMessages.length} 条消息和 ${allClonedBlocks.length} 个块到新主题 ${newTopic.id}`);
+
+      // 设置当前主题为新创建的分支主题
+      store.dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
+
+      return newTopic;
+    } catch (error) {
+      console.error('[TopicService] 创建主题分支失败:', error);
+      return null;
+    }
   }
 }

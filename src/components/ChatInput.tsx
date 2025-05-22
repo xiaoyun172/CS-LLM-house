@@ -394,7 +394,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
       zIndex: 1000,
       boxShadow: 'none',
       transition: 'all 0.3s ease',
-      marginBottom: isKeyboardVisible ? '0' : '0'
+      marginBottom: isKeyboardVisible ? '0' : '0',
+      maxWidth: '800px', // 设置最大宽度，与消息气泡一致
+      margin: '0 auto' // 居中显示
     }}>
       {/* URL解析状态显示 */}
       {urlScraperStatus !== 'idle' && (
@@ -412,7 +414,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           display: 'flex',
           flexDirection: 'column',
           width: '100%',
-          maxWidth: '600px',
+          maxWidth: '100%', // 使用100%宽度，与外部容器一致
           padding: '8px 0',
           gap: '8px',
           marginBottom: '8px'
@@ -498,7 +500,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         minHeight: '40px',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         width: '100%',
-        maxWidth: '600px'
+        maxWidth: '100%' // 使用100%宽度，与外部容器一致
       }}>
         {/* 语音图标 */}
           <IconButton

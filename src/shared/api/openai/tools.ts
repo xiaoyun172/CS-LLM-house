@@ -3,90 +3,19 @@
  * 负责处理函数调用和工具使用
  */
 import type OpenAI from 'openai';
+import {
+  ToolType as ToolTypeEnum,
+  type ToolTypeValue,
+  THINKING_TOOL,
+  WEB_SEARCH_TOOL,
+  CODE_TOOL
+} from '../../types/tools';
+import { isReasoningModel } from '../../config/models';
 
-/**
- * 工具类型定义
- */
-export const ToolType = {
-  THINKING: 'thinking',
-  WEB_SEARCH: 'web_search',
-  CODE: 'code',
-  IMAGE_ANALYSIS: 'image_analysis',
-  CALCULATOR: 'calculator'
-} as const;
-
-export type ToolType = typeof ToolType[keyof typeof ToolType];
-
-/**
- * 思考工具定义
- */
-export const THINKING_TOOL = {
-  type: "function",
-  function: {
-    name: "thinking",
-    description: "Display the step-by-step thinking process before answering a question",
-    parameters: {
-      type: "object",
-      properties: {
-        thinking: {
-          type: "string",
-          description: "The step-by-step reasoning process"
-        }
-      },
-      required: ["thinking"]
-    }
-  }
-};
-
-/**
- * 网页搜索工具定义
- */
-export const WEB_SEARCH_TOOL = {
-  type: "function",
-  function: {
-    name: "web_search",
-    description: "Search the web for current information",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "The search query"
-        }
-      },
-      required: ["query"]
-    }
-  }
-};
-
-/**
- * 代码工具定义
- */
-export const CODE_TOOL = {
-  type: "function",
-  function: {
-    name: "write_code",
-    description: "Write code in a specified programming language",
-    parameters: {
-      type: "object",
-      properties: {
-        language: {
-          type: "string",
-          description: "Programming language (e.g. python, javascript, java)"
-        },
-        code: {
-          type: "string",
-          description: "The code implementation"
-        },
-        explanation: {
-          type: "string",
-          description: "Brief explanation of how the code works"
-        }
-      },
-      required: ["language", "code"]
-    }
-  }
-};
+// 重新导出工具类型和工具定义，保持向后兼容
+export const ToolType = ToolTypeEnum;
+export type ToolType = ToolTypeValue;
+export { THINKING_TOOL, WEB_SEARCH_TOOL, CODE_TOOL };
 
 /**
  * 创建思考工具参数
@@ -94,14 +23,14 @@ export const CODE_TOOL = {
  * @returns 包含思考工具的参数对象
  */
 export function createThinkingToolParams(modelId: string): any {
-  // 只有特定模型支持思考工具
-  if (modelId.includes('gpt-4') || modelId.includes('gpt-4o')) {
+  // 使用导入的模型检测函数判断是否支持推理
+  if (isReasoningModel({ id: modelId, name: modelId, provider: 'openai' } as any)) {
     return {
       tools: [THINKING_TOOL],
       tool_choice: "auto"
     };
   }
-  
+
   return {};
 }
 
@@ -114,7 +43,7 @@ export function parseThinkingToolCall(toolCall: any): string | null {
   if (!toolCall || !toolCall.function || toolCall.function.name !== 'thinking') {
     return null;
   }
-  
+
   try {
     if (toolCall.function?.arguments) {
       const argumentsPart = toolCall.function.arguments;
@@ -131,7 +60,7 @@ export function parseThinkingToolCall(toolCall: any): string | null {
   } catch (e) {
     console.error('解析思考工具调用失败', e);
   }
-  
+
   return null;
 }
 
@@ -141,10 +70,10 @@ export function parseThinkingToolCall(toolCall: any): string | null {
  * @returns 是否包含思考提示
  */
 export function hasThinkingPrompt(messages: OpenAI.Chat.ChatCompletionMessageParam[]): boolean {
-  return messages.some(msg => 
-    msg.role === 'system' && 
-    typeof msg.content === 'string' && 
-    (msg.content.includes('thinking') || 
+  return messages.some(msg =>
+    msg.role === 'system' &&
+    typeof msg.content === 'string' &&
+    (msg.content.includes('thinking') ||
      msg.content.includes('reasoning') ||
      msg.content.includes('思考过程'))
   );
@@ -159,11 +88,11 @@ export function parseToolCall(toolCall: any): { toolName: string; args: any } | 
   if (!toolCall || !toolCall.function || !toolCall.function.name) {
     return null;
   }
-  
+
   try {
     const toolName = toolCall.function.name;
     let args = {};
-    
+
     if (toolCall.function?.arguments) {
       try {
         args = JSON.parse(toolCall.function.arguments);
@@ -172,7 +101,7 @@ export function parseToolCall(toolCall: any): { toolName: string; args: any } | 
         args = { raw: toolCall.function.arguments };
       }
     }
-    
+
     return { toolName, args };
   } catch (e) {
     console.error('解析工具调用失败', e);
@@ -187,25 +116,62 @@ export function parseToolCall(toolCall: any): { toolName: string; args: any } | 
  */
 export function createToolsParams(toolTypes: ToolType[]): any {
   const tools = [];
-  
+
   if (toolTypes.includes(ToolType.THINKING)) {
     tools.push(THINKING_TOOL);
   }
-  
+
   if (toolTypes.includes(ToolType.WEB_SEARCH)) {
     tools.push(WEB_SEARCH_TOOL);
   }
-  
+
   if (toolTypes.includes(ToolType.CODE)) {
     tools.push(CODE_TOOL);
   }
-  
+
   if (tools.length === 0) {
     return {};
   }
-  
+
   return {
     tools,
     tool_choice: "auto"
+  };
+}
+
+/**
+ * 将OpenAI工具转换为通用工具
+ * @param tools 工具列表
+ * @param toolCall 工具调用
+ * @returns 通用工具
+ */
+export function openAIToolToTool(tools: any[], toolCall: any): any {
+  // 如果没有工具或工具调用，返回undefined
+  if (!tools || !toolCall) {
+    return undefined;
+  }
+
+  // 查找匹配的工具
+  const tool = tools.find((t) => {
+    if ('name' in toolCall) {
+      return t.function?.name === toolCall.name;
+    } else if (toolCall.function) {
+      return t.function?.name === toolCall.function.name;
+    }
+    return false;
+  });
+
+  // 如果找不到工具，返回undefined
+  if (!tool) {
+    console.warn('未找到匹配的工具:', toolCall);
+    return undefined;
+  }
+
+  // 转换为通用工具
+  return {
+    id: tool.function.name,
+    name: tool.function.name,
+    description: tool.function.description,
+    inputSchema: tool.function.parameters
   };
 }

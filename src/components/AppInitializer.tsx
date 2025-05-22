@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import type { RootState } from '../shared/store';
+import { useAppDispatch } from '../shared/store';
 import { dexieStorage } from '../shared/services/DexieStorageService';
 import { AssistantService } from '../shared/services/assistant';
 import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
 import { setCurrentAssistant } from '../shared/store/slices/assistantsSlice';
+import { initGroups } from '../shared/store/slices/groupsSlice';
 
 /**
  * 应用初始化组件
@@ -13,7 +15,7 @@ import { setCurrentAssistant } from '../shared/store/slices/assistantsSlice';
  * 2. 确保选中了该助手下的一个话题
  */
 const AppInitializer = () => {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
 
   // 从Redux获取当前状态
   const currentAssistant = useSelector((state: RootState) => state.assistants.currentAssistant);
@@ -24,6 +26,10 @@ const AppInitializer = () => {
   useEffect(() => {
     const initializeApp = async () => {
       console.log('[AppInitializer] 开始初始化应用...');
+
+      // 确保加载分组数据
+      console.log('[AppInitializer] 加载分组数据');
+      dispatch(initGroups());
 
       try {
         // 1. 确保选中了一个助手
@@ -83,10 +89,26 @@ const AppInitializer = () => {
             selectFirstAssistant();
           }
         }
-        // 如果已有当前助手但没有选中话题，选择第一个话题
-        else if (!currentTopicId && currentAssistant.topics && currentAssistant.topics.length > 0) {
-          console.log(`[AppInitializer] 已有当前助手但没有选中话题，自动选择第一个话题: ${currentAssistant.topics[0].name}`);
-          dispatch(newMessagesActions.setCurrentTopicId(currentAssistant.topics[0].id));
+        // 如果已有当前助手，检查话题选择情况
+        else if (currentAssistant.topics && currentAssistant.topics.length > 0) {
+          // 情况1: 没有选中话题，自动选择第一个话题
+          if (!currentTopicId) {
+            console.log(`[AppInitializer] 已有当前助手但没有选中话题，自动选择第一个话题: ${currentAssistant.topics[0].name}`);
+            dispatch(newMessagesActions.setCurrentTopicId(currentAssistant.topics[0].id));
+          }
+          // 情况2: 已选中话题，但需要验证该话题是否属于当前助手
+          else {
+            // 检查当前话题是否属于当前助手
+            const topicBelongsToAssistant = currentAssistant.topicIds?.includes(currentTopicId) ||
+                                           currentAssistant.topics.some(topic => topic.id === currentTopicId);
+
+            if (!topicBelongsToAssistant) {
+              console.log(`[AppInitializer] 当前话题 ${currentTopicId} 不属于当前助手，自动选择第一个话题: ${currentAssistant.topics[0].name}`);
+              dispatch(newMessagesActions.setCurrentTopicId(currentAssistant.topics[0].id));
+            } else {
+              console.log(`[AppInitializer] 当前话题 ${currentTopicId} 属于当前助手，无需切换`);
+            }
+          }
         }
       } catch (error) {
         console.error('[AppInitializer] 初始化过程中出错:', error);

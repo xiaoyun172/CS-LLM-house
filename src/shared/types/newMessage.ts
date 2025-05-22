@@ -224,6 +224,12 @@ export interface MessageVersion {
   modelId?: string;
   model?: Model;
   isActive?: boolean;
+  metadata?: {
+    content?: string;
+    blockIds?: string[];
+    isInitialVersion?: boolean;
+    [key: string]: any;
+  };
 }
 
 // 新消息类型

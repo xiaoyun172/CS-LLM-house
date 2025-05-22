@@ -79,6 +79,7 @@ const ChatPage: React.FC = () => {
     handleSendMessage,
     handleDeleteMessage,
     handleRegenerateMessage,
+    handleSwitchMessageVersion,
     loadTopicMessages
   } = useMessageHandling(selectedModel, currentTopic);
 
@@ -86,8 +87,10 @@ const ChatPage: React.FC = () => {
   const {
     webSearchActive,
     imageGenerationMode,
+    toolsEnabled,
     toggleWebSearch,
     toggleImageGenerationMode,
+    toggleToolsEnabled,
     handleUrlScraping,
     handleStopResponseClick,
     handleMessageSend
@@ -127,10 +130,13 @@ const ChatPage: React.FC = () => {
       handleClearTopic={handleClearTopic}
       handleDeleteMessage={handleDeleteMessage}
       handleRegenerateMessage={handleRegenerateMessage}
+      handleSwitchMessageVersion={handleSwitchMessageVersion}
       webSearchActive={webSearchActive}
       imageGenerationMode={imageGenerationMode}
+      toolsEnabled={toolsEnabled}
       toggleWebSearch={toggleWebSearch}
       toggleImageGenerationMode={toggleImageGenerationMode}
+      toggleToolsEnabled={toggleToolsEnabled}
       handleMessageSend={handleMessageSend}
       handleUrlScraping={handleUrlScraping}
       handleStopResponseClick={handleStopResponseClick}

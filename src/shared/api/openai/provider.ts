@@ -1,28 +1,47 @@
 /**
- * OpenAI Provider模块
- * 提供与电脑版一致的Provider类实现
+ * OpenAI Provider
+ * 负责与OpenAI API通信
  */
 import OpenAI from 'openai';
-import type { Message, Model } from '../../types';
-import { logApiRequest } from '../../services/LoggerService';
+import { createClient } from './client';
+import { streamCompletion } from './stream';
+
 import {
-  createClient,
   supportsMultimodal,
   supportsWebSearch,
-  supportsReasoning,
   getWebSearchParams
 } from './client';
-import { streamCompletion } from './stream';
-import { ToolType, createToolsParams } from './tools';
 import { getMainTextContent, findImageBlocks } from '../../utils/messageUtils';
+import { findFileBlocks, FileTypes, getFileTypeByExtension, readFileContent } from '../../utils/fileUtils';
+import {
+  isReasoningModel,
+  isOpenAIReasoningModel,
+  isClaudeReasoningModel,
+  isGeminiReasoningModel,
+  isQwenReasoningModel,
+  isGrokReasoningModel
+} from '../../config/models';
+import {
+  EFFORT_RATIO,
+  DEFAULT_MAX_TOKENS,
+  findTokenLimit
+} from '../../config/constants';
+import {
+  isClaudeModel,
+  isGeminiModel,
+  isGemmaModel
+} from '../../utils/modelUtils';
+// 注释掉工具相关导入，保留结构以便将来添加
+// import { parseAndCallTools } from '../tools/parseAndCallTools';
+import type { BaseProvider } from '../baseProvider';
+import type { Message, Model } from '../../types';
 
 /**
- * 基础Provider抽象类
+ * 基础OpenAI Provider
  */
-export abstract class BaseProvider {
-  protected model: Model;
+export abstract class BaseOpenAIProvider implements BaseProvider {
   protected client: OpenAI;
-  protected useSystemPromptForTools: boolean = true;
+  protected model: Model;
 
   constructor(model: Model) {
     this.model = model;
@@ -31,9 +50,12 @@ export abstract class BaseProvider {
 
   /**
    * 检查模型是否支持多模态
+   * @param model 模型对象（可选）
+   * @returns 是否支持多模态
    */
-  protected supportsMultimodal(): boolean {
-    return supportsMultimodal(this.model);
+  protected supportsMultimodal(model?: Model): boolean {
+    const actualModel = model || this.model;
+    return supportsMultimodal(actualModel);
   }
 
   /**
@@ -47,74 +69,221 @@ export abstract class BaseProvider {
    * 检查模型是否支持推理优化
    */
   protected supportsReasoning(): boolean {
-    return supportsReasoning(this.model);
+    // 使用导入的模型检测函数
+    return isReasoningModel(this.model);
   }
 
   /**
    * 获取温度参数
    */
-  protected getTemperature(assistant?: any, model?: Model): number | undefined {
-    const actualModel = model || this.model;
-
-    if (this.supportsReasoning()) {
-      return undefined;
-    }
-
-    // 优先使用助手设置的温度
-    if (assistant?.settings?.temperature !== undefined) {
-      return assistant.settings.temperature;
-    }
-
-    return actualModel.temperature;
+  protected getTemperature(): number {
+    return this.model.temperature || 1.0;
   }
 
   /**
    * 获取top_p参数
    */
-  protected getTopP(assistant?: any, model?: Model): number | undefined {
-    const actualModel = model || this.model;
-
-    if (this.supportsReasoning()) {
-      return undefined;
-    }
-
-    // 优先使用助手设置的top_p
-    if (assistant?.settings?.top_p !== undefined) {
-      return assistant.settings.top_p;
-    }
-
-    return (actualModel as any).topP;
+  protected getTopP(): number {
+    return (this.model as any).top_p || 1.0;
   }
 
   /**
    * 获取推理优化参数
+   * 根据模型类型和助手设置返回不同的推理参数
+   * @param assistant 助手对象
+   * @param model 模型对象
+   * @returns 推理参数
    */
   protected getReasoningEffort(assistant?: any, model?: Model): any {
     const actualModel = model || this.model;
 
-    if (!this.supportsReasoning()) {
+    // 如果模型不支持推理，返回空对象
+    if (!isReasoningModel(actualModel)) {
       return {};
     }
 
+    // 获取推理努力程度
+    const reasoningEffort = assistant?.settings?.reasoning_effort;
+
+    // 如果未设置推理努力程度，根据模型类型返回禁用推理的参数
+    if (!reasoningEffort) {
+      // Qwen模型
+      if (isQwenReasoningModel(actualModel)) {
+        return { enable_thinking: false };
+      }
+
+      // Claude模型
+      if (isClaudeReasoningModel(actualModel)) {
+        return { thinking: { type: 'disabled' } };
+      }
+
+      // Gemini模型
+      if (isGeminiReasoningModel(actualModel)) {
+        return { reasoning_effort: 'none' };
+      }
+
+      // 默认情况
+      return {};
+    }
+
+    // 计算推理token预算
+    const effortRatio = EFFORT_RATIO[reasoningEffort as keyof typeof EFFORT_RATIO] || 0.3; // 默认使用medium
+    const tokenLimit = findTokenLimit(actualModel.id);
+
+    // 如果找不到token限制，使用默认值
+    if (!tokenLimit) {
+      return { reasoning_effort: reasoningEffort };
+    }
+
+    const budgetTokens = Math.floor(
+      (tokenLimit.max - tokenLimit.min) * effortRatio + tokenLimit.min
+    );
+
     // 根据模型类型返回不同的推理参数
-    if (actualModel.id.includes('gpt-4') || actualModel.id.includes('gpt-4o')) {
+
+    // OpenAI模型
+    if (isOpenAIReasoningModel(actualModel)) {
       return {
-        reasoning_effort: assistant?.settings?.reasoning_effort || 'auto'
+        reasoning_effort: reasoningEffort
       };
     }
 
+    // Qwen模型
+    if (isQwenReasoningModel(actualModel)) {
+      return {
+        enable_thinking: true,
+        thinking_budget: budgetTokens
+      };
+    }
+
+    // Grok模型
+    if (isGrokReasoningModel(actualModel)) {
+      return {
+        reasoning_effort: reasoningEffort
+      };
+    }
+
+    // Gemini模型
+    if (isGeminiReasoningModel(actualModel)) {
+      return {
+        reasoning_effort: reasoningEffort
+      };
+    }
+
+    // Claude模型
+    if (isClaudeReasoningModel(actualModel)) {
+      const maxTokens = assistant?.settings?.maxTokens;
+      return {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: Math.max(1024, Math.min(budgetTokens, (maxTokens || DEFAULT_MAX_TOKENS) * effortRatio))
+        }
+      };
+    }
+
+    // 默认情况
     return {};
   }
 
   /**
    * 获取消息参数
+   * 支持多种类型的消息内容，包括文本、图像、文件等
+   * 支持不同模型特定的消息格式
+   * @param message 消息对象
+   * @param model 模型对象（可选）
+   * @returns 消息参数
    */
-  protected async getMessageParam(message: Message): Promise<any> {
-    const isVision = this.supportsMultimodal();
-    const content = getMainTextContent(message);
-    const imageBlocks = findImageBlocks(message);
+  protected async getMessageParam(message: Message, model?: Model): Promise<any> {
+    const actualModel = model || this.model;
+    const isVision = this.supportsMultimodal(actualModel);
 
-    if (imageBlocks.length === 0) {
+    // 获取消息内容，使用更健壮的方法
+    let content = '';
+
+    try {
+      // 首先尝试使用getMainTextContent函数
+      content = getMainTextContent(message);
+
+      // 如果内容为空，尝试从其他属性获取
+      if (!content || !content.trim()) {
+        // 尝试从_content属性获取
+        if (typeof (message as any)._content === 'string' && (message as any)._content.trim()) {
+          content = (message as any)._content;
+        }
+        // 尝试从content属性获取
+        else if (typeof (message as any).content === 'string' && (message as any).content.trim()) {
+          content = (message as any).content;
+        }
+        // 尝试从content对象获取
+        else if (typeof (message as any).content === 'object' && (message as any).content) {
+          if ('text' in (message as any).content && (message as any).content.text) {
+            content = (message as any).content.text;
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`[OpenAIProvider.getMessageParam] 获取消息内容失败:`, error);
+      // 如果出错，尝试使用备用方法
+      if (typeof (message as any).content === 'string') {
+        content = (message as any).content;
+      }
+    }
+
+    // 获取图片和文件块
+    const imageBlocks = findImageBlocks(message);
+    const fileBlocks = findFileBlocks(message);
+
+    // 处理系统消息的特殊情况
+    if (message.role === 'system') {
+      // Claude模型的系统消息需要特殊处理
+      if (isClaudeModel(actualModel)) {
+        return {
+          role: 'system',
+          content
+        };
+      }
+
+      // Gemini模型不支持系统消息，需要转换为用户消息
+      if (isGeminiModel(actualModel)) {
+        return {
+          role: 'user',
+          content: `<system>\n${content}\n</system>`
+        };
+      }
+
+      // Gemma模型的系统消息需要特殊处理
+      if (isGemmaModel(actualModel)) {
+        return {
+          role: 'user',
+          content: `<start_of_turn>system\n${content}\n<end_of_turn>`
+        };
+      }
+
+      // 默认处理系统消息
+      return {
+        role: 'system',
+        content
+      };
+    }
+
+    // 如果没有特殊内容，返回简单的文本消息
+    if (imageBlocks.length === 0 && fileBlocks.length === 0) {
+      // 根据不同模型处理消息
+      if (isClaudeModel(actualModel)) {
+        return {
+          role: message.role,
+          content
+        };
+      }
+
+      if (isGeminiModel(actualModel)) {
+        return {
+          role: message.role === 'assistant' ? 'model' : 'user',
+          content
+        };
+      }
+
+      // 默认处理
       return {
         role: message.role,
         content
@@ -122,7 +291,85 @@ export abstract class BaseProvider {
     }
 
     // 处理多模态内容
-    if (isVision && imageBlocks.length > 0) {
+    if (isVision && (imageBlocks.length > 0 || fileBlocks.length > 0)) {
+      // 根据不同模型处理多模态内容
+      if (isClaudeModel(actualModel)) {
+        // Claude模型的多模态格式
+        const parts: any[] = [];
+
+        // 添加文本内容
+        if (content) {
+          parts.push({
+            type: 'text',
+            text: content
+          });
+        }
+
+        // 添加图片内容
+        for (const block of imageBlocks) {
+          if (block.url) {
+            parts.push({
+              type: 'image',
+              source: {
+                type: 'url',
+                url: block.url
+              }
+            });
+          } else if (block.base64Data) {
+            parts.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: block.mimeType || 'image/jpeg',
+                data: block.base64Data
+              }
+            });
+          }
+        }
+
+        return {
+          role: message.role,
+          content: parts
+        };
+      }
+
+      if (isGeminiModel(actualModel)) {
+        // Gemini模型的多模态格式
+        const parts: any[] = [];
+
+        // 添加文本内容
+        if (content) {
+          parts.push({
+            text: content
+          });
+        }
+
+        // 添加图片内容
+        for (const block of imageBlocks) {
+          if (block.url) {
+            parts.push({
+              inline_data: {
+                mime_type: block.mimeType || 'image/jpeg',
+                data: block.url.startsWith('data:') ? block.url.split(',')[1] : '[URL_IMAGE]'
+              }
+            });
+          } else if (block.base64Data) {
+            parts.push({
+              inline_data: {
+                mime_type: block.mimeType || 'image/jpeg',
+                data: block.base64Data
+              }
+            });
+          }
+        }
+
+        return {
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts
+        };
+      }
+
+      // OpenAI模型的多模态格式（默认）
       const parts: any[] = [];
 
       // 添加文本内容
@@ -135,13 +382,45 @@ export abstract class BaseProvider {
 
       // 添加图片内容
       for (const block of imageBlocks) {
-        parts.push({
-          type: 'image_url',
-          image_url: {
-            url: block.url,
-            detail: 'auto'
+        if (block.url) {
+          parts.push({
+            type: 'image_url',
+            image_url: {
+              url: block.url,
+              detail: 'auto'
+            }
+          });
+        } else if (block.base64Data) {
+          parts.push({
+            type: 'image_url',
+            image_url: {
+              url: `data:${block.mimeType || 'image/jpeg'};base64,${block.base64Data}`,
+              detail: 'auto'
+            }
+          });
+        }
+      }
+
+      // 添加文件内容（如果支持）
+      for (const block of fileBlocks) {
+        if (block.file) {
+          const fileType = getFileTypeByExtension(block.file.name || block.file.origin_name || '');
+
+          // 只处理文本和文档类型的文件
+          if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+            try {
+              const fileContent = await readFileContent(block.file);
+              if (fileContent) {
+                parts.push({
+                  type: 'text',
+                  text: `文件: ${block.file.name || block.file.origin_name || '未知文件'}\n\n${fileContent}`
+                });
+              }
+            } catch (error) {
+              console.error(`[OpenAIProvider.getMessageParam] 读取文件内容失败:`, error);
+            }
           }
-        });
+        }
       }
 
       return {
@@ -150,7 +429,54 @@ export abstract class BaseProvider {
       };
     }
 
+    // 处理包含文件但不支持多模态的情况
+    if (fileBlocks.length > 0) {
+      let combinedContent = content ? content + '\n\n' : '';
+
+      // 添加文件内容
+      for (const block of fileBlocks) {
+        if (block.file) {
+          const fileType = getFileTypeByExtension(block.file.name || block.file.origin_name || '');
+
+          // 只处理文本和文档类型的文件
+          if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+            try {
+              const fileContent = await readFileContent(block.file);
+              if (fileContent) {
+                combinedContent += `文件: ${block.file.name || block.file.origin_name || '未知文件'}\n\n${fileContent}\n\n`;
+              }
+            } catch (error) {
+              console.error(`[OpenAIProvider.getMessageParam] 读取文件内容失败:`, error);
+            }
+          }
+        }
+      }
+
+      // 根据不同模型处理
+      if (isGeminiModel(actualModel)) {
+        return {
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: combinedContent.trim() }]
+        };
+      }
+
+      // 默认处理
+      return {
+        role: message.role,
+        content: combinedContent.trim()
+      };
+    }
+
     // 默认返回文本内容
+    // 根据不同模型处理
+    if (isGeminiModel(actualModel)) {
+      return {
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: content }]
+      };
+    }
+
+    // 默认处理
     return {
       role: message.role,
       content
@@ -159,21 +485,26 @@ export abstract class BaseProvider {
 
   /**
    * 构建系统提示
+   * 简化版本：只返回基本提示
+   * @param prompt 系统提示词
+   * @returns 构建后的系统提示
    */
-  protected buildSystemPrompt(prompt: string, tools?: any[]): string {
-    // 基本系统提示
-    let systemPrompt = prompt || '';
+  protected buildSystemPrompt(prompt: string): string {
+    // 直接返回提示词，如果为空则返回空字符串
+    return prompt || '';
 
+    // 注释掉工具相关代码，保留结构以便将来添加
+    /*
     // 如果有工具，添加工具说明
     if (tools && tools.length > 0) {
-      systemPrompt += '\n\n你有以下工具可用:\n';
+      if (systemPrompt) systemPrompt += '\n\n';
+      systemPrompt += '你有以下工具可用:\n';
       tools.forEach((tool, index) => {
         systemPrompt += `${index + 1}. ${tool.function.name}: ${tool.function.description}\n`;
       });
       systemPrompt += '\n请在适当的时候使用这些工具。';
     }
-
-    return systemPrompt;
+    */
   }
 
   /**
@@ -201,9 +532,8 @@ export abstract class BaseProvider {
     options?: {
       onUpdate?: (content: string, reasoning?: string) => void;
       enableWebSearch?: boolean;
-      enableThinking?: boolean;
-      tools?: ToolType[];
       systemPrompt?: string;
+      enableTools?: boolean; // 添加工具开关参数
     }
   ): Promise<string>;
 }
@@ -211,7 +541,7 @@ export abstract class BaseProvider {
 /**
  * OpenAI Provider实现类
  */
-export class OpenAIProvider extends BaseProvider {
+export class OpenAIProvider extends BaseOpenAIProvider {
   constructor(model: Model) {
     super(model);
   }
@@ -227,9 +557,8 @@ export class OpenAIProvider extends BaseProvider {
     options?: {
       onUpdate?: (content: string, reasoning?: string) => void;
       enableWebSearch?: boolean;
-      enableThinking?: boolean;
-      tools?: ToolType[];
       systemPrompt?: string;
+      enableTools?: boolean; // 添加工具开关参数
     }
   ): Promise<string> {
     console.log(`[OpenAIProvider.sendChatMessage] 开始处理聊天请求, 模型: ${this.model.id}`);
@@ -237,58 +566,63 @@ export class OpenAIProvider extends BaseProvider {
     const {
       onUpdate,
       enableWebSearch = false,
-      enableThinking = false,
-      tools = [],
-      systemPrompt = ''
+      systemPrompt = '',
+      enableTools = true // 默认启用工具
     } = options || {};
 
-    // 记录原始消息数量
+    // 记录原始消息数量和内容
     console.log(`[OpenAIProvider.sendChatMessage] 原始消息数量: ${messages.length}`);
 
-    // 准备消息数组 - 使用电脑版风格的消息处理
-    const apiMessages = [];
+    // 记录每条原始消息的基本信息，便于调试
+    messages.forEach((msg, idx) => {
+      console.log(`[OpenAIProvider.sendChatMessage] 原始消息 #${idx+1}: id=${msg.id}, role=${msg.role}, blocks=${msg.blocks?.length || 0}`);
 
-    // 添加系统消息 - 与电脑版保持一致，始终添加系统消息，即使提示词为空
-    // 构建系统提示，包含工具说明
-    const finalSystemPrompt = this.buildSystemPrompt(
-      systemPrompt,
-      tools.length > 0 ? createToolsParams(tools).tools : undefined
-    );
-
-    // 系统消息始终作为第一条消息
-    apiMessages.push({
-      role: 'system',
-      content: finalSystemPrompt
+      // 尝试获取消息内容
+      try {
+        const content = this.getMessageContent(msg);
+        console.log(`[OpenAIProvider.sendChatMessage] 原始消息 #${idx+1} 内容: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
+      } catch (error) {
+        console.error(`[OpenAIProvider.sendChatMessage] 获取原始消息 #${idx+1} 内容失败:`, error);
+      }
     });
 
-    console.log(`[OpenAIProvider.sendChatMessage] 添加系统提示: ${finalSystemPrompt.substring(0, 50)}${finalSystemPrompt.length > 50 ? '...' : ''}`);
+    // 极简版消息处理逻辑
+    // 1. 准备消息数组
+    let apiMessages = [];
 
+    // 2. 获取系统提示
+    const finalSystemPrompt = this.buildSystemPrompt(systemPrompt);
 
-    // 按创建时间排序消息，确保顺序正确
-    const sortedMessages = [...messages].sort((a, b) => {
-      const timeA = new Date(a.createdAt).getTime();
-      const timeB = new Date(b.createdAt).getTime();
-      return timeA - timeB; // 升序排列，最早的在前面
-    });
+    // 注释掉工具相关代码，保留结构以便将来添加
+    /*
+    // 如果启用工具功能，构建工具参数
+    let toolsParams;
+    if (enableTools && tools && tools.length > 0) {
+      toolsParams = createToolsParams(tools).tools;
+      finalSystemPrompt = this.buildSystemPrompt(systemPrompt, toolsParams);
+    }
+    */
 
-    console.log(`[OpenAIProvider.sendChatMessage] 消息已按时间排序，总数: ${sortedMessages.length}`);
+    // 3. 如果系统提示不为空，添加系统消息
+    if (finalSystemPrompt.trim()) {
+      apiMessages.push({
+        role: 'system',
+        content: finalSystemPrompt
+      });
+      console.log(`[OpenAIProvider.sendChatMessage] 添加系统提示: ${finalSystemPrompt.substring(0, 50)}${finalSystemPrompt.length > 50 ? '...' : ''}`);
+    } else {
+      console.log(`[OpenAIProvider.sendChatMessage] 系统提示为空，不添加系统消息`);
+    }
 
-    // 添加用户和助手消息 - 保持原始角色
-    for (const message of sortedMessages) {
-      // 获取消息内容
-      const content = this.getMessageContent(message);
+    // 4. 处理用户和助手消息 - 直接使用原始消息的role和content属性
+    for (const message of messages) {
+      // 获取消息内容 - 使用as any绕过类型检查
+      const content = (message as any).content;
 
       // 只添加有内容的消息
-      if (content.trim()) {
-        // 检查是否已经有相同角色的连续消息
-        const lastMessage = apiMessages[apiMessages.length - 1];
-        if (lastMessage && lastMessage.role === message.role && message.role !== 'system') {
-          console.log(`[OpenAIProvider.sendChatMessage] 跳过连续的${message.role}消息，避免角色重复`);
-          continue;
-        }
-
+      if (content && typeof content === 'string' && content.trim()) {
         apiMessages.push({
-          role: message.role, // 保持原始角色
+          role: message.role,
           content: content
         });
 
@@ -296,18 +630,23 @@ export class OpenAIProvider extends BaseProvider {
       }
     }
 
-    // 确保系统消息始终在第一位
-    const systemMessageIndex = apiMessages.findIndex(msg => msg.role === 'system');
-    if (systemMessageIndex > 0) {
-      const systemMessage = apiMessages.splice(systemMessageIndex, 1)[0];
-      apiMessages.unshift(systemMessage);
-      console.log(`[OpenAIProvider.sendChatMessage] 将系统消息移到第一位`);
+    // 记录处理后的系统消息状态
+    const finalSystemMessage = apiMessages.find(msg => msg.role === 'system');
+    if (finalSystemMessage) {
+      console.log(`[OpenAIProvider.sendChatMessage] 最终系统消息内容: ${
+        typeof finalSystemMessage.content === 'string'
+          ? (finalSystemMessage.content.substring(0, 50) + (finalSystemMessage.content.length > 50 ? '...' : ''))
+          : '[复杂内容]'
+      }`);
+    } else {
+      console.log(`[OpenAIProvider.sendChatMessage] 最终消息数组中没有系统消息`);
     }
 
     console.log(`[OpenAIProvider.sendChatMessage] 最终API消息数量: ${apiMessages.length}`);
 
     // 确保至少有一条用户消息 - 电脑版风格的安全检查
-    if (apiMessages.length === 0 || !apiMessages.some(msg => msg.role === 'user')) {
+    // 只有在apiMessages中只有系统消息且没有用户消息时才添加默认消息
+    if (apiMessages.length <= 1 && !apiMessages.some(msg => msg.role === 'user')) {
       console.warn('[OpenAIProvider.sendChatMessage] 警告: 消息列表中没有用户消息，添加默认用户消息');
 
       // 添加一个默认的用户消息
@@ -336,9 +675,31 @@ export class OpenAIProvider extends BaseProvider {
     console.log(`[OpenAIProvider.sendChatMessage] 最终消息数组:`, JSON.stringify(apiMessages.map(m => ({
       role: m.role,
       content: typeof m.content === 'string'
-        ? (m.content.substring(0, 30) + (m.content.length > 30 ? '...' : ''))
+        ? (m.content.substring(0, 100) + (m.content.length > 100 ? '...' : ''))
         : '[复杂内容]'
     }))));
+
+    // 详细记录系统消息和用户消息的内容
+    const systemMsg = apiMessages.find(m => m.role === 'system');
+    const userMsgs = apiMessages.filter(m => m.role === 'user');
+
+    if (systemMsg) {
+      console.log(`[OpenAIProvider.sendChatMessage] 系统消息内容: ${
+        typeof systemMsg.content === 'string'
+          ? (systemMsg.content.substring(0, 200) + (systemMsg.content.length > 200 ? '...' : ''))
+          : '[复杂内容]'
+      }`);
+    }
+
+    if (userMsgs.length > 0) {
+      userMsgs.forEach((msg, idx) => {
+        console.log(`[OpenAIProvider.sendChatMessage] 用户消息 #${idx+1} 内容: ${
+          typeof msg.content === 'string'
+            ? (msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''))
+            : '[复杂内容]'
+        }`);
+      });
+    }
 
     // 详细记录每条消息的角色和内容前30个字符，便于调试
     console.log(`[OpenAIProvider.sendChatMessage] 消息详情:`);
@@ -385,68 +746,46 @@ export class OpenAIProvider extends BaseProvider {
       console.log(`[OpenAIProvider.sendChatMessage] 启用网页搜索功能`);
     }
 
-    // 处理工具参数
-    const allTools = [...tools];
-    if (enableThinking) {
-      allTools.push(ToolType.THINKING);
-      console.log(`[OpenAIProvider.sendChatMessage] 启用思考工具`);
-    }
+    // 不使用工具功能
+    console.log(`[OpenAIProvider.sendChatMessage] 工具功能已简化，不添加工具参数`);
 
-    if (allTools.length > 0) {
-      const toolParams = createToolsParams(allTools);
-      requestParams.tools = toolParams.tools;
-      requestParams.tool_choice = toolParams.tool_choice;
-      console.log(`[OpenAIProvider.sendChatMessage] 配置工具参数: ${allTools.join(', ')}`);
-    }
+    // 不添加推理参数
+    console.log(`[OpenAIProvider.sendChatMessage] 跳过推理参数配置`);
 
-    // 处理推理模型的特定参数
-    if (this.supportsReasoning()) {
-      Object.assign(requestParams, this.getReasoningEffort());
-      console.log(`[OpenAIProvider.sendChatMessage] 配置推理模型参数`);
-    }
-
-    // 记录API请求
-    logApiRequest('OpenAI Chat', 'INFO', {
-      method: 'POST',
-      model: this.model.id,
-      stream: true, // 添加流式输出信息
-      messages: apiMessages.map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string'
-          ? (m.content.substring(0, 50) + (m.content.length > 50 ? '...' : ''))
-          : '[复杂内容]'
-      }))
-    });
-
-    // 默认使用流式响应，与电脑版保持一致
     try {
+      // 使用流式响应处理
       if (onUpdate) {
         console.log(`[OpenAIProvider.sendChatMessage] 使用流式响应模式（有回调）`);
-        return await this.handleStreamResponse(requestParams, onUpdate);
+        return await this.handleStreamResponse(requestParams, onUpdate, enableTools);
       } else {
         // 即使没有回调，也使用流式响应，但结果会在完成后一次性返回
         // 这与电脑版的行为一致，电脑版总是使用流式响应
         console.log(`[OpenAIProvider.sendChatMessage] 使用流式响应模式（无回调）`);
-        return await this.handleStreamResponseWithoutCallback(requestParams);
+        return await this.handleStreamResponseWithoutCallback(requestParams, enableTools);
       }
     } catch (error) {
       console.error('[OpenAIProvider.sendChatMessage] API请求失败:', error);
-
-      // 获取错误详情
-      let errorMessage = '请求失败';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-
-        // 检查特定类型的错误
-        if (errorMessage.includes('api key')) {
-          errorMessage = 'API密钥无效或未正确设置';
-        } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
-          errorMessage = '网络请求失败，请检查网络连接和API地址设置';
-        }
-      }
-
-      throw new Error(`OpenAI API请求失败: ${errorMessage}`);
+      throw error;
     }
+  }
+
+  /**
+   * 获取消息内容
+   * 极简版本：直接从消息对象中获取content属性
+   * @param message 消息对象
+   * @returns 消息内容
+   */
+  protected getMessageContent(message: Message): string {
+    // 直接从消息对象中获取content属性
+    const content = (message as any).content;
+
+    // 如果content是字符串，直接返回
+    if (content && typeof content === 'string') {
+      return content;
+    }
+
+    // 否则返回空字符串
+    return '';
   }
 
   /**
@@ -457,94 +796,53 @@ export class OpenAIProvider extends BaseProvider {
    */
   private async handleStreamResponse(
     params: any,
-    onUpdate: (content: string, reasoning?: string) => void
+    onUpdate: (content: string, reasoning?: string) => void,
+    enableTools: boolean = true
   ): Promise<string> {
+    // 简化的回调函数，直接调用原始回调
+    const enhancedCallback = (content: string, reasoning?: string) => {
+      // 调用原始回调函数
+      onUpdate(content, reasoning);
+
+      // 注释掉工具相关代码，保留结构以便将来添加
+      /*
+      // 创建工具响应数组，用于存储工具调用响应
+      const toolResponses: any[] = [];
+
+      // 如果有通用工具列表，尝试解析工具调用
+      if (params.genericTools && params.genericTools.length > 0) {
+        try {
+          // 解析并调用工具
+          await parseAndCallTools(
+            content,
+            toolResponses,
+            onUpdate,
+            undefined,
+            this.model,
+            params.genericTools
+          );
+        } catch (error) {
+          console.error('[OpenAIProvider.handleStreamResponse] 处理工具调用失败:', error);
+        }
+      }
+      */
+    };
+
+    // 调用流式完成函数
     return await streamCompletion(
       this.client,
       this.model.id,
       params.messages,
       params.temperature,
       params.max_tokens || params.max_completion_tokens,
-      onUpdate,
-      params
+      enhancedCallback,
+      {
+        ...params,
+        enableReasoning: this.supportsReasoning() && enableTools,
+        enableTools: enableTools
+      }
     );
   }
-
-  /**
-   * 获取消息内容 - 电脑版风格的消息内容提取
-   * @param message 消息对象
-   * @returns 消息内容
-   */
-  private getMessageContent(message: Message): string {
-    try {
-      // 尝试从块中获取内容
-      if (message.blocks && Array.isArray(message.blocks) && message.blocks.length > 0) {
-        // 使用getMainTextContent函数获取文本内容
-        return getMainTextContent(message);
-      }
-
-      // 兼容旧版本 - 直接使用content属性
-      if (typeof (message as any).content === 'string') {
-        return (message as any).content;
-      } else if (typeof (message as any).content === 'object' && (message as any).content) {
-        if ('text' in (message as any).content) {
-          return (message as any).content.text || '';
-        }
-      }
-
-      // 默认返回空字符串
-      return '';
-    } catch (error) {
-      console.error('[OpenAIProvider.getMessageContent] 获取消息内容失败:', error);
-      return '';
-    }
-  }
-
-  /**
-   * 处理普通响应
-   * @param params 请求参数
-   * @returns 响应内容
-   * @deprecated 使用handleStreamResponseWithoutCallback代替
-   */
-  /*
-  // 此方法已弃用，但保留以供参考
-  private async handleNormalResponse(params: any): Promise<string> {
-    try {
-      const completion = await this.client.chat.completions.create({
-        ...params,
-        stream: false
-      });
-
-      const responseContent = completion.choices[0].message.content || '';
-
-      // 处理工具调用内容
-      const toolCalls = completion.choices[0].message.tool_calls;
-      let toolResults = '';
-
-      if (toolCalls && toolCalls.length > 0) {
-        for (const toolCall of toolCalls) {
-          const parsedTool = parseToolCall(toolCall);
-          if (parsedTool && parsedTool.toolName === 'thinking') {
-            const thinkingContent = parsedTool.args.thinking || '';
-            toolResults += `\n思考过程: ${thinkingContent}`;
-          }
-        }
-      }
-
-      // 记录API响应
-      logApiResponse('OpenAI Chat Completions', 200, {
-        model: this.model.id,
-        content: responseContent.substring(0, 100) + (responseContent.length > 100 ? '...' : ''),
-        usage: completion.usage
-      });
-
-      return responseContent;
-    } catch (error: any) {
-      console.error('OpenAI API请求失败:', error);
-      throw error;
-    }
-  }
-  */
 
   /**
    * 处理流式响应（无回调）
@@ -553,12 +851,11 @@ export class OpenAIProvider extends BaseProvider {
    * @param params 请求参数
    * @returns 响应内容
    */
-  private async handleStreamResponseWithoutCallback(params: any): Promise<string> {
+  private async handleStreamResponseWithoutCallback(params: any, enableTools: boolean = true): Promise<string> {
     try {
       console.log('[OpenAIProvider.handleStreamResponseWithoutCallback] 开始处理流式响应（无回调）');
 
       // 创建一个虚拟回调函数，用于处理流式响应
-      // 这是关键修改：我们需要一个回调函数来处理流式响应
       let fullResponse = '';
       let lastUpdateTime = Date.now();
       const updateInterval = 50; // 50毫秒更新一次，避免过于频繁的更新
@@ -575,11 +872,33 @@ export class OpenAIProvider extends BaseProvider {
 
           // 这里我们可以添加其他处理逻辑，例如更新UI
           console.log(`[OpenAIProvider.virtualCallback] 更新内容，当前长度: ${content.length}`);
+
+          // 注释掉工具相关代码，保留结构以便将来添加
+          /*
+          // 创建工具响应数组，用于存储工具调用响应
+          const toolResponses: any[] = [];
+
+          // 如果有通用工具列表，尝试解析工具调用
+          if (params.genericTools && params.genericTools.length > 0) {
+            try {
+              // 解析并调用工具
+              await parseAndCallTools(
+                content,
+                toolResponses,
+                undefined,
+                undefined,
+                this.model,
+                params.genericTools
+              );
+            } catch (error) {
+              console.error('[OpenAIProvider.virtualCallback] 处理工具调用失败:', error);
+            }
+          }
+          */
         }
       };
 
       // 使用streamCompletion函数处理流式响应
-      // 这样我们可以利用现有的流式处理逻辑
       return await streamCompletion(
         this.client,
         this.model.id,
@@ -587,7 +906,11 @@ export class OpenAIProvider extends BaseProvider {
         params.temperature,
         params.max_tokens || params.max_completion_tokens,
         virtualCallback,
-        params
+        {
+          ...params,
+          enableReasoning: this.supportsReasoning() && enableTools,
+          enableTools: enableTools
+        }
       );
     } catch (error) {
       console.error('OpenAI API流式请求失败:', error);
@@ -596,21 +919,4 @@ export class OpenAIProvider extends BaseProvider {
       throw error;
     }
   }
-}
-
-/**
- * 创建适合模型的Provider
- * @param model 模型配置
- * @returns Provider实例
- */
-export function createProvider(model: Model): BaseProvider {
-  // 根据模型类型创建不同的Provider
-  if (model.provider === 'azure' || model.providerType === 'azure-openai') {
-    // 这里可以实现AzureOpenAIProvider
-    console.log('[createProvider] 使用Azure OpenAI Provider');
-    // 暂时使用标准OpenAI Provider
-    return new OpenAIProvider(model);
-  }
-
-  return new OpenAIProvider(model);
 }

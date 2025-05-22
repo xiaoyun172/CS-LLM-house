@@ -6,6 +6,11 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../shared/store';
+import {
+  isReasoningInProgress,
+  cleanReasoningContent,
+  formatThinkingTimeSeconds
+} from '../../shared/utils/thinkingUtils';
 
 // 思考过程显示样式类型
 export type ThinkingDisplayStyle = 'compact' | 'full' | 'hidden';
@@ -26,12 +31,12 @@ const ThinkingProcess: React.FC<ThinkingProcessProps> = ({ reasoning, reasoningT
   const [expanded, setExpanded] = useState(false);  // 默认关闭思考过程
   const prevReasoningRef = useRef<string>('');
   const reasoningRef = useRef<HTMLDivElement>(null);
-  
+
   // 从设置中获取思考过程显示样式
-  const thinkingStyle = useSelector((state: RootState) => 
+  const thinkingStyle = useSelector((state: RootState) =>
     (state.settings as any).thinkingDisplayStyle || ThinkingDisplayStyle.COMPACT
   );
-  
+
   // 更新视图时，如果思考过程展开，自动滚动到底部
   useEffect(() => {
     if (!reasoning) return;
@@ -47,31 +52,25 @@ const ThinkingProcess: React.FC<ThinkingProcessProps> = ({ reasoning, reasoningT
       setExpanded(true);
     }
   }, [thinkingStyle]);
-  
+
   // 提前返回 - 没有思考过程或设置为隐藏时不显示
   if (!reasoning || thinkingStyle === ThinkingDisplayStyle.HIDDEN) return null;
-  
-  // 判断思考过程是否正在进行中
-  const isReasoningInProgress = reasoning.includes('<reasoning>') && !reasoning.includes('</reasoning>');
-  
-  // 提取思考过程内容，去除标签
-  const cleanedReasoning = reasoning
-    .replace(/<reasoning>/g, '')
-    .replace(/<\/reasoning>/g, '')
-    .replace(/<thinking>/g, '')
-    .replace(/<\/thinking>/g, '');
-  
-  // 将毫秒转换为秒，保留一位小数
-  const thinkingTimeInSeconds = reasoningTime 
-    ? Math.round(reasoningTime / 100) / 10 
-    : Math.floor(Math.random() * 3) + 1; // 如果未提供，则使用1-3秒的随机值
-  
+
+  // 使用工具函数判断思考过程是否正在进行中
+  const reasoningInProgress = reasoning ? isReasoningInProgress(reasoning) : false;
+
+  // 使用工具函数提取思考过程内容，去除标签
+  const cleanedReasoning = reasoning ? cleanReasoningContent(reasoning) : '';
+
+  // 使用工具函数将毫秒转换为秒，保留一位小数
+  const thinkingTimeInSeconds = formatThinkingTimeSeconds(reasoningTime);
+
   // 紧凑样式 - 类似截图中的样式
   if (thinkingStyle === ThinkingDisplayStyle.COMPACT) {
     return (
-      <Box 
-        sx={{ 
-          display: 'flex', 
+      <Box
+        sx={{
+          display: 'flex',
           flexDirection: 'column',
           mb: 1,
           maxWidth: '100%'
@@ -94,29 +93,29 @@ const ThinkingProcess: React.FC<ThinkingProcessProps> = ({ reasoning, reasoningT
             }
           }}
         >
-          <LightbulbOutlinedIcon 
-            sx={{ 
-              mr: 1, 
+          <LightbulbOutlinedIcon
+            sx={{
+              mr: 1,
               fontSize: '18px',
-              color: '#65b0ff' 
-            }} 
+              color: '#65b0ff'
+            }}
           />
-          <Typography 
-            variant="body2" 
-            sx={{ 
-              color: '#65b0ff', 
+          <Typography
+            variant="body2"
+            sx={{
+              color: '#65b0ff',
               fontWeight: 'medium',
               flexGrow: 1
             }}
           >
-            {isReasoningInProgress ? '正在深度思考...' : `已完成深度思考（用时${thinkingTimeInSeconds}秒）`}
+            {reasoningInProgress ? '正在深度思考...' : `已完成深度思考（用时${thinkingTimeInSeconds}秒）`}
           </Typography>
-          {expanded ? 
-            <KeyboardArrowUpIcon fontSize="small" sx={{ color: '#999' }} /> : 
+          {expanded ?
+            <KeyboardArrowUpIcon fontSize="small" sx={{ color: '#999' }} /> :
             <KeyboardArrowDownIcon fontSize="small" sx={{ color: '#999' }} />
           }
         </Paper>
-        
+
         <Collapse in={expanded}>
           <Paper
             elevation={0}
@@ -142,18 +141,18 @@ const ThinkingProcess: React.FC<ThinkingProcessProps> = ({ reasoning, reasoningT
       </Box>
     );
   }
-  
+
   // 完整展示样式 - 原有样式的改进版
   return (
-    <Box 
-      sx={{ 
-        display: 'flex', 
+    <Box
+      sx={{
+        display: 'flex',
         flexDirection: 'column',
         mb: 1,
         maxWidth: '100%'
       }}
     >
-      <Box 
+      <Box
         onClick={() => setExpanded(!expanded)}
         sx={{
           display: 'flex',
@@ -165,19 +164,19 @@ const ThinkingProcess: React.FC<ThinkingProcessProps> = ({ reasoning, reasoningT
         }}
       >
         <PsychologyIcon sx={{ mr: 0.5, fontSize: '16px' }} />
-        <Typography 
-          variant="caption" 
-          sx={{ 
-            color: '#65b0ff', 
+        <Typography
+          variant="caption"
+          sx={{
+            color: '#65b0ff',
             fontWeight: 'medium',
-            mr: 0.5 
+            mr: 0.5
           }}
         >
-          {isReasoningInProgress ? '正在思考中...' : `已完成深度思考（用时${thinkingTimeInSeconds}秒）`}
+          {reasoningInProgress ? '正在思考中...' : `已完成深度思考（用时${thinkingTimeInSeconds}秒）`}
         </Typography>
         {expanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
       </Box>
-      
+
       <Collapse in={expanded}>
         <Paper
           elevation={0}
@@ -204,4 +203,4 @@ const ThinkingProcess: React.FC<ThinkingProcessProps> = ({ reasoning, reasoningT
   );
 };
 
-export default ThinkingProcess; 
+export default ThinkingProcess;

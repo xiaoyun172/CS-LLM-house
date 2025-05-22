@@ -25,6 +25,7 @@ import type { Model } from '../../shared/types';
 import { ModelType } from '../../shared/types';
 import { matchModelTypes, getModelTypeDisplayName } from '../../shared/data/modelTypeRules';
 import AvatarUploader from './AvatarUploader';
+import { dexieStorage } from '../../shared/services/DexieStorageService';
 
 interface SimpleModelDialogProps {
   open: boolean;
@@ -67,12 +68,20 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
         setModelTypes(detectedTypes);
         setAutoDetectTypes(true);
       }
-      
-      // 尝试加载模型头像
-      const savedModelAvatar = localStorage.getItem(`model_avatar_${editModel.id}`);
-      if (savedModelAvatar) {
-        setModelAvatar(savedModelAvatar);
-      }
+
+      // 尝试从数据库加载模型头像
+      const loadModelAvatar = async () => {
+        try {
+          const modelConfig = await dexieStorage.getModel(editModel.id);
+          if (modelConfig?.avatar) {
+            setModelAvatar(modelConfig.avatar);
+          }
+        } catch (error) {
+          console.error(`[SimpleModelDialog] 加载模型头像失败:`, error);
+        }
+      };
+
+      loadModelAvatar();
     }
   }, [editModel, open]);
 
@@ -119,26 +128,43 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
   const handleAutoDetectToggle = () => {
     const newAutoDetect = !autoDetectTypes;
     setAutoDetectTypes(newAutoDetect);
-    
+
     if (newAutoDetect) {
       const detectedTypes = matchModelTypes(modelData.id, modelData.provider);
       setModelTypes(detectedTypes);
     }
   };
-  
+
   // 处理头像上传
   const handleAvatarDialogOpen = () => {
     setIsAvatarDialogOpen(true);
   };
-  
+
   const handleAvatarDialogClose = () => {
     setIsAvatarDialogOpen(false);
   };
-  
-  const handleSaveAvatar = (avatarDataUrl: string) => {
+
+  const handleSaveAvatar = async (avatarDataUrl: string) => {
     setModelAvatar(avatarDataUrl);
     if (modelData.id) {
-      localStorage.setItem(`model_avatar_${modelData.id}`, avatarDataUrl);
+      try {
+        // 获取当前模型配置（如果存在）
+        const existingConfig = await dexieStorage.getModel(modelData.id);
+
+        // 创建或更新模型配置
+        const modelConfig = {
+          ...existingConfig,
+          id: modelData.id,
+          avatar: avatarDataUrl,
+          updatedAt: new Date().toISOString()
+        };
+
+        // 保存到数据库
+        await dexieStorage.saveModel(modelData.id, modelConfig);
+        console.log(`[SimpleModelDialog] 模型头像已保存到数据库: ${modelData.id}`);
+      } catch (error) {
+        console.error(`[SimpleModelDialog] 保存模型头像到数据库失败:`, error);
+      }
     }
   };
 
@@ -155,7 +181,7 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
   };
 
   // 处理保存
-  const handleSave = () => {
+  const handleSave = async () => {
     if (validateForm()) {
       // 添加模型类型到模型数据
       const finalModelData = {
@@ -167,12 +193,37 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
           multimodal: modelTypes.includes(ModelType.Vision)
         },
       };
-      
+
       // 如果ID已更改，保存头像到新ID
       if (editModel && editModel.id !== modelData.id && modelAvatar) {
-        localStorage.setItem(`model_avatar_${modelData.id}`, modelAvatar);
+        try {
+          // 保存到数据库
+          await dexieStorage.saveModel(modelData.id, {
+            id: modelData.id,
+            avatar: modelAvatar,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error(`[SimpleModelDialog] 保存模型头像到数据库失败:`, error);
+        }
       }
-      
+
+      // 保存模型配置到数据库
+      try {
+        // 创建完整的模型配置对象
+        const modelConfig = {
+          ...finalModelData,
+          avatar: modelAvatar,
+          updatedAt: new Date().toISOString()
+        };
+
+        // 保存到数据库
+        await dexieStorage.saveModel(finalModelData.id, modelConfig);
+        console.log(`[SimpleModelDialog] 模型配置已保存到数据库: ${finalModelData.id}`);
+      } catch (error) {
+        console.error(`[SimpleModelDialog] 保存模型配置到数据库失败:`, error);
+      }
+
       onSave(finalModelData);
       onClose();
     }
@@ -184,9 +235,9 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
       <DialogContent>
         <Box sx={{ mb: 3, mt: 1 }}>
           {/* 模型头像设置区域 */}
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'space-between',
             mb: 2,
             p: 2,
@@ -195,11 +246,11 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
             border: '1px solid rgba(25, 118, 210, 0.2)'
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar 
-                src={modelAvatar} 
-                sx={{ 
-                  width: 48, 
-                  height: 48, 
+              <Avatar
+                src={modelAvatar}
+                sx={{
+                  width: 48,
+                  height: 48,
                   mr: 2,
                   bgcolor: '#1677ff'
                 }}
@@ -216,8 +267,8 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
               </Box>
             </Box>
             <Tooltip title="设置头像">
-              <IconButton 
-                color="primary" 
+              <IconButton
+                color="primary"
                 onClick={handleAvatarDialogOpen}
                 size="small"
                 sx={{
@@ -275,15 +326,15 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
           <Box sx={{ mt: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle2">模型类型</Typography>
-              <FormControlLabel 
+              <FormControlLabel
                 control={
-                  <Switch 
-                    checked={autoDetectTypes} 
-                    onChange={handleAutoDetectToggle} 
+                  <Switch
+                    checked={autoDetectTypes}
+                    onChange={handleAutoDetectToggle}
                     size="small"
                   />
-                } 
-                label="自动检测" 
+                }
+                label="自动检测"
               />
             </Box>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
@@ -299,13 +350,13 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
               ))}
             </Box>
             <FormHelperText>
-              {autoDetectTypes 
-                ? '根据模型ID和提供商自动检测模型类型' 
+              {autoDetectTypes
+                ? '根据模型ID和提供商自动检测模型类型'
                 : '点击类型标签来添加或移除'}
             </FormHelperText>
           </Box>
         </Box>
-        
+
         {/* 头像上传对话框 */}
         <AvatarUploader
           open={isAvatarDialogOpen}
@@ -325,4 +376,4 @@ const SimpleModelDialog: React.FC<SimpleModelDialogProps> = ({
   );
 };
 
-export default SimpleModelDialog; 
+export default SimpleModelDialog;

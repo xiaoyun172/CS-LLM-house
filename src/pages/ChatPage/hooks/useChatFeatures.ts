@@ -27,11 +27,12 @@ export const useChatFeatures = (
   currentTopic: any,
   currentMessages: any[],
   selectedModel: any,
-  handleSendMessage: (content: string, images?: SiliconFlowImageFormat[]) => void
+  handleSendMessage: (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean) => void
 ) => {
   const dispatch = useDispatch();
   const [webSearchActive, setWebSearchActive] = useState(false); // 控制是否处于网络搜索模式
   const [imageGenerationMode, setImageGenerationMode] = useState(false); // 控制是否处于图像生成模式
+  const [toolsEnabled, setToolsEnabled] = useState(true); // 控制是否启用工具调用
 
   // 切换图像生成模式
   const toggleImageGenerationMode = () => {
@@ -396,15 +397,22 @@ export const useChatFeatures = (
       return;
     }
 
-    // 正常的消息发送处理
-    handleSendMessage(content, images);
+    // 正常的消息发送处理，传递工具开关状态
+    handleSendMessage(content, images, toolsEnabled);
+  };
+
+  // 切换工具调用开关
+  const toggleToolsEnabled = () => {
+    setToolsEnabled(!toolsEnabled);
   };
 
   return {
     webSearchActive,
     imageGenerationMode,
+    toolsEnabled,
     toggleWebSearch,
     toggleImageGenerationMode,
+    toggleToolsEnabled,
     handleWebSearch,
     handleImagePrompt,
     handleUrlScraping,

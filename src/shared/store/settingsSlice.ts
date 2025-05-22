@@ -35,6 +35,18 @@ interface SettingsState {
   toolbarDisplayStyle: 'icon' | 'text' | 'both'; // 工具栏显示样式：仅图标、仅文字、图标+文字
   showSystemPromptBubble: boolean; // 是否显示系统提示词气泡
   isLoading: boolean; // 添加加载状态以处理异步操作
+
+  // 思考过程自动折叠
+  thoughtAutoCollapse?: boolean;
+
+  // 多模型对比显示样式
+  multiModelDisplayStyle?: 'horizontal' | 'grid' | 'vertical';
+
+  // 工具调用显示详情
+  showToolDetails?: boolean;
+
+  // 引用显示详情
+  showCitationDetails?: boolean;
 }
 
 // 初始预设供应商
@@ -174,7 +186,7 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
       if (!savedSettings.toolbarDisplayStyle) {
         savedSettings.toolbarDisplayStyle = 'both';
       }
-      
+
       // 如果没有系统提示词气泡显示设置，使用默认值
       if (savedSettings.showSystemPromptBubble === undefined) {
         savedSettings.showSystemPromptBubble = true;
@@ -185,7 +197,7 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
         providers
       };
     }
-    
+
     // 如果没有保存的设置，返回null让reducer使用默认值
     return null;
   } catch (e) {
@@ -285,7 +297,7 @@ const settingsSlice = createSlice({
       const providerIndex = state.providers.findIndex(provider => provider.id === id);
       if (providerIndex !== -1) {
         state.providers[providerIndex] = { ...state.providers[providerIndex], ...updates };
-        
+
         // 如果apiKey或baseUrl更新了，也要更新所有关联模型
         if (updates.apiKey !== undefined || updates.baseUrl !== undefined) {
           state.providers[providerIndex].models = state.providers[providerIndex].models.map(model => ({
@@ -363,10 +375,10 @@ const settingsSlice = createSlice({
       if (!state.generatedImages) {
         state.generatedImages = [];
       }
-      
+
       // 添加新生成的图像
       state.generatedImages.unshift(action.payload);
-      
+
       // 限制保存的历史图像数量（保存最近的50张）
       if (state.generatedImages.length > 50) {
         state.generatedImages = state.generatedImages.slice(0, 50);
@@ -377,7 +389,7 @@ const settingsSlice = createSlice({
       if (!state.generatedImages) {
         return;
       }
-      
+
       // 根据图像URL删除
       state.generatedImages = state.generatedImages.filter(
         image => image.url !== action.payload
@@ -467,14 +479,14 @@ export const saveSettingsToStorage = (state: RootState) => (
 export const settingsMiddleware = (store: any) => (next: any) => (action: any) => {
   // 首先让reducer处理action
   const result = next(action);
-  
+
   // 如果是设置相关的action，自动保存状态
-  if (action.type.startsWith('settings/') && 
-      !action.type.includes('load') && 
+  if (action.type.startsWith('settings/') &&
+      !action.type.includes('load') &&
       !action.type.includes('save')) {
     store.dispatch(saveSettings(store.getState().settings));
   }
-  
+
   return result;
 };
 

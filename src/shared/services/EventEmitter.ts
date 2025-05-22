@@ -1,0 +1,61 @@
+/**
+ * 使用 Emittery 库实现事件系统
+ * 与电脑版保持一致，确保流式输出事件能够正确触发
+ */
+import Emittery from 'emittery';
+
+// 创建全局事件发射器
+export const EventEmitter = new Emittery();
+
+// 定义常用事件名称
+export const EVENT_NAMES = {
+  // 消息相关事件
+  MESSAGE_CREATED: 'message:created',
+  MESSAGE_UPDATED: 'message:updated',
+  MESSAGE_DELETED: 'message:deleted',
+  MESSAGE_COMPLETE: 'message:complete',
+
+  // 流式处理事件
+  STREAM_TEXT_DELTA: 'stream:text_delta',
+  STREAM_TEXT_FIRST_CHUNK: 'stream:text_first_chunk', // 添加首个文本块事件
+  STREAM_TEXT_COMPLETE: 'stream:text_complete',
+  STREAM_THINKING_DELTA: 'stream:thinking_delta',
+  STREAM_THINKING_COMPLETE: 'stream:thinking_complete',
+  STREAM_ERROR: 'stream:error',
+  STREAM_COMPLETE: 'stream:complete',
+
+  // 块相关事件
+  BLOCK_CREATED: 'block:created',
+  BLOCK_UPDATED: 'block:updated',
+  BLOCK_DELETED: 'block:deleted',
+
+  // 主题相关事件
+  TOPIC_CREATED: 'topic:created',
+  TOPIC_UPDATED: 'topic:updated',
+  TOPIC_DELETED: 'topic:deleted',
+
+  // UI相关事件
+  UI_SCROLL_TO_BOTTOM: 'ui:scroll_to_bottom',
+  UI_FORCE_UPDATE: 'ui:force_update',
+  UI_COPY_SUCCESS: 'ui:copy_success',
+
+  // 版本相关事件
+  VERSION_CREATED: 'version:created',
+  VERSION_LOADED: 'version:loaded',
+  VERSION_SWITCHED: 'version:switched',
+  VERSION_DELETED: 'version:deleted',
+
+  // 应用生命周期事件
+  APP_INITIALIZED: 'app:initialized',
+  APP_READY: 'app:ready',
+  APP_WILL_CLOSE: 'app:will_close',
+  APP_ERROR: 'app:error',
+
+  // 其他事件
+  SEND_MESSAGE: 'send:message',
+  CONTENT_UPDATED: 'content:updated',
+  RESPONSE_COMPLETED: 'response:completed',
+  RESPONSE_ERROR: 'response:error',
+  ESTIMATED_TOKEN_COUNT: 'estimated_token_count',
+  EDIT_CODE_BLOCK: 'edit_code_block'
+};

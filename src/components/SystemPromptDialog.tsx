@@ -15,13 +15,14 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import type { ChatTopic, Assistant } from '../shared/types/Assistant';
 import { TopicService } from '../shared/services/TopicService';
-import { AssistantManager } from '../shared/services/assistant/AssistantManager';
+import { updateTopic } from '../shared/store/slices/assistantsSlice';
 
 interface SystemPromptDialogProps {
   open: boolean;
   onClose: () => void;
   topic: ChatTopic | null;
   assistant: Assistant | null;
+  onSave?: (updatedTopic: ChatTopic) => void;
 }
 
 /**
@@ -32,7 +33,8 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
   open,
   onClose,
   topic,
-  assistant
+  assistant,
+  onSave
 }) => {
   const theme = useTheme();
   const [prompt, setPrompt] = useState('');
@@ -43,7 +45,8 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
   // 当对话框打开时，初始化提示词
   useEffect(() => {
     if (open) {
-      // 优先使用话题的提示词
+      // 优先使用话题的提示词，但prompt已被弃用，所以需要检查两种可能性
+      // 注意：这里我们仍然读取prompt属性，但在保存时会根据情况处理
       setPrompt(topic?.prompt || assistant?.systemPrompt || '');
 
       // 简单估算token数量 (英文按照单词计算，中文按照字符计算)
@@ -57,7 +60,7 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
     }
   }, [open, topic, assistant]);
 
-  // 保存提示词
+  // 保存提示词 - 简化版，更接近电脑端实现
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -72,28 +75,11 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
           console.log('[SystemPromptDialog] 成功创建新话题:', newTopic.id);
 
           // 更新新话题的提示词
+          // 虽然prompt属性已弃用，但目前仍需要使用它，因为ChatTopic类型定义中没有systemPrompt属性
+          // 这是一个临时解决方案，未来应该迁移到新的属性
           newTopic.prompt = prompt.trim();
           await TopicService.saveTopic(newTopic);
           console.log('[SystemPromptDialog] 已保存话题提示词');
-
-          // 同时更新助手的系统提示词
-          if (assistant) {
-            const updatedAssistant = {
-              ...assistant,
-              systemPrompt: prompt.trim()
-            };
-
-            // 直接保存到数据库，确保数据持久化
-            await AssistantManager.updateAssistant(updatedAssistant);
-            console.log('[SystemPromptDialog] 已更新助手系统提示词');
-
-            // 强制刷新Redux状态
-            import('../shared/store').then(({ default: store }) => {
-              const { updateAssistant } = require('../shared/store/slices/assistantsSlice');
-              store.dispatch(updateAssistant(updatedAssistant));
-              console.log('[SystemPromptDialog] 已通过Redux更新助手状态');
-            });
-          }
 
           onClose();
           return;
@@ -105,6 +91,8 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
       // 更新现有话题提示词
       if (topic) {
         console.log('[SystemPromptDialog] 更新现有话题的系统提示词');
+        // 虽然prompt属性已弃用，但目前仍需要使用它，因为ChatTopic类型定义中没有systemPrompt属性
+        // 这是一个临时解决方案，未来应该迁移到新的属性
         const updatedTopic = { ...topic, prompt: prompt.trim() };
 
         // 保存到数据库
@@ -113,7 +101,6 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
 
         // 强制刷新Redux状态
         import('../shared/store').then(({ default: store }) => {
-          const { updateTopic } = require('../shared/store/slices/assistantsSlice');
           if (assistant) {
             store.dispatch(updateTopic({
               assistantId: assistant.id,
@@ -123,23 +110,12 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
           }
         });
 
-        // 如果助手也有systemPrompt字段，同步更新助手的系统提示词
-        if (assistant) {
-          const updatedAssistant = {
-            ...assistant,
-            systemPrompt: prompt.trim()
-          };
+        // 不再同步更新助手的系统提示词，简化同步机制
 
-          // 直接保存到数据库，确保数据持久化
-          await AssistantManager.updateAssistant(updatedAssistant);
-          console.log('[SystemPromptDialog] 已更新助手系统提示词到数据库');
-
-          // 强制刷新Redux状态
-          import('../shared/store').then(({ default: store }) => {
-            const { updateAssistant } = require('../shared/store/slices/assistantsSlice');
-            store.dispatch(updateAssistant(updatedAssistant));
-            console.log('[SystemPromptDialog] 已通过Redux更新助手状态');
-          });
+        // 调用保存回调，通知父组件更新
+        if (onSave) {
+          console.log('[SystemPromptDialog] 调用onSave回调，通知父组件更新');
+          onSave(updatedTopic);
         }
       }
 

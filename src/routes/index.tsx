@@ -9,6 +9,7 @@ const AppearanceSettings = lazy(() => import('../pages/Settings/AppearanceSettin
 const BehaviorSettings = lazy(() => import('../pages/Settings/BehaviorSettings'));
 const ChatInterfaceSettings = lazy(() => import('../pages/Settings/ChatInterfaceSettings'));
 const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSettings'));
+const SpecialFeaturesSettings = lazy(() => import('../pages/Settings/SpecialFeaturesSettings'));
 const DefaultModelSettingsPage = lazy(() => import('../pages/Settings/DefaultModelSettings/index'));
 const ModelProviderSettings = lazy(() => import('../pages/Settings/ModelProviderSettings'));
 const AddProviderPage = lazy(() => import('../pages/Settings/AddProviderPage'));
@@ -24,10 +25,10 @@ const AdvancedBackupPage = lazy(() => import('../pages/Settings/DataSettings/Adv
 
 // 加载中组件
 const LoadingFallback = () => (
-  <div style={{ 
-    display: 'flex', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  <div style={{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
     height: '100vh',
     background: '#f5f5f5'
   }}>
@@ -49,7 +50,7 @@ const AppRouter: React.FC = () => {
         setIsFirstTimeUser(false); // 出错时默认为非首次用户
       }
     }
-    
+
     checkFirstTimeUser();
   }, []);
 
@@ -78,6 +79,7 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/data" element={<DataSettingsPage />} />
         <Route path="/settings/data/advanced-backup" element={<AdvancedBackupPage />} />
         <Route path="/settings/web-search" element={<WebSearchSettings />} />
+        <Route path="/settings/special-features" element={<SpecialFeaturesSettings />} />
         <Route path="/devtools" element={<DevToolsPage />} />
         <Route path="/vue-demo" element={<VueDemoPage />} />
       </Routes>

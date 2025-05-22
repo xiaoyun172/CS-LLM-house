@@ -5,8 +5,8 @@
  */
 import type { Message, Model } from '../../types';
 import { logApiRequest } from '../../services/LoggerService';
-import { createProvider } from './provider';
-import { ToolType } from './tools';
+import { createProvider } from './createProvider';
+
 
 
 
@@ -23,8 +23,8 @@ export async function sendChatRequest(
   options?: {
     onUpdate?: (content: string, reasoning?: string) => void;
     enableWebSearch?: boolean;
-    enableThinking?: boolean;
     systemPrompt?: string;
+    enableTools?: boolean; // 添加工具开关参数
   }
 ): Promise<string> {
   try {
@@ -32,7 +32,8 @@ export async function sendChatRequest(
     // 确保onUpdate回调类型正确
     const onUpdate = typeof opts.onUpdate === 'function' ? opts.onUpdate : undefined;
     const enableWebSearch = opts.enableWebSearch === true;
-    const enableThinking = opts.enableThinking === true;
+    // 默认启用工具，除非明确设置为false
+    const enableTools = opts.enableTools !== false;
 
     // 获取系统提示词 - 即使没有提供也使用空字符串，确保始终添加system角色消息
     // 这样与电脑版保持一致，电脑版总是添加system角色消息
@@ -49,7 +50,7 @@ export async function sendChatRequest(
       const blockId = 'block-default-' + Date.now();
 
       // 添加一个默认的用户消息
-      messages = [{
+      const defaultMessage: any = {
         id: 'default-' + Date.now(),
         role: 'user',
         assistantId: '',
@@ -58,9 +59,24 @@ export async function sendChatRequest(
         updatedAt: new Date().toISOString(),
         status: 'success' as any,
         blocks: [blockId]
-      }];
+      };
 
-      console.log('[API请求] 添加默认用户消息');
+      // 创建一个默认的消息块
+      const defaultBlock = {
+        id: blockId,
+        messageId: defaultMessage.id,
+        type: 'main_text',
+        content: '您好，请问有什么可以帮助您的？',
+        createdAt: new Date().toISOString(),
+        status: 'success' as any
+      };
+
+      // 将默认块内容添加到消息中
+      defaultMessage._content = defaultBlock.content;
+
+      messages = [defaultMessage];
+
+      console.log('[API请求] 添加默认用户消息: 您好，请问有什么可以帮助您的？');
     }
 
     // 记录消息数组
@@ -76,7 +92,7 @@ export async function sendChatRequest(
       model: model.id,
       messagesCount: messages.length,
       enableWebSearch,
-      enableThinking,
+      enableTools,
       hasSystemPrompt: Boolean(systemPrompt),
       stream: true, // 添加流式输出信息，与电脑版保持一致
       messages: messages.map(msg => ({
@@ -88,22 +104,21 @@ export async function sendChatRequest(
     // 创建Provider实例
     const provider = createProvider(model);
 
-    // 准备工具列表
-    const tools: ToolType[] = [];
-
-    // 添加网页搜索工具
-    if (enableWebSearch && model.capabilities?.webSearch) {
-      tools.push(ToolType.WEB_SEARCH);
-      console.log(`[API请求] 启用网页搜索功能`);
+    // 记录工具状态
+    if (enableTools) {
+      if (enableWebSearch && model.capabilities?.webSearch) {
+        console.log(`[API请求] 启用网页搜索功能`);
+      }
+    } else {
+      console.log(`[API请求] 工具功能已禁用`);
     }
 
     // 使用Provider发送消息
     return await provider.sendChatMessage(messages, {
       onUpdate,
       enableWebSearch,
-      enableThinking,
-      tools,
-      systemPrompt
+      systemPrompt,
+      enableTools
     });
   } catch (error) {
     console.error('[API错误] OpenAI API请求失败:', error);

@@ -56,8 +56,8 @@ export default function TopicGroups({
             topic => topicGroupMap[topic.id] === group.id
           );
 
-          // 如果分组内没有话题，不显示该分组
-          if (groupTopics.length === 0) return null;
+          // 即使分组内没有话题，也显示该分组
+          // 不再返回null，而是显示空分组
 
           return (
             <DraggableGroup
@@ -65,7 +65,23 @@ export default function TopicGroups({
               group={group}
               onAddItem={onAddItem}
             >
-              {groupTopics.map((topic, index) => renderTopicItem(topic, index))}
+              {groupTopics.length > 0 ? (
+                groupTopics.map((topic, index) => renderTopicItem(topic, index))
+              ) : (
+                <Typography
+                  variant="body2"
+                  color="textSecondary"
+                  sx={{
+                    py: 1,
+                    px: 1,
+                    textAlign: 'center',
+                    fontStyle: 'italic',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  此分组暂无话题，请从未分组话题中添加
+                </Typography>
+              )}
             </DraggableGroup>
           );
         })
@@ -76,4 +92,4 @@ export default function TopicGroups({
       )}
     </Box>
   );
-} 
+}

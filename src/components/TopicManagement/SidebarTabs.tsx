@@ -32,7 +32,8 @@ export default function SidebarTabs() {
     handleSelectAssistant,
     handleAddAssistant,
     handleUpdateAssistant,
-    handleDeleteAssistant
+    handleDeleteAssistant,
+    isPending // 获取isPending状态
   } = useAssistantManagement({
     currentAssistant,
     setCurrentAssistant,
@@ -105,6 +106,7 @@ export default function SidebarTabs() {
     handleAddAssistant,
     handleUpdateAssistant,
     handleDeleteAssistant,
+    isPending, // 添加isPending状态到上下文
 
     // 话题管理函数
     handleCreateTopic,

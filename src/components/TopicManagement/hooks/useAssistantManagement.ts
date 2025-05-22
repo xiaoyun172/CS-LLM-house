@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useTransition } from 'react';
 import { useDispatch } from 'react-redux';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
 import { addAssistant, setCurrentAssistant as setReduxCurrentAssistant, updateAssistant, removeAssistant } from '../../../shared/store/slices/assistantsSlice';
@@ -28,6 +28,8 @@ export function useAssistantManagement({
   refreshTopics: () => Promise<void>;
 }) {
   const dispatch = useDispatch();
+  // 使用useTransition钩子，获取isPending状态和startTransition函数
+  const [isPending, startTransition] = useTransition();
 
   // 保存当前选择的助手ID到本地存储
   const persistCurrentAssistantId = useCallback(async (assistantId: string) => {
@@ -95,26 +97,42 @@ export function useAssistantManagement({
         };
       }
 
-      // 如果当前话题不属于选中的助手，清除当前话题
-      if (currentTopic && currentTopic.assistantId !== assistant.id) {
-        dispatch(newMessagesActions.setCurrentTopicId(null));
-      }
+      // 使用startTransition包装状态更新，减少渲染阻塞
+      startTransition(() => {
+        // 使用Redux dispatch设置当前助手
+        dispatch(setReduxCurrentAssistant(assistant));
 
-      // 使用Redux dispatch设置当前助手
-      dispatch(setReduxCurrentAssistant(assistant));
+        // 更新本地状态
+        setCurrentAssistant(assistant);
+      });
 
-      // 更新本地状态
-      setCurrentAssistant(assistant);
+      // 刷新话题列表 - 使用异步函数而不是setTimeout
+      const updateTopics = async () => {
+        try {
+          await refreshTopics();
 
-      // 刷新话题列表
-      setTimeout(async () => {
-        await refreshTopics();
+          // 检查当前话题是否属于选中的助手
+          const topicBelongsToAssistant = currentTopic &&
+                                         (currentTopic.assistantId === assistant.id ||
+                                          assistant.topicIds?.includes(currentTopic.id) ||
+                                          assistant.topics?.some(topic => topic.id === currentTopic.id));
 
-        // 自动选择第一个话题
-        if (assistant.topics && assistant.topics.length > 0 && !currentTopic) {
-          dispatch(newMessagesActions.setCurrentTopicId(assistant.topics[0].id));
+          // 如果当前话题不属于选中的助手，或者没有当前话题，自动选择该助手的第一个话题
+          if (!topicBelongsToAssistant && assistant.topics && assistant.topics.length > 0) {
+            console.log(`[useAssistantManagement] 当前话题不属于选中的助手或没有当前话题，自动选择第一个话题: ${assistant.topics[0].name}`);
+
+            // 使用startTransition包装话题ID更新
+            startTransition(() => {
+              dispatch(newMessagesActions.setCurrentTopicId(assistant.topics[0].id));
+            });
+          }
+        } catch (error) {
+          console.error('[useAssistantManagement] 刷新话题列表失败:', error);
         }
-      }, 200);
+      };
+
+      // 立即执行更新话题的异步函数
+      updateTopics();
 
       console.log('[useAssistantManagement] 助手选择完成:', assistant.id);
     } catch (error) {
@@ -140,12 +158,15 @@ export function useAssistantManagement({
       // 设置为当前助手到数据库（仍然需要保存到数据库以便持久化）
       await dexieStorage.saveSetting('currentAssistant', assistant.id);
 
-      // 直接使用Redux dispatch更新状态
-      dispatch(addAssistant(assistant));
-      dispatch(setReduxCurrentAssistant(assistant));
+      // 使用startTransition包装状态更新，减少渲染阻塞
+      startTransition(() => {
+        // 直接使用Redux dispatch更新状态
+        dispatch(addAssistant(assistant));
+        dispatch(setReduxCurrentAssistant(assistant));
 
-      // 更新本地状态
-      setCurrentAssistant(assistant);
+        // 更新本地状态
+        setCurrentAssistant(assistant);
+      });
 
       console.log('[useAssistantManagement] 助手添加完成:', assistant.id);
     } catch (error) {
@@ -161,13 +182,16 @@ export function useAssistantManagement({
       // 保存助手到数据库（仍然需要保存到数据库以便持久化）
       await dexieStorage.saveAssistant(assistant);
 
-      // 直接使用Redux dispatch更新状态
-      dispatch(updateAssistant(assistant));
+      // 使用startTransition包装状态更新，减少渲染阻塞
+      startTransition(() => {
+        // 直接使用Redux dispatch更新状态
+        dispatch(updateAssistant(assistant));
 
-      // 如果更新的是当前助手，更新本地状态
-      if (currentAssistant && currentAssistant.id === assistant.id) {
-        setCurrentAssistant(assistant);
-      }
+        // 如果更新的是当前助手，更新本地状态
+        if (currentAssistant && currentAssistant.id === assistant.id) {
+          setCurrentAssistant(assistant);
+        }
+      });
 
       console.log('[useAssistantManagement] 助手更新完成:', assistant.id);
     } catch (error) {
@@ -183,19 +207,26 @@ export function useAssistantManagement({
       // 从数据库删除助手（仍然需要从数据库删除以便持久化）
       await dexieStorage.deleteAssistant(assistantId);
 
-      // 直接使用Redux dispatch更新状态
-      dispatch(removeAssistant(assistantId));
+      // 使用startTransition包装状态更新，减少渲染阻塞
+      startTransition(() => {
+        // 直接使用Redux dispatch更新状态
+        dispatch(removeAssistant(assistantId));
+      });
 
       // 如果删除的是当前助手，更新本地状态
       if (currentAssistant && currentAssistant.id === assistantId) {
         const updatedAssistants = await AssistantService.getUserAssistants();
-        if (updatedAssistants.length > 0) {
-          setCurrentAssistant(updatedAssistants[0]);
-          dispatch(setReduxCurrentAssistant(updatedAssistants[0]));
-        } else {
-          setCurrentAssistant(null);
-          dispatch(setReduxCurrentAssistant(null));
-        }
+
+        // 使用startTransition包装状态更新，减少渲染阻塞
+        startTransition(() => {
+          if (updatedAssistants.length > 0) {
+            setCurrentAssistant(updatedAssistants[0]);
+            dispatch(setReduxCurrentAssistant(updatedAssistants[0]));
+          } else {
+            setCurrentAssistant(null);
+            dispatch(setReduxCurrentAssistant(null));
+          }
+        });
       }
 
       console.log('[useAssistantManagement] 助手删除完成:', assistantId);
@@ -208,6 +239,7 @@ export function useAssistantManagement({
     handleSelectAssistant,
     handleAddAssistant,
     handleUpdateAssistant,
-    handleDeleteAssistant
+    handleDeleteAssistant,
+    isPending // 导出isPending状态，可用于UI显示加载状态
   };
 }

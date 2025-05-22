@@ -1,11 +1,11 @@
 import React from 'react';
-import { 
-  Box, 
+import {
+  Box,
   ListItemButton,
-  AppBar, 
-  Toolbar, 
-  IconButton, 
-  Typography, 
+  AppBar,
+  Toolbar,
+  IconButton,
+  Typography,
   Paper,
   alpha,
   Avatar
@@ -56,6 +56,7 @@ const SettingsPage: React.FC = () => {
         { id: 'system-prompts', title: '系统提示词', description: '管理全局系统提示词和提示词模板', icon: <AutoFixHighIcon />, path: '/settings/system-prompts', color: '#0ea5e9' },
         { id: 'model-combo', title: '模型组合', description: '创建和管理多模型组合', icon: <SmartToyIcon />, path: '/settings/model-combo', color: '#f43f5e' },
         { id: 'web-search', title: '网络搜索', description: '配置网络搜索和相关服务', icon: <LanguageIcon />, path: '/settings/web-search', color: '#3b82f6' },
+        { id: 'special-features', title: '特殊功能', description: '配置思考过程、多模型对比等特殊功能', icon: <AutoFixHighIcon />, path: '/settings/special-features', color: '#8b5cf6' },
         { id: 'mcp-server', title: 'MCP 服务器', description: '高级服务器配置', icon: <SettingsIcon />, path: '/settings/mcp-server', color: '#10b981' },
       ]
     },
@@ -80,16 +81,16 @@ const SettingsPage: React.FC = () => {
   ];
 
   return (
-    <Box sx={{ 
-      flexGrow: 1, 
-      display: 'flex', 
-      flexDirection: 'column', 
+    <Box sx={{
+      flexGrow: 1,
+      display: 'flex',
+      flexDirection: 'column',
       height: '100vh',
       bgcolor: (theme) => theme.palette.mode === 'light'
         ? alpha(theme.palette.primary.main, 0.02)
         : alpha(theme.palette.background.default, 0.9),
     }}>
-      <AppBar 
+      <AppBar
         position="fixed"
         elevation={0}
         sx={{
@@ -112,11 +113,11 @@ const SettingsPage: React.FC = () => {
           >
             <ArrowBackIcon />
           </IconButton>
-          <Typography 
-            variant="h6" 
-            component="div" 
-            sx={{ 
-              flexGrow: 1, 
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              flexGrow: 1,
               fontWeight: 600,
               backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
               backgroundClip: 'text',
@@ -128,10 +129,10 @@ const SettingsPage: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
-          overflow: 'auto', 
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflow: 'auto',
           px: 2,
           py: 2,
           mt: 8,
@@ -146,11 +147,11 @@ const SettingsPage: React.FC = () => {
       >
         {settingsGroups.map((group, index) => (
           <Box key={index} sx={{ mb: 3 }}>
-            <Typography 
-              variant="subtitle1" 
-              sx={{ 
+            <Typography
+              variant="subtitle1"
+              sx={{
                 px: 1,
-                mb: 1.5, 
+                mb: 1.5,
                 fontSize: '0.85rem',
                 fontWeight: 600,
                 color: (theme) => theme.palette.mode === 'light' ? '#475569' : '#94A3B8',
@@ -160,10 +161,10 @@ const SettingsPage: React.FC = () => {
             >
               {group.title}
             </Typography>
-            
-            <Box 
-              sx={{ 
-                display: 'grid', 
+
+            <Box
+              sx={{
+                display: 'grid',
                 gridTemplateColumns: {
                   xs: '1fr',
                   sm: 'repeat(2, 1fr)'
@@ -190,9 +191,9 @@ const SettingsPage: React.FC = () => {
                     }
                   }}
                 >
-                  <ListItemButton 
+                  <ListItemButton
                     onClick={() => navigateTo(item.path)}
-                    sx={{ 
+                    sx={{
                       p: 0,
                       height: '100%',
                       '&:hover': {
@@ -200,14 +201,14 @@ const SettingsPage: React.FC = () => {
                       }
                     }}
                   >
-                    <Box sx={{ 
-                      display: 'flex', 
+                    <Box sx={{
+                      display: 'flex',
                       alignItems: 'center',
-                      width: '100%', 
-                      p: 2 
+                      width: '100%',
+                      p: 2
                     }}>
                       <Avatar
-                        sx={{ 
+                        sx={{
                           bgcolor: alpha(item.color, 0.12),
                           color: item.color,
                           mr: 2,
@@ -217,9 +218,9 @@ const SettingsPage: React.FC = () => {
                         {item.icon}
                       </Avatar>
                       <Box sx={{ flex: 1 }}>
-                        <Typography 
-                          variant="subtitle1" 
-                          sx={{ 
+                        <Typography
+                          variant="subtitle1"
+                          sx={{
                             fontWeight: 600,
                             mb: 0.5,
                             color: 'text.primary'
@@ -227,9 +228,9 @@ const SettingsPage: React.FC = () => {
                         >
                           {item.title}
                         </Typography>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
+                        <Typography
+                          variant="body2"
+                          sx={{
                             color: 'text.secondary',
                             fontSize: '0.8rem',
                             display: '-webkit-box',
@@ -254,4 +255,4 @@ const SettingsPage: React.FC = () => {
   );
 };
 
-export default SettingsPage; 
+export default SettingsPage;

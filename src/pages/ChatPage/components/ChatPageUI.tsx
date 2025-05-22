@@ -28,10 +28,13 @@ interface ChatPageUIProps {
   handleClearTopic: () => void;
   handleDeleteMessage: (messageId: string) => void;
   handleRegenerateMessage: (messageId: string) => void;
+  handleSwitchMessageVersion: (versionId: string) => void;
   webSearchActive: boolean;
   imageGenerationMode: boolean;
+  toolsEnabled: boolean;
   toggleWebSearch: () => void;
   toggleImageGenerationMode: () => void;
+  toggleToolsEnabled: () => void;
   handleMessageSend: (content: string, images?: SiliconFlowImageFormat[]) => void;
   handleUrlScraping: (url: string) => Promise<string>;
   handleStopResponseClick: () => void;
@@ -55,10 +58,13 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
   handleClearTopic,
   handleDeleteMessage,
   handleRegenerateMessage,
+  handleSwitchMessageVersion,
   webSearchActive,
   imageGenerationMode,
+  toolsEnabled,
   toggleWebSearch,
   toggleImageGenerationMode,
+  toggleToolsEnabled,
   handleMessageSend,
   handleUrlScraping,
   handleStopResponseClick
@@ -157,13 +163,16 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   overflow: 'auto',
                   display: 'flex',
                   flexDirection: 'column',
-                  paddingBottom: '80px', // 为输入框留出足够空间
+                  paddingBottom: '100px', // 为输入框留出足够空间
+                  width: '100%', // 确保容器占满可用宽度
+                  maxWidth: '100%', // 确保不超出父容器
                 }}
               >
               <MessageList
                 messages={currentMessages}
                 onRegenerate={handleRegenerateMessage}
                 onDelete={handleDeleteMessage}
+                onSwitchVersion={handleSwitchMessageVersion}
               />
               </Box>
 
@@ -181,7 +190,19 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 0 // 移除元素间间距
+                  gap: 0, // 移除元素间间距
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    margin: '0 auto',
+                    width: '100%',
+                    maxWidth: '800px', // 设置最大宽度
+                    pointerEvents: 'none'
+                  }
                 }}
               >
                 {/* 工具栏 - 仅显示气泡按钮 */}
@@ -191,6 +212,8 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   toggleImageGenerationMode={toggleImageGenerationMode}
                   webSearchActive={webSearchActive}
                   toggleWebSearch={toggleWebSearch}
+                  toolsEnabled={toolsEnabled}
+                  onToolsEnabledChange={toggleToolsEnabled}
                 />
 
                 {/* 聊天输入框 */}
@@ -222,7 +245,7 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   overflow: 'auto',
                   display: 'flex',
                   flexDirection: 'column',
-                  paddingBottom: '80px', // 为输入框留出足够空间
+                  paddingBottom: '100px', // 为输入框留出足够空间
                 }}
               >
                 <Box
@@ -265,7 +288,19 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 0 // 移除元素间间距
+                  gap: 0, // 移除元素间间距
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    margin: '0 auto',
+                    width: '100%',
+                    maxWidth: '800px', // 设置最大宽度
+                    pointerEvents: 'none'
+                  }
                 }}
               >
                 {/* 工具栏 */}
@@ -275,6 +310,8 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   toggleImageGenerationMode={toggleImageGenerationMode}
                   webSearchActive={webSearchActive}
                   toggleWebSearch={toggleWebSearch}
+                  toolsEnabled={toolsEnabled}
+                  onToolsEnabledChange={toggleToolsEnabled}
                 />
 
                 {/* 聊天输入框 */}
@@ -303,4 +340,4 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
       </Box>
     </Box>
   );
-}; 
+};

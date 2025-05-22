@@ -6,6 +6,7 @@ import type { MessageBlock } from '../types';
 import type { Message } from '../types/newMessage.ts';
 import { DB_CONFIG } from '../types/DatabaseSchema';
 import { throttle } from 'lodash';
+import { makeSerializable, diagnoseSerializationIssues } from '../utils/serialization';
 
 /**
  * 基于Dexie.js的统一存储服务
@@ -468,13 +469,86 @@ class DexieStorageService extends Dexie {
     await this.message_blocks.update(blockId, updatedBlock);
   }
 
+  /**
+   * 保存设置到数据库
+   * 自动处理序列化问题，确保数据可以安全地存储
+   * @param key 设置键名
+   * @param value 设置值
+   */
   async saveSetting(key: string, value: any): Promise<void> {
-    await this.settings.put({ id: key, value });
+    try {
+      console.log(`[DexieStorageService] 开始保存设置: ${key}`);
+
+      // 检查数据是否存在序列化问题
+      const { hasCircularRefs, nonSerializableProps } = diagnoseSerializationIssues(value);
+
+      if (hasCircularRefs || nonSerializableProps.length > 0) {
+        console.warn(`[DexieStorageService] 设置 ${key} 存在序列化问题，将尝试修复:`, {
+          hasCircularRefs,
+          nonSerializableProps: nonSerializableProps.slice(0, 10) // 只显示前10个问题，避免日志过长
+        });
+
+        // 使用makeSerializable处理数据，确保可序列化
+        const serializableValue = makeSerializable(value);
+        await this.settings.put({ id: key, value: serializableValue });
+        console.log(`[DexieStorageService] 设置 ${key} 已修复并保存成功`);
+      } else {
+        // 数据没有序列化问题，直接保存
+        await this.settings.put({ id: key, value });
+        console.log(`[DexieStorageService] 设置 ${key} 保存成功`);
+      }
+    } catch (error) {
+      console.error(`[DexieStorageService] 保存设置 ${key} 失败:`, error);
+
+      // 记录更详细的错误信息
+      if (error instanceof Error) {
+        console.error('错误类型:', error.name);
+        console.error('错误消息:', error.message);
+        console.error('错误堆栈:', error.stack);
+      }
+
+      // 尝试使用JSON序列化再保存
+      try {
+        console.log(`[DexieStorageService] 尝试使用JSON序列化再保存设置 ${key}`);
+        const jsonString = JSON.stringify(value);
+        await this.settings.put({ id: key, value: { _isJsonString: true, data: jsonString } });
+        console.log(`[DexieStorageService] 设置 ${key} 使用JSON序列化保存成功`);
+      } catch (jsonError) {
+        console.error(`[DexieStorageService] JSON序列化保存设置 ${key} 也失败:`, jsonError);
+        throw error; // 抛出原始错误
+      }
+    }
   }
 
+  /**
+   * 从数据库获取设置
+   * 自动处理反序列化
+   * @param key 设置键名
+   * @returns 设置值
+   */
   async getSetting(key: string): Promise<any> {
-    const setting = await this.settings.get(key);
-    return setting ? setting.value : null;
+    try {
+      const setting = await this.settings.get(key);
+
+      if (!setting) {
+        return null;
+      }
+
+      // 检查是否是JSON序列化的数据
+      if (setting.value && typeof setting.value === 'object' && setting.value._isJsonString) {
+        try {
+          return JSON.parse(setting.value.data);
+        } catch (e) {
+          console.error(`[DexieStorageService] 解析JSON序列化的设置 ${key} 失败:`, e);
+          return null;
+        }
+      }
+
+      return setting.value;
+    } catch (error) {
+      console.error(`[DexieStorageService] 获取设置 ${key} 失败:`, error);
+      return null;
+    }
   }
 
   async deleteSetting(key: string): Promise<void> {
@@ -524,6 +598,38 @@ class DexieStorageService extends Dexie {
 
   async deleteMetadata(key: string): Promise<void> {
     await this.metadata.delete(key);
+  }
+
+  /**
+   * 获取模型配置
+   * @param modelId 模型ID
+   * @returns 模型配置对象，如果不存在则返回null
+   */
+  async getModel(modelId: string): Promise<any | null> {
+    try {
+      // 从元数据中获取模型配置
+      const modelKey = `model_${modelId}`;
+      return await this.getMetadata(modelKey);
+    } catch (error) {
+      console.error(`[DexieStorageService] 获取模型配置失败: ${modelId}`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 保存模型配置
+   * @param modelId 模型ID
+   * @param modelConfig 模型配置对象
+   */
+  async saveModel(modelId: string, modelConfig: any): Promise<void> {
+    try {
+      // 保存模型配置到元数据
+      const modelKey = `model_${modelId}`;
+      await this.saveMetadata(modelKey, modelConfig);
+    } catch (error) {
+      console.error(`[DexieStorageService] 保存模型配置失败: ${modelId}`, error);
+      throw error;
+    }
   }
 
   async deleteAllMessages(): Promise<void> {
@@ -581,15 +687,36 @@ class DexieStorageService extends Dexie {
       const topic = await this.topics.get(topicId);
       if (!topic) return [];
 
-      // 优先使用messages数组（电脑版原版方式）
-      if (topic.messages && Array.isArray(topic.messages) && topic.messages.length > 0) {
+      // 始终优先使用messages数组（电脑端方式）
+      if (topic.messages && Array.isArray(topic.messages)) {
         console.log(`[DexieStorageService] 从话题对象直接获取 ${topic.messages.length} 条消息`);
+
+        // 如果messages数组为空但有messageIds，则从messages表加载
+        if (topic.messages.length === 0 && topic.messageIds && Array.isArray(topic.messageIds) && topic.messageIds.length > 0) {
+          console.log(`[DexieStorageService] messages数组为空，从messageIds加载 ${topic.messageIds.length} 条消息`);
+
+          // 使用事务加载所有消息
+          const messages: Message[] = [];
+
+          // 从messages表加载消息
+          for (const messageId of topic.messageIds) {
+            const message = await this.messages.get(messageId);
+            if (message) messages.push(message);
+          }
+
+          // 更新topic.messages数组
+          topic.messages = messages;
+          await this.topics.put(topic);
+
+          return messages;
+        }
+
         return topic.messages;
       }
 
-      // 如果没有messages数组，但有messageIds，则从messages表加载
+      // 如果没有messages数组，但有messageIds，则从messages表加载并创建messages数组
       if (topic.messageIds && Array.isArray(topic.messageIds) && topic.messageIds.length > 0) {
-        console.log(`[DexieStorageService] 从messageIds加载 ${topic.messageIds.length} 条消息`);
+        console.log(`[DexieStorageService] 创建messages数组，从messageIds加载 ${topic.messageIds.length} 条消息`);
 
         // 使用事务加载所有消息
         const messages: Message[] = [];
@@ -600,15 +727,17 @@ class DexieStorageService extends Dexie {
           if (message) messages.push(message);
         }
 
-        // 更新topic.messages数组
+        // 创建并更新topic.messages数组
         topic.messages = messages;
         await this.topics.put(topic);
 
         return messages;
       }
 
-      // 如果都没有，返回空数组
-      console.log(`[DexieStorageService] 话题 ${topicId} 没有消息`);
+      // 如果都没有，创建空的messages数组并返回空数组
+      console.log(`[DexieStorageService] 话题 ${topicId} 没有消息，创建空的messages数组`);
+      topic.messages = [];
+      await this.topics.put(topic);
       return [];
     } catch (error) {
       console.error(`[DexieStorageService] 获取话题消息失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -676,6 +805,20 @@ class DexieStorageService extends Dexie {
     return await this.messages.where('topicId').equals(topicId).toArray();
   }
 
+  /**
+   * 获取所有消息
+   * @returns 所有消息的数组
+   */
+  async getAllMessages(): Promise<Message[]> {
+    try {
+      console.log('[DexieStorageService] 获取所有消息');
+      return await this.messages.toArray();
+    } catch (error) {
+      console.error(`[DexieStorageService] 获取所有消息失败: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
   async deleteMessage(id: string): Promise<void> {
     const message = await this.getMessage(id);
     if (!message) return;
@@ -714,6 +857,25 @@ class DexieStorageService extends Dexie {
 
   async deleteMessageBlocksByIds(blockIds: string[]): Promise<void> {
     await Promise.all(blockIds.map((id: string) => this.deleteMessageBlock(id)));
+  }
+
+  /**
+   * 获取消息版本的块
+   * @param versionId 版本ID
+   * @returns 版本对应的块列表
+   */
+  async getMessageBlocksByVersionId(versionId: string): Promise<MessageBlock[]> {
+    try {
+      // 查找所有metadata.versionId等于指定versionId的块
+      const blocks = await this.message_blocks.toArray();
+      return blocks.filter(block =>
+        block.metadata &&
+        block.metadata.versionId === versionId
+      );
+    } catch (error) {
+      console.error(`[DexieStorageService] 获取版本块失败: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
   }
 
   // 迁移主题消息数据
