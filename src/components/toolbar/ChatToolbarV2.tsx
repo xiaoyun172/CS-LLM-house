@@ -2,17 +2,17 @@ import React, { useRef, useState } from 'react';
 import { Box, useTheme } from '@mui/material';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../shared/store';
-import NewTopicButtonV2 from './buttons/NewTopicButtonV2';
-import ClearTopicButtonV2 from './buttons/ClearTopicButtonV2';
-import GenerateImageButtonV2 from './buttons/GenerateImageButtonV2';
-import WebSearchButtonV2 from './buttons/WebSearchButtonV2';
+import NewTopicButton from './buttons/NewTopicButton';
+import ClearTopicButton from './buttons/ClearTopicButton';
+import GenerateImageButton from './buttons/GenerateImageButton';
+import WebSearchButton from './buttons/WebSearchButton';
 import type { ToolbarDisplayStyle } from './buttons/types';
 
 interface ChatToolbarV2Props {
   onClearTopic?: () => void;
   imageGenerationMode?: boolean;
   toggleImageGenerationMode?: () => void;
-  webSearchActive?: boolean; 
+  webSearchActive?: boolean;
   toggleWebSearch?: () => void;
 }
 
@@ -34,10 +34,10 @@ const ChatToolbarV2: React.FC<ChatToolbarV2Props> = ({
   const [scrollLeft, setScrollLeft] = useState(0);
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
-  
+
   // 从Redux获取网络搜索设置和工具栏显示样式
   const webSearchEnabled = useSelector((state: RootState) => state.webSearch?.enabled || false);
-  const toolbarDisplayStyle = useSelector((state: RootState) => 
+  const toolbarDisplayStyle = useSelector((state: RootState) =>
     (state.settings as any).toolbarDisplayStyle || 'both'
   ) as ToolbarDisplayStyle;
 
@@ -120,29 +120,29 @@ const ChatToolbarV2: React.FC<ChatToolbarV2Props> = ({
         onTouchMove={handleTouchMove}
       >
         {/* 新建话题按钮 */}
-        <NewTopicButtonV2 
+        <NewTopicButton
           displayStyle={toolbarDisplayStyle}
           isDarkMode={isDarkMode}
         />
-        
+
         {/* 清空内容按钮 */}
-        <ClearTopicButtonV2 
+        <ClearTopicButton
           displayStyle={toolbarDisplayStyle}
           isDarkMode={isDarkMode}
           onClearTopic={onClearTopic}
         />
-        
+
         {/* 生成图片按钮 */}
-        <GenerateImageButtonV2 
+        <GenerateImageButton
           displayStyle={toolbarDisplayStyle}
           isDarkMode={isDarkMode}
           imageGenerationMode={imageGenerationMode}
           toggleImageGenerationMode={toggleImageGenerationMode}
         />
-        
+
         {/* 网络搜索按钮 - 只在网络搜索功能启用时显示 */}
         {webSearchEnabled && toggleWebSearch && (
-          <WebSearchButtonV2 
+          <WebSearchButton
             displayStyle={toolbarDisplayStyle}
             isDarkMode={isDarkMode}
             webSearchActive={webSearchActive}
@@ -154,4 +154,4 @@ const ChatToolbarV2: React.FC<ChatToolbarV2Props> = ({
   );
 };
 
-export default ChatToolbarV2; 
+export default ChatToolbarV2;

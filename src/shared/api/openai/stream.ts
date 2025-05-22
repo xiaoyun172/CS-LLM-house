@@ -25,7 +25,7 @@ export async function streamCompletion(
   maxTokens?: number,
   onUpdate?: (content: string, reasoning?: string) => void,
   additionalParams?: Record<string, any>
-): Promise<string> {
+): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
   try {
     // 检查是否包含思考提示
     const hasThinkingPrompt = messages.some(msg =>
@@ -72,7 +72,14 @@ export async function streamCompletion(
 
     // 初始化变量
     let fullContent = '';
+    let fullReasoning = '';
+    let hasReasoningContent = false;
+    let reasoningStartTime = 0;
+    let reasoningEndTime = 0;
     let isFirstChunk = true;
+
+    // 检查是否启用推理
+    const enableReasoning = additionalParams?.enableReasoning !== false;
 
     try {
       // 直接使用for await循环处理流式响应
@@ -80,15 +87,30 @@ export async function streamCompletion(
         // 提取delta内容
         const delta = chunk.choices[0]?.delta;
         const content = delta?.content || '';
+        const reasoning = delta?.reasoning || '';
+
+        // 处理推理内容
+        if (reasoning && enableReasoning) {
+          if (!hasReasoningContent) {
+            hasReasoningContent = true;
+            reasoningStartTime = Date.now();
+          }
+          fullReasoning += reasoning;
+        }
 
         // 只处理有内容的delta
         if (content) {
+          // 如果有推理内容且刚结束，记录结束时间
+          if (hasReasoningContent && !reasoning && reasoningEndTime === 0) {
+            reasoningEndTime = Date.now();
+          }
+
           // 累加内容 - 这是关键步骤
           fullContent += content;
 
-          // 调用回调函数 - 使用完整内容
+          // 调用回调函数 - 使用完整内容和推理内容
           if (onUpdate) {
-            onUpdate(fullContent);
+            onUpdate(fullContent, fullReasoning || undefined);
           }
 
           // 发送事件通知 - 只包含当前文本块，这样UI层可以自行累加
@@ -117,9 +139,16 @@ export async function streamCompletion(
         // 处理完成原因
         const finishReason = chunk.choices[0]?.finish_reason;
         if (finishReason) {
+          // 如果有推理内容但还没记录结束时间，现在记录
+          if (hasReasoningContent && reasoningEndTime === 0) {
+            reasoningEndTime = Date.now();
+          }
+
           // 发送完成事件
           EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
             text: fullContent,
+            reasoning: fullReasoning || undefined,
+            reasoningTime: hasReasoningContent ? reasoningEndTime - reasoningStartTime : undefined,
             timestamp: Date.now()
           });
 
@@ -134,6 +163,16 @@ export async function streamCompletion(
       });
 
       throw error;
+    }
+
+    // 返回结果 - 如果有推理内容，返回对象；否则返回字符串
+    if (hasReasoningContent && fullReasoning) {
+      const reasoningTime = reasoningEndTime > reasoningStartTime ? reasoningEndTime - reasoningStartTime : 0;
+      return {
+        content: fullContent,
+        reasoning: fullReasoning,
+        reasoningTime
+      };
     }
 
     return fullContent;

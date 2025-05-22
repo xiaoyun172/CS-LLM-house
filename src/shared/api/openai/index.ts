@@ -14,7 +14,8 @@ export {
   supportsWebSearch,
   supportsReasoning,
   getWebSearchParams,
-  testConnection
+  testConnection,
+  isAzureOpenAI
 } from './client';
 
 // 导入聊天完成函数以便包装和增强
@@ -54,6 +55,13 @@ export {
   BaseOpenAIProvider,
   OpenAIProvider
 } from './provider';
+
+// 导出响应处理器
+export {
+  createResponseHandler,
+  ResponseHandler,
+  defaultResponseHandler
+} from './responseHandler';
 
 // 包装聊天请求函数以添加调试信息
 export async function sendChatRequest(

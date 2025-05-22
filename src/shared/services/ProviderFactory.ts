@@ -9,34 +9,96 @@ import * as geminiApi from '../api/gemini';
 
 
 /**
- * 获取实际的提供商类型
+ * 获取实际的提供商类型 - 支持智能路由
  * @param model 模型配置
  * @returns 提供商类型
  */
 export function getActualProviderType(model: Model): string {
   // 优先使用providerType字段(如果存在)，否则回退到provider字段
-  const providerType = (model as any).providerType || model.provider;
+  let providerType = (model as any).providerType || model.provider;
+
+  // 智能路由：如果没有明确指定provider，根据模型ID和baseUrl自动推断
+  if (!providerType || providerType === 'auto') {
+    providerType = inferProviderFromModel(model);
+  }
+
   console.log(`[ProviderFactory] 获取提供商类型: ${providerType}, 模型ID: ${model.id}`);
   return providerType;
 }
 
 /**
- * 获取供应商API - 简化版本，参考电脑版架构
+ * 智能推断Provider类型 - 类似电脑版AiHubMixProvider的功能
+ * @param model 模型配置
+ * @returns 推断的Provider类型
+ */
+function inferProviderFromModel(model: Model): string {
+  // 检查是否为Azure OpenAI
+  if (isAzureOpenAI(model)) {
+    return 'azure-openai';
+  }
+
+  // 根据模型ID推断provider类型
+  const modelId = model.id.toLowerCase();
+
+  if (modelId.includes('claude')) {
+    return 'anthropic';
+  }
+
+  if (modelId.includes('gemini')) {
+    return 'gemini';
+  }
+
+  if (modelId.includes('gpt') || modelId.includes('o1') || modelId.includes('davinci') || modelId.includes('curie') || modelId.includes('babbage') || modelId.includes('ada')) {
+    return 'openai';
+  }
+
+  if (modelId.includes('deepseek')) {
+    return 'deepseek';
+  }
+
+  if (modelId.includes('grok')) {
+    return 'grok';
+  }
+
+  // 默认使用openai兼容的API
+  return 'openai';
+}
+
+/**
+ * 检查是否为Azure OpenAI
+ * @param model 模型配置
+ * @returns 是否为Azure OpenAI
+ */
+function isAzureOpenAI(model: Model): boolean {
+  return Boolean((model as any).providerType === 'azure-openai' ||
+         model.provider === 'azure-openai' ||
+         (model.baseUrl && model.baseUrl.includes('openai.azure.com')));
+}
+
+/**
+ * 获取供应商API - 支持Azure OpenAI和智能路由
  * @param model 模型配置
  * @returns 供应商API模块
  */
 export function getProviderApi(model: Model): any {
   const providerType = getActualProviderType(model);
 
-  // 简化的Provider选择逻辑，参考电脑版
+  // 扩展的Provider选择逻辑，支持Azure OpenAI
   switch (providerType) {
     case 'anthropic':
       return anthropicApi;
     case 'gemini':
       return geminiApi;
+    case 'azure-openai':
+      // Azure OpenAI使用OpenAI兼容API，但有特殊配置
+      console.log(`[ProviderFactory] 使用Azure OpenAI API`);
+      return openaiApi;
     case 'openai':
     case 'deepseek': // DeepSeek使用OpenAI兼容API
     case 'google':   // Google使用OpenAI兼容API
+    case 'grok':     // Grok使用OpenAI兼容API
+    case 'siliconflow': // 硅基流动使用OpenAI兼容API
+    case 'volcengine':  // 火山引擎使用OpenAI兼容API
     default:
       // 默认使用OpenAI兼容API，与电脑版保持一致
       return openaiApi;

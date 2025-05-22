@@ -24,6 +24,7 @@ import { generateId } from '../../shared/utils';
 // 供应商类型列表
 const providerTypes = [
   { value: 'openai', label: 'OpenAI' },
+  { value: 'azure-openai', label: 'Azure OpenAI' },
   { value: 'gemini', label: 'Gemini' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'grok', label: 'xAI (Grok)' },
@@ -85,6 +86,7 @@ const AddProviderPage: React.FC = () => {
       isEnabled: true,
       apiKey: '',
       baseUrl: providerType === 'openai' ? 'https://api.openai.com/v1' :
+               providerType === 'azure-openai' ? '' : // Azure OpenAI需要用户自定义endpoint
                providerType === 'anthropic' ? 'https://api.anthropic.com/v1' :
                providerType === 'gemini' ? 'https://generativelanguage.googleapis.com/v1' :
                providerType === 'grok' ? 'https://api.x.ai/v1' :
@@ -271,6 +273,7 @@ const AddProviderPage: React.FC = () => {
                 sx={{ mt: 1, fontSize: '0.8rem' }}
               >
                 {providerType === 'openai' ? '添加OpenAI兼容的API服务' :
+                 providerType === 'azure-openai' ? '添加Azure OpenAI API服务（需要配置endpoint和apiVersion）' :
                  providerType === 'anthropic' ? '添加Anthropic Claude API服务' :
                  providerType === 'gemini' ? '添加Google Gemini API服务' :
                  providerType === 'grok' ? '添加xAI (Grok) API服务' :

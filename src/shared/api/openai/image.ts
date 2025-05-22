@@ -6,7 +6,7 @@ import { createClient } from './client';
 import { logApiRequest, logApiResponse, log } from '../../services/LoggerService';
 
 /**
- * 使用OpenAI兼容格式生成图像
+ * 使用OpenAI兼容格式生成图像 - 完整支持版本
  * @param model 模型配置
  * @param params 图像生成参数
  * @returns 生成的图像URL数组
@@ -27,13 +27,45 @@ export async function generateImage(
     // 创建OpenAI兼容客户端
     const client = createClient(model);
 
-    // 准备请求参数
+    // 准备请求参数 - 完整支持版本
     // 确保size参数符合OpenAI API的要求
     let imageSize = params.imageSize || '1024x1024';
     // 检查是否是有效的尺寸
     if (!['256x256', '512x512', '1024x1024', '1024x1536', '1536x1024'].includes(imageSize)) {
       // 默认使用1024x1024
       imageSize = '1024x1024';
+    }
+
+    // 构建完整的请求参数
+    const requestParams: any = {
+      model: model.id,
+      prompt: params.prompt,
+      size: imageSize,
+      n: params.batchSize || 1,
+      quality: params.quality || 'standard',
+      style: params.style || 'natural',
+      response_format: 'url'
+    };
+
+    // 添加高级参数（如果支持）
+    if (params.negativePrompt) {
+      requestParams.negative_prompt = params.negativePrompt;
+    }
+
+    if (params.seed !== undefined && params.seed !== null) {
+      requestParams.seed = parseInt(params.seed.toString());
+    }
+
+    if (params.steps !== undefined) {
+      requestParams.num_inference_steps = params.steps;
+    }
+
+    if (params.guidanceScale !== undefined) {
+      requestParams.guidance_scale = params.guidanceScale;
+    }
+
+    if (params.promptEnhancement !== undefined) {
+      requestParams.prompt_enhancement = params.promptEnhancement;
     }
 
     const requestParams: any = {

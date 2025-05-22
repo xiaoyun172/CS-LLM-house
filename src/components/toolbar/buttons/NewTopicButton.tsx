@@ -1,71 +1,60 @@
 import React from 'react';
-import { Box, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import { useDispatch } from 'react-redux';
 import { TopicService } from '../../../shared/services/TopicService';
-import type { ToolbarButtonProps } from '../buttons/types';
+import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventService';
+import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
+import type { ToolbarButtonProps } from './types';
+import ToolbarButton from './ToolbarButton';
 
 /**
- * 新建话题按钮组件
+ * 新建话题按钮组件 - 使用通用按钮组件
  */
-const NewTopicButton: React.FC<ToolbarButtonProps> = ({ 
-  displayStyle, 
-  isDarkMode 
+const NewTopicButton: React.FC<ToolbarButtonProps> = ({
+  displayStyle,
+  isDarkMode
 }) => {
+  const dispatch = useDispatch();
+
   // 创建新话题 - 使用统一的TopicService
   const handleCreateTopic = async () => {
-    await TopicService.createNewTopic();
+    // 触发新建话题事件
+    EventEmitter.emit(EVENT_NAMES.ADD_NEW_TOPIC);
+    console.log('[NewTopicButton] Emitted ADD_NEW_TOPIC event.');
+
+    // 创建新话题
+    const newTopic = await TopicService.createNewTopic();
+
+    // 如果成功创建话题，自动跳转到新话题
+    if (newTopic) {
+      console.log('[NewTopicButton] 成功创建新话题，自动跳转:', newTopic.id);
+
+      // 设置当前话题 - 立即选择新创建的话题
+      dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
+
+      // 确保话题侧边栏显示并选中新话题
+      setTimeout(() => {
+        EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
+
+        // 再次确保新话题被选中，防止其他逻辑覆盖
+        setTimeout(() => {
+          dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
+        }, 50);
+      }, 100);
+    }
   };
-  
+
   return (
-    <Box
+    <ToolbarButton
+      displayStyle={displayStyle}
+      isDarkMode={isDarkMode}
+      icon={<AddIcon sx={{ fontSize: '18px' }} />}
+      label="新建话题"
       onClick={handleCreateTopic}
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        background: isDarkMode ? '#1E1E1E' : '#FFFFFF',
-        backdropFilter: 'blur(5px)',
-        WebkitBackdropFilter: 'blur(5px)',
-        color: isDarkMode ? '#FFFFFF' : '#4CAF50',
-        border: `1px solid ${isDarkMode ? 'rgba(60, 60, 60, 0.8)' : 'rgba(230, 230, 230, 0.8)'}`,
-        borderRadius: '50px',
-        padding: '6px 12px',
-        margin: '0 4px',
-        cursor: 'pointer',
-        boxShadow: `0 1px 3px ${isDarkMode ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.07)'}`,
-        transition: 'all 0.2s ease',
-        minWidth: 'max-content',
-        userSelect: 'none',
-        '&:hover': {
-          boxShadow: `0 2px 4px ${isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)'}`,
-          background: isDarkMode ? 'rgba(40, 40, 40, 0.95)' : 'rgba(255, 255, 255, 0.95)'
-        },
-        '&:active': {
-          transform: 'scale(0.98)'
-        }
-      }}
-    >
-      {displayStyle !== 'text' && (
-        <AddIcon 
-          sx={{ 
-            fontSize: '18px', 
-            color: isDarkMode ? '#9E9E9E' : '#4CAF50'
-          }} 
-        />
-      )}
-      {displayStyle !== 'icon' && (
-        <Typography
-          variant="body2"
-          sx={{
-            fontWeight: 500,
-            fontSize: '13px',
-            ml: displayStyle === 'both' ? 0.5 : 0
-          }}
-        >
-          新建话题
-        </Typography>
-      )}
-    </Box>
+      color={isDarkMode ? '#FFFFFF' : '#4CAF50'}
+      iconColor={isDarkMode ? '#9E9E9E' : '#4CAF50'}
+    />
   );
 };
 
-export default NewTopicButton; 
+export default NewTopicButton;

@@ -36,6 +36,11 @@ export function createClient(model: Model): OpenAI {
 
     console.log(`[OpenAI createClient] 创建客户端, 模型ID: ${model.id}, baseURL: ${baseURL.substring(0, 20)}...`);
 
+    // 检查是否为Azure OpenAI
+    if (isAzureOpenAI(model)) {
+      console.log(`[OpenAI createClient] 检测到Azure OpenAI，使用Azure配置`);
+    }
+
     // 创建配置对象
     const config: ClientOptions = {
       apiKey,
@@ -43,6 +48,14 @@ export function createClient(model: Model): OpenAI {
       timeout: 90000, // 90秒超时，处理长响应
       dangerouslyAllowBrowser: true // 允许在浏览器环境中使用
     };
+
+    // Azure OpenAI特殊配置
+    if (isAzureOpenAI(model)) {
+      config.defaultHeaders = {
+        'api-version': (model as any).apiVersion || '2024-02-15-preview',
+        ...config.defaultHeaders
+      };
+    }
 
     // 添加组织信息（如果有）
     if ((model as any).organization) {
@@ -74,6 +87,17 @@ export function createClient(model: Model): OpenAI {
     console.warn('[OpenAI createClient] 使用后备客户端配置');
     return new OpenAI(fallbackConfig);
   }
+}
+
+/**
+ * 检查是否为Azure OpenAI
+ * @param model 模型配置
+ * @returns 是否为Azure OpenAI
+ */
+export function isAzureOpenAI(model: Model): boolean {
+  return Boolean((model as any).providerType === 'azure-openai' ||
+         model.provider === 'azure-openai' ||
+         (model.baseUrl && model.baseUrl.includes('openai.azure.com')));
 }
 
 /**

@@ -5,6 +5,7 @@
 import OpenAI from 'openai';
 import { createClient } from './client';
 import { streamCompletion } from './stream';
+// import { createResponseHandler } from './responseHandler'; // 暂时注释，将来使用
 
 import {
   supportsMultimodal,
