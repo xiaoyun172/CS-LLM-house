@@ -25,21 +25,32 @@ jobs:
 
       - name: Install Dependencies with retry
         run: |
-          # 尝试 npm ci，如果失败则尝试替代方案
+          # 尝试多种方法安装依赖
+          echo "Attempting npm ci..."
           npm ci || {
             echo "npm ci failed, trying alternative approaches..."
+            echo "Cleaning up and retrying..."
             rm -rf node_modules package-lock.json
             npm cache clean --force
-            npm install --no-package-lock
+
+            echo "Trying npm install with --no-package-lock..."
+            npm install --no-package-lock || {
+              echo "npm install failed, trying with --legacy-peer-deps..."
+              npm install --legacy-peer-deps || {
+                echo "All npm methods failed, trying yarn as fallback..."
+                npm install -g yarn
+                yarn install --ignore-engines
+              }
+            }
           }
 
       - name: Build Web App
         run: npm run build
 
-      - name: Set up JDK 11
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
           cache: gradle
 
