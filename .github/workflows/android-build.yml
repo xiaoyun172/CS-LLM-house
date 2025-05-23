@@ -7,6 +7,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -77,14 +81,11 @@ jobs:
         run: echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: android-v${{ steps.date.outputs.date }}
-          release_name: Android Build ${{ steps.date.outputs.date }}
+          name: Android Build ${{ steps.date.outputs.date }}
           body: |
             🤖 自动构建的 Android APK
 
@@ -105,16 +106,9 @@ jobs:
             1. 下载 APK 文件到 Android 设备
             2. 在设置中启用"未知来源"应用安装
             3. 点击 APK 文件进行安装
+          files: |
+            android/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: true
-
-      - name: Upload APK to Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: android/app/build/outputs/apk/debug/app-debug.apk
-          asset_name: AetherLink-Android-${{ steps.date.outputs.date }}.apk
-          asset_content_type: application/vnd.android.package-archive

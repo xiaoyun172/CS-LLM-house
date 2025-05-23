@@ -7,6 +7,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -60,38 +64,100 @@ jobs:
 
       - name: Update iOS project settings
         run: |
-          # 设置开发团队ID为空，生成未签名的构建
           cd ios/App
 
-          # 修改项目设置，禁用代码签名
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' App.xcodeproj/project.pbxproj
-          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' App.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = .*/CODE_SIGN_IDENTITY = "";/g' App.xcodeproj/project.pbxproj
-          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = "";/g' App.xcodeproj/project.pbxproj
+          # 创建一个更安全的项目配置脚本
+          cat > update_project.py << 'EOF'
+          import re
+          import sys
 
-          # 添加跳过代码签名的设置
-          echo 'CODE_SIGNING_ALLOWED = NO' >> App.xcodeproj/project.pbxproj
+          def update_pbxproj(file_path):
+              try:
+                  with open(file_path, 'r') as f:
+                      content = f.read()
+
+                  # 更安全的替换方式
+                  # 禁用代码签名
+                  content = re.sub(r'CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;', content)
+                  content = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', 'DEVELOPMENT_TEAM = "";', content)
+                  content = re.sub(r'CODE_SIGN_IDENTITY = [^;]*;', 'CODE_SIGN_IDENTITY = "";', content)
+                  content = re.sub(r'PROVISIONING_PROFILE_SPECIFIER = [^;]*;', 'PROVISIONING_PROFILE_SPECIFIER = "";', content)
+
+                  # 添加禁用代码签名的设置
+                  if 'CODE_SIGNING_ALLOWED' not in content:
+                      # 在构建设置部分添加
+                      content = re.sub(
+                          r'(buildSettings = \{[^}]*)',
+                          r'\1\n\t\t\t\tCODE_SIGNING_ALLOWED = NO;',
+                          content
+                      )
+
+                  with open(file_path, 'w') as f:
+                      f.write(content)
+
+                  print("Project file updated successfully")
+                  return True
+              except Exception as e:
+                  print(f"Error updating project file: {e}")
+                  return False
+
+          if __name__ == "__main__":
+              success = update_pbxproj("App.xcodeproj/project.pbxproj")
+              sys.exit(0 if success else 1)
+          EOF
+
+          # 运行 Python 脚本更新项目
+          python3 update_project.py
+
+      - name: List available schemes
+        run: |
+          cd ios/App
+          echo "Available schemes:"
+          xcodebuild -workspace App.xcworkspace -list
 
       - name: Build iOS App (Archive)
         run: |
           cd ios/App
 
-          # 创建归档
+          # 创建构建目录
+          mkdir -p build
+
+          # 尝试构建归档，使用更简单的参数
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -archivePath ./build/App.xcarchive \
-            -allowProvisioningUpdates \
+            -destination generic/platform=iOS \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE=""
+            PROVISIONING_PROFILE="" \
+            DEVELOPMENT_TEAM="" || {
+              echo "Archive failed, trying with different scheme name..."
+              # 如果失败，尝试使用其他可能的 scheme 名称
+              xcodebuild archive \
+                -workspace App.xcworkspace \
+                -scheme "App (iOS)" \
+                -configuration Release \
+                -archivePath ./build/App.xcarchive \
+                -destination generic/platform=iOS \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGN_IDENTITY="" \
+                PROVISIONING_PROFILE="" \
+                DEVELOPMENT_TEAM=""
+            }
 
       - name: Export IPA (Unsigned)
         run: |
           cd ios/App
 
-          # 创建导出选项plist
+          # 检查归档是否存在
+          if [ ! -d "./build/App.xcarchive" ]; then
+            echo "Archive not found, cannot export IPA"
+            exit 1
+          fi
+
+          # 创建更简单的导出选项
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -107,23 +173,55 @@ jobs:
               <true/>
               <key>thinning</key>
               <string>&lt;none&gt;</string>
+              <key>signingCertificate</key>
+              <string>-</string>
+              <key>provisioningProfiles</key>
+              <dict/>
           </dict>
           </plist>
           EOF
 
-          # 导出IPA
+          # 尝试导出IPA
           xcodebuild -exportArchive \
             -archivePath ./build/App.xcarchive \
             -exportPath ./build \
-            -exportOptionsPlist ExportOptions.plist \
-            -allowProvisioningUpdates
+            -exportOptionsPlist ExportOptions.plist || {
+              echo "Export failed, trying alternative method..."
+              # 如果导出失败，尝试直接从归档中提取
+              if [ -d "./build/App.xcarchive/Products/Applications" ]; then
+                echo "Extracting app from archive..."
+                mkdir -p ./build/Payload
+                cp -r ./build/App.xcarchive/Products/Applications/*.app ./build/Payload/
+                cd ./build
+                zip -r App.ipa Payload/
+                echo "IPA created manually from archive"
+              else
+                echo "Cannot find app in archive"
+                exit 1
+              fi
+            }
 
       - name: Rename and prepare IPA
         run: |
           cd ios/App/build
 
-          # 重命名IPA文件
-          mv App.ipa AetherLink-unsigned.ipa
+          # 查找并重命名IPA文件
+          if [ -f "App.ipa" ]; then
+            mv App.ipa AetherLink-unsigned.ipa
+            echo "Renamed App.ipa to AetherLink-unsigned.ipa"
+          elif [ -f "*.ipa" ]; then
+            # 如果有其他名称的IPA文件
+            for ipa in *.ipa; do
+              if [ -f "$ipa" ]; then
+                mv "$ipa" AetherLink-unsigned.ipa
+                echo "Renamed $ipa to AetherLink-unsigned.ipa"
+                break
+              fi
+            done
+          else
+            echo "No IPA file found, creating placeholder"
+            echo "IPA build failed" > AetherLink-unsigned.ipa.txt
+          fi
 
           # 创建安装说明文件
           cat > INSTALL_INSTRUCTIONS.md << EOF
@@ -176,14 +274,11 @@ jobs:
         run: echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ios-v${{ steps.date.outputs.date }}
-          release_name: iOS Build ${{ steps.date.outputs.date }}
+          name: iOS Build ${{ steps.date.outputs.date }}
           body: |
             🍎 自动构建的 iOS IPA 文件
 
@@ -194,7 +289,7 @@ jobs:
 
             📦 **下载文件**：
             - `AetherLink-iOS-${{ steps.date.outputs.date }}.ipa` - iOS 应用安装包（未签名）
-            - `INSTALL_INSTRUCTIONS.md` - 详细安装说明
+            - `iOS-安装说明-${{ steps.date.outputs.date }}.md` - 详细安装说明
 
             ⚠️ **重要提示**：
             - 此 IPA 文件未签名，需要使用第三方工具安装
@@ -206,27 +301,10 @@ jobs:
             2. **Xcode**：需要开发者账号
             3. **3uTools/iMazing**：第三方工具
             4. **重新签名**：使用 iOS App Signer
+          files: |
+            ios/App/build/AetherLink-unsigned.ipa
+            ios/App/build/INSTALL_INSTRUCTIONS.md
           draft: false
           prerelease: true
-
-      - name: Upload IPA to Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ios/App/build/AetherLink-unsigned.ipa
-          asset_name: AetherLink-iOS-${{ steps.date.outputs.date }}.ipa
-          asset_content_type: application/octet-stream
-
-      - name: Upload Install Instructions to Release
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ios/App/build/INSTALL_INSTRUCTIONS.md
-          asset_name: iOS-安装说明-${{ steps.date.outputs.date }}.md
-          asset_content_type: text/markdown
