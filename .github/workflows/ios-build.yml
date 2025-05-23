@@ -1,0 +1,172 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Clear npm cache
+        run: npm cache clean --force
+
+      - name: Install Dependencies with retry
+        run: |
+          # 尝试多种方法安装依赖
+          echo "Attempting npm ci..."
+          npm ci || {
+            echo "npm ci failed, trying alternative approaches..."
+            echo "Cleaning up and retrying..."
+            rm -rf node_modules package-lock.json
+            npm cache clean --force
+            
+            echo "Trying npm install with --no-package-lock..."
+            npm install --no-package-lock || {
+              echo "npm install failed, trying with --legacy-peer-deps..."
+              npm install --legacy-peer-deps || {
+                echo "All npm methods failed, trying yarn as fallback..."
+                npm install -g yarn
+                yarn install --ignore-engines
+              }
+            }
+          }
+
+      - name: Build Web App
+        run: npm run build
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Update iOS project settings
+        run: |
+          # 设置开发团队ID为空，生成未签名的构建
+          cd ios/App
+          
+          # 修改项目设置，禁用代码签名
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' App.xcodeproj/project.pbxproj
+          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' App.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = .*/CODE_SIGN_IDENTITY = "";/g' App.xcodeproj/project.pbxproj
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = "";/g' App.xcodeproj/project.pbxproj
+          
+          # 添加跳过代码签名的设置
+          echo 'CODE_SIGNING_ALLOWED = NO' >> App.xcodeproj/project.pbxproj
+
+      - name: Build iOS App (Archive)
+        run: |
+          cd ios/App
+          
+          # 创建归档
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath ./build/App.xcarchive \
+            -allowProvisioningUpdates \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE=""
+
+      - name: Export IPA (Unsigned)
+        run: |
+          cd ios/App
+          
+          # 创建导出选项plist
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>development</string>
+              <key>compileBitcode</key>
+              <false/>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>thinning</key>
+              <string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          EOF
+          
+          # 导出IPA
+          xcodebuild -exportArchive \
+            -archivePath ./build/App.xcarchive \
+            -exportPath ./build \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates
+
+      - name: Rename and prepare IPA
+        run: |
+          cd ios/App/build
+          
+          # 重命名IPA文件
+          mv App.ipa AetherLink-unsigned.ipa
+          
+          # 创建安装说明文件
+          cat > INSTALL_INSTRUCTIONS.md << EOF
+          # AetherLink iOS 安装说明
+          
+          ## 方法一：使用 AltStore / SideStore
+          1. 在设备上安装 AltStore 或 SideStore
+          2. 将 AetherLink-unsigned.ipa 文件传输到设备
+          3. 使用 AltStore/SideStore 安装 IPA 文件
+          
+          ## 方法二：使用 Xcode (需要开发者账号)
+          1. 在 Mac 上打开 Xcode
+          2. 连接 iOS 设备
+          3. 将 IPA 文件拖拽到 Xcode 的 Devices and Simulators 窗口
+          
+          ## 方法三：使用 3uTools / iMazing
+          1. 在电脑上安装 3uTools 或 iMazing
+          2. 连接 iOS 设备
+          3. 使用工具安装 IPA 文件
+          
+          ## 方法四：使用 iOS App Signer (重新签名)
+          1. 下载 iOS App Signer
+          2. 使用您的开发者证书重新签名 IPA
+          3. 安装签名后的 IPA
+          
+          ## 注意事项
+          - 此 IPA 文件未签名，需要使用第三方工具或重新签名才能安装
+          - 安装后可能需要在设置中信任开发者
+          - 某些方法可能需要 iOS 设备越狱或开发者账号
+          EOF
+
+      - name: Upload IPA and Instructions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app-unsigned
+          path: |
+            ios/App/build/AetherLink-unsigned.ipa
+            ios/App/build/INSTALL_INSTRUCTIONS.md
+          retention-days: 30
+
+      - name: Upload Archive (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-archive
+          path: ios/App/build/App.xcarchive
+          retention-days: 7

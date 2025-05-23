@@ -9,6 +9,12 @@ const config: CapacitorConfig = {
     captureInput: false,
     webContentsDebuggingEnabled: true
   },
+  ios: {
+    scheme: 'AetherLink',
+    webContentsDebuggingEnabled: true,
+    allowsLinkPreview: false,
+    handleApplicationNotifications: false
+  },
   server: {
     androidScheme: 'https',
     allowNavigation: [],
