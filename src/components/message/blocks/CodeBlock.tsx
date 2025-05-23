@@ -24,10 +24,31 @@ const CodeBlock: React.FC<Props> = ({ block }) => {
     'code[class*="language-"]': {
       ...vscDarkPlus['code[class*="language-"]'],
       background: 'transparent',
+      color: '#e6e6e6', // 提高文字对比度
+      fontSize: '14px',
+      lineHeight: '1.5',
     },
     'pre[class*="language-"]': {
       ...vscDarkPlus['pre[class*="language-"]'],
       background: '#1e1e1e',
+      border: '1px solid #404040',
+    },
+    // 优化各种语法元素的颜色
+    'token.comment': {
+      color: '#6a9955', // 注释颜色更清晰
+      fontStyle: 'italic',
+    },
+    'token.string': {
+      color: '#ce9178', // 字符串颜色
+    },
+    'token.keyword': {
+      color: '#569cd6', // 关键字颜色
+    },
+    'token.function': {
+      color: '#dcdcaa', // 函数名颜色
+    },
+    'token.number': {
+      color: '#b5cea8', // 数字颜色
     }
   };
 
@@ -37,10 +58,31 @@ const CodeBlock: React.FC<Props> = ({ block }) => {
     'code[class*="language-"]': {
       ...vs['code[class*="language-"]'],
       background: 'transparent',
+      color: '#2d3748', // 提高文字对比度
+      fontSize: '14px',
+      lineHeight: '1.5',
     },
     'pre[class*="language-"]': {
       ...vs['pre[class*="language-"]'],
-      background: '#f5f5f5',
+      background: '#f8f8f8',
+      border: '1px solid #d0d0d0',
+    },
+    // 优化各种语法元素的颜色
+    'token.comment': {
+      color: '#008000', // 注释颜色
+      fontStyle: 'italic',
+    },
+    'token.string': {
+      color: '#a31515', // 字符串颜色
+    },
+    'token.keyword': {
+      color: '#0000ff', // 关键字颜色
+    },
+    'token.function': {
+      color: '#795e26', // 函数名颜色
+    },
+    'token.number': {
+      color: '#098658', // 数字颜色
     }
   };
 
@@ -81,18 +123,24 @@ const CodeBlock: React.FC<Props> = ({ block }) => {
         customStyle={{
           margin: 0,
           borderRadius: '8px',
-          fontSize: '0.9rem',
-          backgroundColor: isDarkMode ? '#1e1e1e' : '#f5f5f5',
-          border: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0',
+          fontSize: '14px', // 增大字体大小，提高可读性
+          lineHeight: '1.5', // 增加行高，提高可读性
+          backgroundColor: isDarkMode ? '#1e1e1e' : '#f8f8f8',
+          border: isDarkMode ? '1px solid #404040' : '1px solid #d0d0d0',
+          padding: '16px', // 增加内边距
         }}
         codeTagProps={{
           style: {
-            color: isDarkMode ? '#d4d4d4' : '#333333',
-            fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
-            background: 'transparent' // 确保代码文本背景为透明
+            color: isDarkMode ? '#e6e6e6' : '#2d3748', // 提高对比度
+            fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+            background: 'transparent',
+            fontSize: '14px',
+            fontWeight: '400', // 设置字体粗细
+            letterSpacing: '0.025em', // 增加字符间距，提高可读性
           }
         }}
-        wrapLongLines={true} // 允许长行换行
+        wrapLongLines={true}
+        showLineNumbers={false} // 可以根据需要开启行号
       >
         {block.content}
       </SyntaxHighlighter>

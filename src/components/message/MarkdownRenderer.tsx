@@ -158,13 +158,17 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         backgroundColor: 'transparent !important',
       },
       '& code': {
-        fontFamily: 'monospace',
-        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-        color: isDarkMode ? '#e0e0e0' : 'inherit',
-        padding: '2px 4px',
+        fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+        color: isDarkMode ? '#e6e6e6' : '#2d3748',
+        padding: '3px 6px',
         borderRadius: '4px',
         whiteSpace: 'pre',
-        wordBreak: 'keep-all'
+        wordBreak: 'keep-all',
+        fontSize: '0.9em',
+        fontWeight: '500',
+        letterSpacing: '0.025em',
+        border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
       },
       // 确保代码块内的代码没有背景色
       '& pre code': {
@@ -190,8 +194,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         components={{
           code({className, children, ...props}) {
             const match = /language-(\w+)/.exec(className || '')
-            const isInline = !match && !className;
-            return !isInline && match ? (
+            // 使用与电脑版相同的判定逻辑：有 language- 类名或者包含换行符
+            const isCodeBlock = match || (typeof children === 'string' && children.includes('\n'));
+            const isInline = !isCodeBlock;
+            return !isInline ? (
               <Box
                 component="div"
                 sx={{
@@ -218,22 +224,26 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
                 <SyntaxHighlighter
                   // @ts-ignore
                   style={isDarkMode ? vscDarkPlus : vs}
-                  language={match[1]}
+                  language={match ? match[1] : 'text'}
                   PreTag="pre"
                   CodeTag="code"
                   customStyle={{
                     margin: 0,
-                    padding: '12px',
+                    padding: '16px',
                     backgroundColor: 'transparent',
                     border: 'none',
                     borderRadius: 0,
+                    fontSize: '14px',
+                    lineHeight: '1.5',
                   }}
                   codeTagProps={{
                     style: {
-                      color: 'inherit',
-                      fontFamily: 'inherit',
+                      color: isDarkMode ? '#e6e6e6' : '#2d3748',
+                      fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace',
                       background: 'transparent',
-                      fontSize: 'inherit',
+                      fontSize: '14px',
+                      fontWeight: '400',
+                      letterSpacing: '0.025em',
                     }
                   }}
                   {...props}
@@ -342,6 +352,47 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
               {children}
             </a>
           ),
+          // 自定义段落渲染，避免嵌套问题
+          p: ({ children, ...props }: any) => {
+            // 递归检查子元素中是否包含块级元素
+            const hasBlockElement = (elements: any): boolean => {
+              return React.Children.toArray(elements).some((child: any) => {
+                // 检查是否是代码块
+                if (child?.props?.className?.includes('language-') ||
+                    (typeof child === 'object' && child?.type?.name === 'SyntaxHighlighter')) {
+                  return true;
+                }
+
+                // 检查是否是 Box 组件（我们的代码块容器）
+                if (typeof child === 'object' && child?.type?.name === 'Box') {
+                  return true;
+                }
+
+                // 检查是否是其他块级元素
+                if (typeof child === 'object' && child?.type) {
+                  const tagName = child.type?.name || child.type;
+                  if (['div', 'pre', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+                    return true;
+                  }
+                }
+
+                // 递归检查子元素
+                if (child?.props?.children) {
+                  return hasBlockElement(child.props.children);
+                }
+
+                return false;
+              });
+            };
+
+            if (hasBlockElement(children)) {
+              // 如果包含块级元素，使用div而不是p
+              return <Box component="div" sx={{ mb: 2, lineHeight: 1.6 }} {...props}>{children}</Box>;
+            }
+
+            // 普通段落，只包含内联元素
+            return <Box component="p" sx={{ mb: 2, lineHeight: 1.6 }} {...props}>{children}</Box>;
+          },
         }}
       >
         {processedContent}

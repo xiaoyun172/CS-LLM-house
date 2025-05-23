@@ -71,3 +71,44 @@ jobs:
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: android-v${{ steps.date.outputs.date }}
+          release_name: Android Build ${{ steps.date.outputs.date }}
+          body: |
+            🤖 自动构建的 Android APK
+
+            📱 **构建信息**：
+            - 构建时间：${{ steps.date.outputs.date }}
+            - 提交：${{ github.sha }}
+            - 分支：${{ github.ref_name }}
+
+            📦 **下载**：
+            - 下载 APK 文件并安装到 Android 设备
+
+            ⚠️ **注意**：
+            - 这是 Debug 版本，仅用于测试
+            - 首次安装需要允许"未知来源"应用安装
+          draft: false
+          prerelease: true
+
+      - name: Upload APK to Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: android/app/build/outputs/apk/debug/app-debug.apk
+          asset_name: AetherLink-Android-${{ steps.date.outputs.date }}.apk
+          asset_content_type: application/vnd.android.package-archive

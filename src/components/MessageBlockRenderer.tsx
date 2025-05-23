@@ -82,7 +82,10 @@ const MessageBlockRenderer: React.FC<MessageBlockRendererProps> = ({ block }) =>
               ),
               // 自定义代码块渲染
               code: ({ className, children, ...props }: any) => {
-                const inline = !className;
+                const match = /language-(\w+)/.exec(className || '');
+                // 使用与电脑版相同的判定逻辑：有 language- 类名或者包含换行符
+                const isCodeBlock = match || (typeof children === 'string' && children.includes('\n'));
+                const inline = !isCodeBlock;
                 if (inline) {
                   return (
                     <code
@@ -113,6 +116,47 @@ const MessageBlockRenderer: React.FC<MessageBlockRendererProps> = ({ block }) =>
                     </code>
                   </pre>
                 );
+              },
+              // 自定义段落渲染，避免嵌套问题
+              p: ({ children, ...props }: any) => {
+                // 递归检查子元素中是否包含块级元素
+                const hasBlockElement = (elements: any): boolean => {
+                  return React.Children.toArray(elements).some((child: any) => {
+                    // 检查是否是代码块
+                    if (child?.props?.className?.includes('language-') ||
+                        (typeof child === 'object' && child?.type?.name === 'SyntaxHighlighter')) {
+                      return true;
+                    }
+
+                    // 检查是否是 Box 组件（我们的代码块容器）
+                    if (typeof child === 'object' && child?.type?.name === 'Box') {
+                      return true;
+                    }
+
+                    // 检查是否是其他块级元素
+                    if (typeof child === 'object' && child?.type) {
+                      const tagName = child.type?.name || child.type;
+                      if (['div', 'pre', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+                        return true;
+                      }
+                    }
+
+                    // 递归检查子元素
+                    if (child?.props?.children) {
+                      return hasBlockElement(child.props.children);
+                    }
+
+                    return false;
+                  });
+                };
+
+                if (hasBlockElement(children)) {
+                  // 如果包含块级元素，使用div而不是p
+                  return <Box component="div" sx={{ mb: 2, lineHeight: 1.6 }} {...props}>{children}</Box>;
+                }
+
+                // 普通段落，只包含内联元素
+                return <Box component="p" sx={{ mb: 2, lineHeight: 1.6 }} {...props}>{children}</Box>;
               }
             }}
           >

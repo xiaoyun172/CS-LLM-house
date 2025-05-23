@@ -32,7 +32,7 @@ jobs:
             echo "Cleaning up and retrying..."
             rm -rf node_modules package-lock.json
             npm cache clean --force
-            
+
             echo "Trying npm install with --no-package-lock..."
             npm install --no-package-lock || {
               echo "npm install failed, trying with --legacy-peer-deps..."
@@ -62,20 +62,20 @@ jobs:
         run: |
           # 设置开发团队ID为空，生成未签名的构建
           cd ios/App
-          
+
           # 修改项目设置，禁用代码签名
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' App.xcodeproj/project.pbxproj
           sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' App.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_IDENTITY = .*/CODE_SIGN_IDENTITY = "";/g' App.xcodeproj/project.pbxproj
           sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = "";/g' App.xcodeproj/project.pbxproj
-          
+
           # 添加跳过代码签名的设置
           echo 'CODE_SIGNING_ALLOWED = NO' >> App.xcodeproj/project.pbxproj
 
       - name: Build iOS App (Archive)
         run: |
           cd ios/App
-          
+
           # 创建归档
           xcodebuild archive \
             -workspace App.xcworkspace \
@@ -90,7 +90,7 @@ jobs:
       - name: Export IPA (Unsigned)
         run: |
           cd ios/App
-          
+
           # 创建导出选项plist
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -110,7 +110,7 @@ jobs:
           </dict>
           </plist>
           EOF
-          
+
           # 导出IPA
           xcodebuild -exportArchive \
             -archivePath ./build/App.xcarchive \
@@ -121,34 +121,34 @@ jobs:
       - name: Rename and prepare IPA
         run: |
           cd ios/App/build
-          
+
           # 重命名IPA文件
           mv App.ipa AetherLink-unsigned.ipa
-          
+
           # 创建安装说明文件
           cat > INSTALL_INSTRUCTIONS.md << EOF
           # AetherLink iOS 安装说明
-          
+
           ## 方法一：使用 AltStore / SideStore
           1. 在设备上安装 AltStore 或 SideStore
           2. 将 AetherLink-unsigned.ipa 文件传输到设备
           3. 使用 AltStore/SideStore 安装 IPA 文件
-          
+
           ## 方法二：使用 Xcode (需要开发者账号)
           1. 在 Mac 上打开 Xcode
           2. 连接 iOS 设备
           3. 将 IPA 文件拖拽到 Xcode 的 Devices and Simulators 窗口
-          
+
           ## 方法三：使用 3uTools / iMazing
           1. 在电脑上安装 3uTools 或 iMazing
           2. 连接 iOS 设备
           3. 使用工具安装 IPA 文件
-          
+
           ## 方法四：使用 iOS App Signer (重新签名)
           1. 下载 iOS App Signer
           2. 使用您的开发者证书重新签名 IPA
           3. 安装签名后的 IPA
-          
+
           ## 注意事项
           - 此 IPA 文件未签名，需要使用第三方工具或重新签名才能安装
           - 安装后可能需要在设置中信任开发者
@@ -170,3 +170,63 @@ jobs:
           name: ios-archive
           path: ios/App/build/App.xcarchive
           retention-days: 7
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ios-v${{ steps.date.outputs.date }}
+          release_name: iOS Build ${{ steps.date.outputs.date }}
+          body: |
+            🍎 自动构建的 iOS IPA 文件
+
+            📱 **构建信息**：
+            - 构建时间：${{ steps.date.outputs.date }}
+            - 提交：${{ github.sha }}
+            - 分支：${{ github.ref_name }}
+
+            📦 **下载文件**：
+            - `AetherLink-iOS-${{ steps.date.outputs.date }}.ipa` - iOS 应用安装包（未签名）
+            - `INSTALL_INSTRUCTIONS.md` - 详细安装说明
+
+            ⚠️ **重要提示**：
+            - 此 IPA 文件未签名，需要使用第三方工具安装
+            - 推荐使用 AltStore、SideStore 或重新签名后安装
+            - 详细安装方法请查看说明文件
+
+            🔧 **安装方法**：
+            1. **AltStore/SideStore**：最简单的安装方式
+            2. **Xcode**：需要开发者账号
+            3. **3uTools/iMazing**：第三方工具
+            4. **重新签名**：使用 iOS App Signer
+          draft: false
+          prerelease: true
+
+      - name: Upload IPA to Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ios/App/build/AetherLink-unsigned.ipa
+          asset_name: AetherLink-iOS-${{ steps.date.outputs.date }}.ipa
+          asset_content_type: application/octet-stream
+
+      - name: Upload Install Instructions to Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ios/App/build/INSTALL_INSTRUCTIONS.md
+          asset_name: iOS-安装说明-${{ steps.date.outputs.date }}.md
+          asset_content_type: text/markdown

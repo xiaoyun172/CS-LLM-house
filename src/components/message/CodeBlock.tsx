@@ -33,8 +33,8 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, title }) => {
   };
 
   return (
-    <Box 
-      sx={{ 
+    <Box
+      sx={{
         position: 'relative',
         my: 2,
         borderRadius: 1,
@@ -44,10 +44,10 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, title }) => {
       }}
     >
       {title && (
-        <Box 
-          sx={{ 
-            px: 2, 
-            py: 1, 
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
             backgroundColor: 'background.paper',
             borderBottom: 1,
             borderColor: 'divider',
@@ -61,19 +61,30 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, title }) => {
           </Typography>
         </Box>
       )}
-      
+
       <Box sx={{ position: 'relative' }}>
         <SyntaxHighlighter
           language={language}
           style={vscDarkPlus}
-          customStyle={{ 
+          customStyle={{
             margin: 0,
-            borderRadius: title ? '0 0 4px 4px' : 4
+            borderRadius: title ? '0 0 4px 4px' : 4,
+            fontSize: '14px',
+            lineHeight: '1.5',
+            padding: '16px',
+          }}
+          codeTagProps={{
+            style: {
+              fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+              fontSize: '14px',
+              fontWeight: '400',
+              letterSpacing: '0.025em',
+            }
           }}
         >
           {code}
         </SyntaxHighlighter>
-        
+
         <Box
           sx={{
             position: 'absolute',
@@ -98,4 +109,4 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language, title }) => {
   );
 };
 
-export default CodeBlock; 
+export default CodeBlock;
