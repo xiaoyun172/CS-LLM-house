@@ -1,4 +1,4 @@
-import React, { useMemo, useReducer, useEffect } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { Box, Paper, Typography, useTheme } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -7,8 +7,10 @@ import { zhCN } from 'date-fns/locale';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../shared/store';
 import MessageItem from './MessageItem';
+import ConversationDivider from './ConversationDivider';
 import type { Message } from '../../shared/types/newMessage';
 import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventEmitter';
+import { getMessageDividerSetting, shouldShowConversationDivider } from '../../shared/utils/settingsUtils';
 
 interface MessageGroupProps {
   date: string;
@@ -16,6 +18,11 @@ interface MessageGroupProps {
   expanded?: boolean;
   onToggleExpand?: () => void;
   forceUpdate?: () => void;
+  startIndex?: number; // 当前组在全局消息列表中的起始索引
+  onRegenerate?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
+  onSwitchVersion?: (versionId: string) => void;
+  onResend?: (messageId: string) => void;
 }
 
 /**
@@ -28,6 +35,11 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
   expanded = true,
   onToggleExpand,
   forceUpdate: parentForceUpdate,
+  startIndex = 0,
+  onRegenerate,
+  onDelete,
+  onSwitchVersion,
+  onResend,
 }) => {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
@@ -36,6 +48,35 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
   const messageGrouping = useSelector((state: RootState) =>
     (state.settings as any).messageGrouping || 'byDate'
   );
+
+  // 获取消息分割线设置
+  const [showMessageDivider, setShowMessageDivider] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchMessageDividerSetting = () => {
+      try {
+        const dividerSetting = getMessageDividerSetting();
+        setShowMessageDivider(dividerSetting);
+      } catch (error) {
+        console.error('获取消息分割线设置失败:', error);
+      }
+    };
+
+    fetchMessageDividerSetting();
+
+    // 监听 localStorage 变化，实时更新设置
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'appSettings') {
+        fetchMessageDividerSetting();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // 格式化日期
   const formattedDate = useMemo(() => {
@@ -48,7 +89,10 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
   }, [date]);
 
   // 添加强制更新机制，优先使用父组件传入的forceUpdate
-  const localForceUpdate = useReducer(state => !state, false)[1];
+  const [, setLocalUpdateCounter] = useState(0);
+  const localForceUpdate = useCallback(() => {
+    setLocalUpdateCounter(prev => prev + 1);
+  }, []);
   const forceUpdate = parentForceUpdate || localForceUpdate;
 
   // 添加流式输出事件监听
@@ -59,7 +103,6 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
     if (hasStreamingMessage) {
       // 监听流式输出事件
       const textDeltaHandler = () => {
-        console.log('[MessageGroup] 收到流式输出事件，强制更新UI');
         forceUpdate();
       };
 
@@ -71,7 +114,6 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
       // 定期强制更新UI，确保流式输出显示
       const updateInterval = setInterval(() => {
         if (messages.some(message => message.status === 'streaming')) {
-          console.log('[MessageGroup] 定期更新流式输出');
           forceUpdate();
         }
       }, 100); // 每100ms更新一次
@@ -89,12 +131,22 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
   if (messageGrouping === 'disabled') {
     return (
       <Box>
-        {messages.map((message) => (
-          <MessageItem
-            key={message.id}
-            message={message}
-            forceUpdate={forceUpdate}
-          />
+        {messages.map((message, index) => (
+          <React.Fragment key={message.id}>
+            <MessageItem
+              message={message}
+              forceUpdate={forceUpdate}
+              messageIndex={startIndex + index} // 传递全局消息索引
+              onRegenerate={onRegenerate}
+              onDelete={onDelete}
+              onSwitchVersion={onSwitchVersion}
+              onResend={onResend}
+            />
+            {/* 在对话轮次结束后显示分割线 */}
+            {shouldShowConversationDivider(messages, index) && (
+              <ConversationDivider show={showMessageDivider} style="subtle" />
+            )}
+          </React.Fragment>
         ))}
       </Box>
     );
@@ -129,12 +181,22 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
       {/* 消息列表 */}
       {expanded && (
         <Box>
-          {messages.map((message) => (
-            <MessageItem
-              key={message.id}
-              message={message}
-              forceUpdate={forceUpdate}
-            />
+          {messages.map((message, index) => (
+            <React.Fragment key={message.id}>
+              <MessageItem
+                message={message}
+                forceUpdate={forceUpdate}
+                messageIndex={startIndex + index} // 传递全局消息索引
+                onRegenerate={onRegenerate}
+                onDelete={onDelete}
+                onSwitchVersion={onSwitchVersion}
+                onResend={onResend}
+              />
+              {/* 在对话轮次结束后显示分割线 */}
+              {shouldShowConversationDivider(messages, index) && (
+                <ConversationDivider show={showMessageDivider} style="subtle" />
+              )}
+            </React.Fragment>
           ))}
         </Box>
       )}

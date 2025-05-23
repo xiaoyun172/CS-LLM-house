@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import { createSelector } from '@reduxjs/toolkit';
 import { useAssistant } from '../../../shared/hooks';
 import { AssistantService } from '../../../shared/services';
 import { getStorageItem } from '../../../shared/utils/storage';
@@ -25,12 +26,25 @@ export function useSidebarState() {
   const [currentAssistant, setLocalCurrentAssistant] = useState<Assistant | null>(null);
   const dispatch = useDispatch();
 
+  // 创建记忆化的 selector 来避免不必要的重新渲染
+  const selectSidebarState = useMemo(
+    () => createSelector(
+      [
+        (state: RootState) => state.assistants.assistants,
+        (state: RootState) => state.assistants.currentAssistant,
+        (state: RootState) => state.messages.currentTopicId
+      ],
+      (reduxAssistants, reduxCurrentAssistant, currentTopicId) => ({
+        reduxAssistants,
+        reduxCurrentAssistant,
+        currentTopicId
+      })
+    ),
+    []
+  );
+
   // 从Redux获取助手列表和当前助手
-  const { reduxAssistants, reduxCurrentAssistant, currentTopicId } = useSelector((state: RootState) => ({
-    reduxAssistants: state.assistants.assistants,
-    reduxCurrentAssistant: state.assistants.currentAssistant,
-    currentTopicId: state.messages.currentTopicId
-  }));
+  const { reduxAssistants, reduxCurrentAssistant, currentTopicId } = useSelector(selectSidebarState);
 
   // 从数据库获取当前话题
   const [currentTopic, setCurrentTopic] = useState<any>(null);
@@ -119,11 +133,7 @@ export function useSidebarState() {
         }
       }
 
-      // 添加调试日志
-      console.log('[SidebarTabs] 加载完成，Redux状态:', {
-        reduxAssistants: reduxAssistants.length,
-        reduxCurrentAssistant: reduxCurrentAssistant?.name
-      });
+
     } catch (error) {
       console.error('[SidebarTabs] 加载助手数据失败:', error);
       throw error;

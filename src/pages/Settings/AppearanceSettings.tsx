@@ -52,6 +52,7 @@ const AppearanceSettings: React.FC = () => {
       </Box>
       
       <Box sx={{ p: 2 }}>
+        {/* 主题设置 */}
         <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
           <Typography variant="subtitle1" sx={{ mb: 2 }}>
             主题和颜色
@@ -70,6 +71,7 @@ const AppearanceSettings: React.FC = () => {
           </FormControl>
         </Paper>
 
+        {/* 聊天界面设置入口 */}
         <Paper 
           elevation={0} 
           sx={{ 
@@ -96,4 +98,4 @@ const AppearanceSettings: React.FC = () => {
   );
 };
 
-export default AppearanceSettings; 
+export default AppearanceSettings;

@@ -32,7 +32,12 @@ export default function SidebarTabsContent() {
     handleSettingChange,
     handleContextLengthChange,
     handleContextCountChange,
-    handleMathRendererChange
+    handleMathRendererChange,
+    handleThinkingEffortChange,
+    mcpMode,
+    toolsEnabled,
+    handleMCPModeChange,
+    handleToolsToggle
   } = useSidebarContext();
 
   // 标签页切换
@@ -147,6 +152,12 @@ export default function SidebarTabsContent() {
               onContextCountChange={handleContextCountChange}
               initialMathRenderer={settings.mathRenderer}
               onMathRendererChange={handleMathRendererChange}
+              initialThinkingEffort={settings.defaultThinkingEffort}
+              onThinkingEffortChange={handleThinkingEffortChange}
+              mcpMode={mcpMode}
+              toolsEnabled={toolsEnabled}
+              onMCPModeChange={handleMCPModeChange}
+              onToolsToggle={handleToolsToggle}
             />
           </TabPanel>
         </>

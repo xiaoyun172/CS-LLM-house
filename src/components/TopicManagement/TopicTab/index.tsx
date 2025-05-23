@@ -9,21 +9,35 @@ import {
   InputAdornment,
   Menu,
   MenuItem,
-  CircularProgress
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
-import { useDispatch } from 'react-redux';
+import EditIcon from '@mui/icons-material/Edit';
+import PushPinIcon from '@mui/icons-material/PushPin';
+import ClearIcon from '@mui/icons-material/Clear';
+import FolderIcon from '@mui/icons-material/Folder';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import { useDispatch, useSelector } from 'react-redux';
 import { addItemToGroup } from '../../../shared/store/slices/groupsSlice';
 import GroupDialog from '../GroupDialog';
 import { dexieStorage } from '../../../shared/services/DexieStorageService';
 import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventService';
 import { getMainTextContent } from '../../../shared/utils/blockUtils';
 import type { ChatTopic } from '../../../shared/types';
+import type { Assistant } from '../../../shared/types/Assistant';
 import { useTopicGroups } from './hooks/useTopicGroups';
 import TopicGroups from './TopicGroups';
 import TopicItem from './TopicItem';
+import type { RootState } from '../../../shared/store';
+import { TopicService } from '../../../shared/services/TopicService';
 
 interface TopicTabProps {
   currentAssistant: ({
@@ -48,7 +62,8 @@ export default function TopicTab({
   currentTopic,
   onSelectTopic,
   onCreateTopic,
-  onDeleteTopic
+  onDeleteTopic,
+  onUpdateTopic
 }: TopicTabProps) {
   const dispatch = useDispatch();
 
@@ -71,8 +86,27 @@ export default function TopicTab({
   // 分组对话框状态
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
 
+  // 编辑对话框状态
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editDialogType, setEditDialogType] = useState<'name' | 'prompt'>('name');
+  const [editDialogValue, setEditDialogValue] = useState('');
+
+  // 确认对话框状态
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmDialogConfig, setConfirmDialogConfig] = useState<{
+    title: string;
+    content: string;
+    onConfirm: () => void;
+  }>({ title: '', content: '', onConfirm: () => {} });
+
+  // 移动到助手菜单状态
+  const [moveToMenuAnchorEl, setMoveToMenuAnchorEl] = useState<null | HTMLElement>(null);
+
   // 使用话题分组钩子
   const { topicGroups, topicGroupMap, ungroupedTopics } = useTopicGroups(topics);
+
+  // 获取所有助手列表（用于移动功能）
+  const allAssistants = useSelector((state: RootState) => state.assistants.assistants);
 
   // 当助手变化时加载话题
   useEffect(() => {
@@ -87,7 +121,7 @@ export default function TopicTab({
 
       if (hasTopicsInRedux) {
         // 如果Redux中已有数据，直接使用，不设置加载状态
-        console.log(`[TopicTab] 使用currentAssistant.topics，数量: ${currentAssistant.topics.length}`);
+
 
         // 按最后消息时间降序排序话题（最新的在前面）
         const sortedTopics = [...currentAssistant.topics].sort((a, b) => {
@@ -96,7 +130,7 @@ export default function TopicTab({
           return timeB - timeA; // 降序排序
         });
 
-        console.log(`[TopicTab] 话题已按时间降序排序，最新的话题: ${sortedTopics[0]?.name || '无'}`);
+
         setTopics(sortedTopics);
         return;
       }
@@ -105,16 +139,15 @@ export default function TopicTab({
       setIsLoading(true);
       try {
         // 从数据库加载该助手的所有话题
-        console.log(`[TopicTab] 从数据库加载助手 ${currentAssistant.id} 的话题`);
+
         const allTopics = await dexieStorage.getAllTopics();
         const assistantTopics = allTopics.filter(
           topic => topic.assistantId === currentAssistant.id
         );
 
         if (assistantTopics.length === 0) {
-          console.log(`[TopicTab] 助手 ${currentAssistant.id} 没有话题，可能需要创建默认话题`);
+          // 助手没有话题，可能需要创建默认话题
         } else {
-          console.log(`[TopicTab] 已加载助手 ${currentAssistant.id} 的话题，数量: ${assistantTopics.length}`);
 
           // 按最后消息时间降序排序话题（最新的在前面）
           const sortedTopics = [...assistantTopics].sort((a, b) => {
@@ -123,7 +156,7 @@ export default function TopicTab({
             return timeB - timeA; // 降序排序
           });
 
-          console.log(`[TopicTab] 话题已按时间降序排序，最新的话题: ${sortedTopics[0]?.name || '无'}`);
+
           setTopics(sortedTopics);
         }
       } catch (error) {
@@ -142,11 +175,8 @@ export default function TopicTab({
 
     const handleTopicChange = (eventData: any) => {
       if (eventData && (eventData.assistantId === currentAssistant.id || !eventData.assistantId)) {
-        console.log('[TopicTab] 收到话题变更事件，准备刷新话题');
-
         // 如果是话题创建事件且有topic数据，将新话题添加到顶部
         if (eventData.topic && eventData.type === 'create') {
-          console.log('[TopicTab] 收到新话题创建事件，将新话题添加到顶部:', eventData.topic.name);
           setTopics(prevTopics => [eventData.topic, ...prevTopics]);
         }
         // 如果currentAssistant.topics已更新，则使用它并排序
@@ -177,7 +207,7 @@ export default function TopicTab({
   useEffect(() => {
     // 只有在非加载状态、有话题且没有当前选中话题时才执行
     if (!isLoading && topics.length > 0 && !currentTopic) {
-      console.log('[TopicTab] 自动选择第一个话题:', topics[0].name);
+
 
       // 使用requestAnimationFrame代替setTimeout，更符合React渲染周期
       // 这样可以确保在下一次渲染帧中执行，减少闪烁
@@ -194,14 +224,10 @@ export default function TopicTab({
       if (!isLoading && topics.length > 0) {
         // 如果没有当前选中的话题，选择第一个话题
         if (!currentTopic) {
-          console.log('[TopicTab] 响应SHOW_TOPIC_SIDEBAR事件，自动选择第一个话题:', topics[0].name);
           // 使用requestAnimationFrame代替setTimeout
           requestAnimationFrame(() => {
             onSelectTopic(topics[0]);
           });
-        } else {
-          // 如果已有当前选中的话题，确保它在视图中可见
-          console.log('[TopicTab] 响应SHOW_TOPIC_SIDEBAR事件，当前话题已选中:', currentTopic.name);
         }
       }
     };
@@ -301,6 +327,246 @@ export default function TopicTab({
   const handleAddToNewGroup = () => {
     handleCloseAddToGroupMenu();
     handleOpenGroupDialog();
+  };
+
+  // 编辑话题名称
+  const handleEditTopicName = () => {
+    if (!contextTopic) return;
+    setEditDialogType('name');
+    setEditDialogValue(contextTopic.name || contextTopic.title || '');
+    setEditDialogOpen(true);
+    handleCloseMenu();
+  };
+
+  // 编辑提示词
+  const handleEditPrompt = () => {
+    if (!contextTopic) return;
+    setEditDialogType('prompt');
+    setEditDialogValue(contextTopic.prompt || '');
+    setEditDialogOpen(true);
+    handleCloseMenu();
+  };
+
+  // 保存编辑
+  const handleSaveEdit = async () => {
+    if (!contextTopic) return;
+
+    try {
+      const updatedTopic = {
+        ...contextTopic,
+        [editDialogType === 'name' ? 'name' : 'prompt']: editDialogValue,
+        updatedAt: new Date().toISOString()
+      };
+
+      // 如果是编辑名称，标记为手动编辑
+      if (editDialogType === 'name') {
+        updatedTopic.isNameManuallyEdited = true;
+      }
+
+      // 保存到数据库
+      await dexieStorage.saveTopic(updatedTopic);
+
+      // 更新本地状态
+      setTopics(prevTopics =>
+        prevTopics.map(topic =>
+          topic.id === updatedTopic.id ? updatedTopic : topic
+        )
+      );
+
+      // 如果有更新回调，调用它
+      if (onUpdateTopic) {
+        onUpdateTopic(updatedTopic);
+      }
+
+      // 发送更新事件
+      EventEmitter.emit(EVENT_NAMES.TOPIC_UPDATED, updatedTopic);
+
+      setEditDialogOpen(false);
+      setEditDialogValue('');
+    } catch (error) {
+      console.error('保存话题编辑失败:', error);
+    }
+  };
+
+  // 固定/取消固定话题
+  const handleTogglePin = async () => {
+    if (!contextTopic) return;
+
+    try {
+      const updatedTopic = {
+        ...contextTopic,
+        pinned: !contextTopic.pinned,
+        updatedAt: new Date().toISOString()
+      };
+
+      // 保存到数据库
+      await dexieStorage.saveTopic(updatedTopic);
+
+      // 更新本地状态
+      setTopics(prevTopics =>
+        prevTopics.map(topic =>
+          topic.id === updatedTopic.id ? updatedTopic : topic
+        )
+      );
+
+      // 如果有更新回调，调用它
+      if (onUpdateTopic) {
+        onUpdateTopic(updatedTopic);
+      }
+
+      // 发送更新事件
+      EventEmitter.emit(EVENT_NAMES.TOPIC_UPDATED, updatedTopic);
+
+      handleCloseMenu();
+    } catch (error) {
+      console.error('切换话题固定状态失败:', error);
+    }
+  };
+
+  // 自动命名话题 - 与电脑版保持一致
+  const handleAutoRenameTopic = async () => {
+    if (!contextTopic) return;
+
+    try {
+      // 动态导入TopicNamingService
+      const { TopicNamingService } = await import('../../../shared/services/TopicNamingService');
+
+      console.log(`[TopicTab] 手动触发话题自动命名: ${contextTopic.id}`);
+
+      // 强制生成话题名称，不检查shouldNameTopic条件
+      const newName = await TopicNamingService.generateTopicName(contextTopic, undefined, true);
+
+      if (newName && newName !== contextTopic.name) {
+        // 更新话题名称
+        const updatedTopic = {
+          ...contextTopic,
+          name: newName,
+          isNameManuallyEdited: false, // 标记为自动生成
+          updatedAt: new Date().toISOString()
+        };
+
+        // 保存到数据库
+        await dexieStorage.saveTopic(updatedTopic);
+
+        // 更新本地状态
+        setTopics(prevTopics =>
+          prevTopics.map(topic =>
+            topic.id === updatedTopic.id ? updatedTopic : topic
+          )
+        );
+
+        // 如果有更新回调，调用它
+        if (onUpdateTopic) {
+          onUpdateTopic(updatedTopic);
+        }
+
+        // 发送更新事件
+        EventEmitter.emit(EVENT_NAMES.TOPIC_UPDATED, updatedTopic);
+
+        console.log(`话题已自动命名: ${newName}`);
+      } else {
+        console.log('话题命名未发生变化或生成失败');
+      }
+    } catch (error) {
+      console.error('自动命名话题失败:', error);
+    }
+
+    handleCloseMenu();
+  };
+
+  // 清空消息 - 使用聊天界面的清空方法
+  const handleClearMessages = () => {
+    if (!contextTopic) return;
+
+    setConfirmDialogConfig({
+      title: '清空消息',
+      content: '确定要清空此话题的所有消息吗？此操作不可撤销。',
+      onConfirm: async () => {
+        try {
+          // 使用 TopicService 的清空方法，与聊天界面保持一致
+          const success = await TopicService.clearTopicContent(contextTopic.id);
+
+          if (success) {
+            // 更新本地状态 - 清空消息但保留话题
+            setTopics(prevTopics =>
+              prevTopics.map(topic =>
+                topic.id === contextTopic.id
+                  ? { ...topic, messageIds: [], messages: [], updatedAt: new Date().toISOString() }
+                  : topic
+              )
+            );
+
+            // 如果有更新回调，调用它
+            if (onUpdateTopic) {
+              const updatedTopic = {
+                ...contextTopic,
+                messageIds: [],
+                messages: [],
+                updatedAt: new Date().toISOString()
+              };
+              onUpdateTopic(updatedTopic);
+            }
+
+            console.log('话题消息已清空');
+          } else {
+            console.error('清空话题消息失败');
+          }
+
+          setConfirmDialogOpen(false);
+        } catch (error) {
+          console.error('清空话题消息失败:', error);
+          setConfirmDialogOpen(false);
+        }
+      }
+    });
+
+    setConfirmDialogOpen(true);
+    handleCloseMenu();
+  };
+
+  // 打开移动到助手菜单
+  const handleOpenMoveToMenu = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setMoveToMenuAnchorEl(event.currentTarget as HTMLElement);
+  };
+
+  // 关闭移动到助手菜单
+  const handleCloseMoveToMenu = () => {
+    setMoveToMenuAnchorEl(null);
+  };
+
+  // 移动话题到其他助手
+  const handleMoveTo = async (targetAssistant: Assistant) => {
+    if (!contextTopic || !currentAssistant) return;
+
+    try {
+      // 更新话题的助手ID
+      const updatedTopic = {
+        ...contextTopic,
+        assistantId: targetAssistant.id,
+        updatedAt: new Date().toISOString()
+      };
+
+      // 保存到数据库
+      await dexieStorage.saveTopic(updatedTopic);
+
+      // 从当前助手的话题列表中移除
+      setTopics(prevTopics =>
+        prevTopics.filter(topic => topic.id !== contextTopic.id)
+      );
+
+      // 发送话题移动事件
+      EventEmitter.emit(EVENT_NAMES.TOPIC_MOVED, {
+        topic: updatedTopic,
+        fromAssistantId: currentAssistant.id,
+        toAssistantId: targetAssistant.id
+      });
+
+      handleCloseMoveToMenu();
+      handleCloseMenu();
+    } catch (error) {
+      console.error('移动话题失败:', error);
+    }
   };
 
   return (
@@ -435,21 +701,70 @@ export default function TopicTab({
           if (contextTopic) handleAddToGroupMenu(e, contextTopic);
           handleCloseMenu();
         }}>
+          <FolderIcon sx={{ mr: 1, fontSize: 18 }} />
           添加到分组...
         </MenuItem>
-        <MenuItem onClick={handleCloseMenu}>
+        <MenuItem onClick={handleEditTopicName}>
+          <EditIcon sx={{ mr: 1, fontSize: 18 }} />
           编辑话题名称
         </MenuItem>
-        <MenuItem onClick={handleCloseMenu}>
+        <MenuItem onClick={handleAutoRenameTopic}>
+          <AutoAwesomeIcon sx={{ mr: 1, fontSize: 18 }} />
+          自动命名话题
+        </MenuItem>
+        <MenuItem onClick={handleEditPrompt}>
+          <EditIcon sx={{ mr: 1, fontSize: 18 }} />
           编辑提示词
         </MenuItem>
-        <MenuItem onClick={handleCloseMenu}>
-          分析对话
+        <MenuItem onClick={handleTogglePin}>
+          <PushPinIcon sx={{ mr: 1, fontSize: 18 }} />
+          {contextTopic?.pinned ? '取消固定' : '固定话题'}
         </MenuItem>
+        <MenuItem onClick={handleClearMessages}>
+          <ClearIcon sx={{ mr: 1, fontSize: 18 }} />
+          清空消息
+        </MenuItem>
+        {allAssistants.length > 1 && currentAssistant && (
+          <MenuItem onClick={handleOpenMoveToMenu}>
+            <FolderIcon sx={{ mr: 1, fontSize: 18 }} />
+            移动到...
+          </MenuItem>
+        )}
+        <Divider />
         <MenuItem onClick={() => {
-          if (contextTopic) onDeleteTopic(contextTopic.id, {} as React.MouseEvent);
+          if (contextTopic) {
+            // 使用确认对话框来删除话题
+            setConfirmDialogConfig({
+              title: '删除话题',
+              content: '确定要删除此话题吗？此操作不可撤销。',
+              onConfirm: async () => {
+                try {
+                  // 直接调用删除逻辑，不需要传递事件对象
+                  await TopicService.deleteTopic(contextTopic.id);
+
+                  // 从本地状态中移除话题
+                  setTopics(prevTopics =>
+                    prevTopics.filter(topic => topic.id !== contextTopic.id)
+                  );
+
+                  // 发送删除事件
+                  EventEmitter.emit(EVENT_NAMES.TOPIC_DELETED, {
+                    topicId: contextTopic.id,
+                    assistantId: currentAssistant?.id
+                  });
+
+                  console.log('话题已删除');
+                } catch (error) {
+                  console.error('删除话题失败:', error);
+                }
+                setConfirmDialogOpen(false);
+              }
+            });
+            setConfirmDialogOpen(true);
+          }
           handleCloseMenu();
         }}>
+          <DeleteIcon sx={{ mr: 1, fontSize: 18 }} />
           删除话题
         </MenuItem>
       </Menu>
@@ -470,6 +785,76 @@ export default function TopicTab({
         ))}
         <MenuItem onClick={handleAddToNewGroup}>创建新分组...</MenuItem>
       </Menu>
+
+      {/* 移动到助手菜单 */}
+      <Menu
+        anchorEl={moveToMenuAnchorEl}
+        open={Boolean(moveToMenuAnchorEl)}
+        onClose={handleCloseMoveToMenu}
+      >
+        {allAssistants
+          .filter(assistant => assistant.id !== currentAssistant?.id)
+          .map((assistant) => (
+            <MenuItem
+              key={assistant.id}
+              onClick={() => handleMoveTo(assistant)}
+            >
+              {assistant.emoji && <span style={{ marginRight: 8 }}>{assistant.emoji}</span>}
+              {assistant.name}
+            </MenuItem>
+          ))}
+      </Menu>
+
+      {/* 编辑对话框 */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {editDialogType === 'name' ? '编辑话题名称' : '编辑提示词'}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            fullWidth
+            multiline={editDialogType === 'prompt'}
+            rows={editDialogType === 'prompt' ? 4 : 1}
+            value={editDialogValue}
+            onChange={(e) => setEditDialogValue(e.target.value)}
+            placeholder={editDialogType === 'name' ? '请输入话题名称' : '请输入提示词'}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)}>
+            取消
+          </Button>
+          <Button onClick={handleSaveEdit} variant="contained">
+            保存
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 确认对话框 */}
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={() => setConfirmDialogOpen(false)}
+      >
+        <DialogTitle>{confirmDialogConfig.title}</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmDialogConfig.content}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialogOpen(false)}>
+            取消
+          </Button>
+          <Button onClick={confirmDialogConfig.onConfirm} variant="contained" color="error">
+            确认
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

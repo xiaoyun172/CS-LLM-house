@@ -9,9 +9,11 @@ import {
   useTheme,
   Divider
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import CodeIcon from '@mui/icons-material/Code';
+import {
+  ExpandMore as ExpandMoreIcon,
+  ContentCopy as ContentCopyIcon,
+  Code as CodeIcon
+} from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 import { MessageBlockStatus } from '../../../shared/types/newMessage';
@@ -24,7 +26,7 @@ interface Props {
 }
 
 /**
- * 工具调用块组件
+ * 工具调用块组件 - 基于电脑版的实现
  * 显示AI的工具调用过程和结果
  */
 const ToolBlock: React.FC<Props> = ({ block }) => {
@@ -32,7 +34,8 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
   const [copied, setCopied] = useState(false);
   const theme = useTheme();
 
-  // 使用记忆化的block内容，避免不必要的重渲染
+  // 获取工具响应数据 - 按照电脑版的方式
+  const toolResponse = block.metadata?.rawMcpToolResponse;
 
   const isProcessing = block.status === MessageBlockStatus.STREAMING ||
                        block.status === MessageBlockStatus.PROCESSING;
@@ -40,62 +43,154 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
   // 复制工具调用内容到剪贴板
   const handleCopyCall = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); // 防止触发折叠/展开
-    if (block.input) {
-      const callText = JSON.stringify(block.input, null, 2);
+    const input = block.input || (block.toolResponses?.[0]?.arguments);
+    if (input) {
+      const callText = JSON.stringify(input, null, 2);
 
       navigator.clipboard.writeText(callText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       EventEmitter.emit('ui:copy_success', { content: '已复制工具调用内容' });
     }
-  }, [block.input]);
-
-  // 复制工具结果内容到剪贴板
-  const handleCopyResult = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation(); // 防止触发折叠/展开
-    if (block.output) {
-      const resultText = JSON.stringify(block.output, null, 2);
-
-      navigator.clipboard.writeText(resultText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      EventEmitter.emit('ui:copy_success', { content: '已复制工具结果内容' });
-    }
-  }, [block.output]);
+  }, [block.input, block.toolResponses]);
 
   // 切换折叠/展开状态
   const toggleExpanded = useCallback(() => {
     setExpanded(!expanded);
   }, [expanded]);
 
-  // 格式化工具调用内容
+  // 格式化工具调用参数 - 按照电脑版的方式
   const formatToolCall = useCallback(() => {
-    if (!block.input) return '';
+    const params = toolResponse?.arguments || block.input || (block.toolResponses?.[0]?.arguments);
+    if (!params) return '';
 
     try {
-      // 尝试格式化JSON对象
-      return JSON.stringify(block.input, null, 2);
+      return JSON.stringify(params, null, 2);
     } catch (e) {
-      return String(block.input);
+      return String(params);
     }
-  }, [block.input]);
+  }, [toolResponse, block.input, block.toolResponses]);
 
-  // 格式化工具结果内容
+  // 格式化工具结果内容 - 按照电脑版的方式
   const formatToolResult = useCallback(() => {
-    if (!block.output) return '';
+    // 按照电脑版的方式，优先使用 block.content（这是我们在 messageThunk 中设置的）
+    if (block.content && typeof block.content === 'object') {
+      const response = block.content as any;
 
-    try {
-      // 尝试格式化JSON对象
-      return JSON.stringify(block.output, null, 2);
-    } catch (e) {
-      return String(block.output);
+      // 如果是错误响应
+      if (response.isError) {
+        const errorContent = response.content?.[0]?.text || '工具调用失败';
+        return `错误: ${errorContent}`;
+      }
+
+      // 处理正常响应
+      if (response.content && response.content.length > 0) {
+        // 如果只有一个文本内容，尝试格式化 JSON
+        if (response.content.length === 1 && response.content[0].type === 'text') {
+          const text = response.content[0].text || '';
+          try {
+            const parsed = JSON.parse(text);
+            return JSON.stringify(parsed, null, 2);
+          } catch {
+            return text;
+          }
+        }
+
+        // 多个内容或非文本内容，格式化显示
+        return response.content.map((item: any) => {
+          switch (item.type) {
+            case 'text':
+              // 尝试格式化 JSON 文本
+              const text = item.text || '';
+              try {
+                const parsed = JSON.parse(text);
+                return JSON.stringify(parsed, null, 2);
+              } catch {
+                return text;
+              }
+            case 'image':
+              return `[图像数据: ${item.mimeType || 'unknown'}]`;
+            case 'resource':
+              return `[资源数据: ${item.mimeType || 'unknown'}]`;
+            default:
+              return `[未知内容类型: ${item.type}]`;
+          }
+        }).join('\n\n');
+      }
+
+      return '无响应内容';
     }
-  }, [block.output]);
+
+    // 兼容旧格式
+    if (block.output) {
+      try {
+        return JSON.stringify(block.output, null, 2);
+      } catch (e) {
+        return String(block.output);
+      }
+    }
+
+    // 兼容 toolResponses 格式
+    const toolResponseData = block.toolResponses?.[0];
+    if (toolResponseData?.response) {
+      const { response } = toolResponseData;
+
+      if (response.isError) {
+        const errorContent = response.content?.[0]?.text || '工具调用失败';
+        return `错误: ${errorContent}`;
+      }
+
+      if (response.content && response.content.length > 0) {
+        if (response.content.length === 1 && response.content[0].type === 'text') {
+          const text = response.content[0].text || '';
+          try {
+            const parsed = JSON.parse(text);
+            return JSON.stringify(parsed, null, 2);
+          } catch {
+            return text;
+          }
+        }
+
+        return response.content.map((item) => {
+          switch (item.type) {
+            case 'text':
+              const text = item.text || '';
+              try {
+                const parsed = JSON.parse(text);
+                return JSON.stringify(parsed, null, 2);
+              } catch {
+                return text;
+              }
+            case 'image':
+              return `[图像数据: ${item.mimeType || 'unknown'}]`;
+            case 'resource':
+              return `[资源数据: ${item.mimeType || 'unknown'}]`;
+            default:
+              return `[未知内容类型: ${item.type}]`;
+          }
+        }).join('\n\n');
+      }
+    }
+
+    return '无响应内容';
+  }, [block.content, block.output, block.toolResponses]);
+
+  // 复制工具结果内容到剪贴板
+  const handleCopyResult = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation(); // 防止触发折叠/展开
+    const resultText = formatToolResult();
+    if (resultText) {
+      navigator.clipboard.writeText(resultText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      EventEmitter.emit('ui:copy_success', { content: '已复制工具结果内容' });
+    }
+  }, [formatToolResult]);
 
   // 获取工具名称
   const getToolName = useCallback(() => {
-    return block.name || '工具调用';
-  }, [block.name]);
+    return block.name || block.toolName || (block.toolResponses?.[0]?.tool?.name) || '工具调用';
+  }, [block.name, block.toolName, block.toolResponses]);
 
   return (
     <StyledPaper
@@ -189,7 +284,7 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
           <Divider sx={{ my: 2 }} />
 
           {/* 工具结果部分 */}
-          {(block.output || isProcessing) && (
+          {(block.content || block.output || block.toolResponses?.[0]?.response || isProcessing) && (
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 <Typography variant="caption" color="text.secondary">

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  AppBar, 
-  Toolbar, 
-  IconButton, 
-  Typography, 
+import {
+  Box,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Typography,
   FormControl,
   FormControlLabel,
   Switch,
@@ -36,7 +36,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { useDispatch, useSelector } from 'react-redux';
 import type { WebSearchProvider, WebSearchCustomProvider } from '../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
-import { 
+import {
   toggleWebSearchEnabled,
   setWebSearchProvider,
   setWebSearchApiKey,
@@ -48,14 +48,16 @@ import {
   addCustomProvider,
   updateCustomProvider,
   deleteCustomProvider,
-  toggleCustomProviderEnabled
+  toggleCustomProviderEnabled,
+  toggleSearchWithTime,
+  setExcludeDomains
 } from '../../shared/store/slices/webSearchSlice';
 import type { RootState } from '../../shared/store';
 
 const WebSearchSettings: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  
+
   // 从Redux获取设置
   const webSearchSettings = useSelector((state: RootState) => state.webSearch) || {
     enabled: false,
@@ -66,6 +68,9 @@ const WebSearchSettings: React.FC = () => {
     showTimestamp: true,
     filterSafeSearch: true,
     searchMode: 'auto' as 'auto' | 'manual',
+    searchWithTime: false,
+    excludeDomains: [],
+    providers: [],
     customProviders: []
   };
 
@@ -120,7 +125,7 @@ const WebSearchSettings: React.FC = () => {
       baseUrl: '',
       enabled: true
     };
-    
+
     setEditingProvider(newProvider);
     setIsEditing(true);
   };
@@ -136,13 +141,13 @@ const WebSearchSettings: React.FC = () => {
 
   const handleSaveProvider = () => {
     if (!editingProvider) return;
-    
+
     if (editingProvider.id && webSearchSettings.customProviders?.some(p => p.id === editingProvider.id)) {
       dispatch(updateCustomProvider(editingProvider));
     } else {
       dispatch(addCustomProvider(editingProvider));
     }
-    
+
     setEditingProvider(null);
     setIsEditing(false);
   };
@@ -154,7 +159,7 @@ const WebSearchSettings: React.FC = () => {
 
   const handleProviderFieldChange = (field: keyof WebSearchCustomProvider, value: string | boolean) => {
     if (!editingProvider) return;
-    
+
     setEditingProvider(prev => ({
       ...prev!,
       [field]: value
@@ -163,16 +168,16 @@ const WebSearchSettings: React.FC = () => {
 
   // 渲染主要内容
   return (
-    <Box sx={{ 
-      flexGrow: 1, 
-      display: 'flex', 
-      flexDirection: 'column', 
+    <Box sx={{
+      flexGrow: 1,
+      display: 'flex',
+      flexDirection: 'column',
       height: '100vh',
       bgcolor: (theme) => theme.palette.mode === 'light'
         ? alpha(theme.palette.primary.main, 0.02)
         : alpha(theme.palette.background.default, 0.9),
     }}>
-      <AppBar 
+      <AppBar
         position="fixed"
         elevation={0}
         sx={{
@@ -195,11 +200,11 @@ const WebSearchSettings: React.FC = () => {
           >
             <ArrowBackIcon />
           </IconButton>
-          <Typography 
-            variant="h6" 
-            component="div" 
-            sx={{ 
-              flexGrow: 1, 
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              flexGrow: 1,
               fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
@@ -212,10 +217,10 @@ const WebSearchSettings: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
-          overflow: 'auto', 
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflow: 'auto',
           px: 2,
           py: 2,
           mt: 8,
@@ -239,8 +244,8 @@ const WebSearchSettings: React.FC = () => {
             borderColor: 'divider',
           }}
         >
-          <Typography 
-            variant="h6" 
+          <Typography
+            variant="h6"
             gutterBottom
             sx={{
               fontWeight: 600,
@@ -250,12 +255,12 @@ const WebSearchSettings: React.FC = () => {
           >
             基本设置
           </Typography>
-          
+
           <FormGroup>
             <FormControlLabel
               control={
-                <Switch 
-                  checked={webSearchSettings.enabled} 
+                <Switch
+                  checked={webSearchSettings.enabled}
                   onChange={handleToggleEnabled}
                   color="primary"
                 />
@@ -270,9 +275,9 @@ const WebSearchSettings: React.FC = () => {
               }
             />
           </FormGroup>
-          
+
           <Divider sx={{ my: 2 }} />
-          
+
           <FormControl fullWidth margin="normal">
             <InputLabel id="search-provider-label">搜索服务商</InputLabel>
             <Select
@@ -282,14 +287,21 @@ const WebSearchSettings: React.FC = () => {
               input={<OutlinedInput label="搜索服务商" />}
               disabled={!webSearchSettings.enabled}
             >
-              <MenuItem value="firecrawl">Firecrawl (推荐)</MenuItem>
-              <MenuItem value="tavily">Tavily (API 密钥)</MenuItem>
-              <MenuItem value="serpapi">SerpAPI (API 密钥)</MenuItem>
+              <MenuItem value="tavily">Tavily (推荐)</MenuItem>
+              <MenuItem value="searxng">Searxng (自托管)</MenuItem>
+              <MenuItem value="exa">Exa (神经搜索)</MenuItem>
+              <MenuItem value="bocha">Bocha (AI搜索)</MenuItem>
+              <MenuItem value="firecrawl">Firecrawl (网页抓取)</MenuItem>
+              <MenuItem value="local-google">Google (本地搜索)</MenuItem>
+              <MenuItem value="local-bing">Bing (本地搜索)</MenuItem>
               <MenuItem value="custom">自定义服务</MenuItem>
             </Select>
           </FormControl>
-          
-          {webSearchSettings.provider !== 'custom' && (
+
+          {webSearchSettings.provider !== 'custom' &&
+           webSearchSettings.provider !== 'searxng' &&
+           webSearchSettings.provider !== 'local-google' &&
+           webSearchSettings.provider !== 'local-bing' && (
             <>
               <TextField
                 fullWidth
@@ -302,40 +314,69 @@ const WebSearchSettings: React.FC = () => {
                 variant="outlined"
                 placeholder={`请输入 ${webSearchSettings.provider} API 密钥`}
               />
-              
-              {webSearchSettings.provider === 'firecrawl' && (
+
+              {webSearchSettings.provider === 'tavily' && (
                 <Alert severity="info" sx={{ mt: 2 }}>
-                  Firecrawl 提供强大的网络爬取和搜索功能，可以访问 
-                  <a href="https://firecrawl.dev" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
-                    firecrawl.dev
-                  </a> 
+                  Tavily 是专为AI设计的搜索API，提供高质量的搜索结果。访问
+                  <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
+                    tavily.com
+                  </a>
                   获取 API 密钥。
                 </Alert>
               )}
-              
-              {webSearchSettings.provider === 'tavily' && (
+
+              {webSearchSettings.provider === 'exa' && (
                 <Alert severity="info" sx={{ mt: 2 }}>
-                  Tavily 是专为AI设计的搜索API，可以访问 
-                  <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
-                    tavily.com
-                  </a> 
+                  Exa 是基于神经网络的搜索引擎，提供语义搜索功能。访问
+                  <a href="https://exa.ai" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
+                    exa.ai
+                  </a>
+                  获取 API 密钥。
+                </Alert>
+              )}
+
+              {webSearchSettings.provider === 'bocha' && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Bocha 是AI驱动的搜索引擎，提供智能搜索结果。访问
+                  <a href="https://bochaai.com" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
+                    bochaai.com
+                  </a>
+                  获取 API 密钥。
+                </Alert>
+              )}
+
+              {webSearchSettings.provider === 'firecrawl' && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Firecrawl 提供强大的网络爬取和搜索功能。访问
+                  <a href="https://firecrawl.dev" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
+                    firecrawl.dev
+                  </a>
                   获取 API 密钥。
                 </Alert>
               )}
             </>
           )}
-          
+
+          {webSearchSettings.provider === 'searxng' && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Searxng 是自托管的开源搜索引擎。您需要部署自己的 Searxng 实例，然后在此配置服务器地址。
+              <a href="https://searxng.github.io/searxng/" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
+                了解更多
+              </a>
+            </Alert>
+          )}
+
           {webSearchSettings.provider === 'custom' && webSearchSettings.customProviders && webSearchSettings.customProviders.length > 0 && (
             <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle1" gutterBottom>
                 自定义搜索服务列表
               </Typography>
-              
+
               {webSearchSettings.customProviders.map((provider) => (
-                <Card 
-                  key={provider.id} 
-                  variant="outlined" 
-                  sx={{ 
+                <Card
+                  key={provider.id}
+                  variant="outlined"
+                  sx={{
                     mb: 2,
                     borderColor: provider.enabled ? alpha('#3b82f6', 0.5) : 'divider'
                   }}
@@ -345,9 +386,9 @@ const WebSearchSettings: React.FC = () => {
                       <Typography variant="h6">{provider.name}</Typography>
                       <FormControlLabel
                         control={
-                          <Switch 
+                          <Switch
                             size="small"
-                            checked={provider.enabled} 
+                            checked={provider.enabled}
                             onChange={() => dispatch(toggleCustomProviderEnabled(provider.id))}
                           />
                         }
@@ -359,16 +400,16 @@ const WebSearchSettings: React.FC = () => {
                     </Typography>
                   </CardContent>
                   <CardActions>
-                    <Button 
-                      size="small" 
-                      startIcon={<EditIcon />} 
+                    <Button
+                      size="small"
+                      startIcon={<EditIcon />}
                       onClick={() => handleEditProvider(provider)}
                     >
                       编辑
                     </Button>
-                    <Button 
-                      size="small" 
-                      startIcon={<DeleteIcon />} 
+                    <Button
+                      size="small"
+                      startIcon={<DeleteIcon />}
                       color="error"
                       onClick={() => handleDeleteProvider(provider.id)}
                     >
@@ -379,7 +420,7 @@ const WebSearchSettings: React.FC = () => {
               ))}
             </Box>
           )}
-          
+
           {webSearchSettings.provider === 'custom' && (
             <Button
               startIcon={<AddIcon />}
@@ -392,7 +433,7 @@ const WebSearchSettings: React.FC = () => {
             </Button>
           )}
         </Paper>
-        
+
         <Paper
           elevation={0}
           sx={{
@@ -403,8 +444,8 @@ const WebSearchSettings: React.FC = () => {
             borderColor: 'divider',
           }}
         >
-          <Typography 
-            variant="h6" 
+          <Typography
+            variant="h6"
             gutterBottom
             sx={{
               fontWeight: 600,
@@ -414,7 +455,7 @@ const WebSearchSettings: React.FC = () => {
           >
             搜索选项
           </Typography>
-          
+
           <FormControl fullWidth sx={{ mb: 3 }}>
             <InputLabel id="search-mode-label">搜索模式</InputLabel>
             <Select
@@ -428,7 +469,7 @@ const WebSearchSettings: React.FC = () => {
               <MenuItem value="manual">手动搜索 (点击搜索按钮启动)</MenuItem>
             </Select>
           </FormControl>
-          
+
           <Box sx={{ mb: 3 }}>
             <Typography id="max-results-slider" gutterBottom>
               最大结果数量: {webSearchSettings.maxResults}
@@ -449,44 +490,101 @@ const WebSearchSettings: React.FC = () => {
               disabled={!webSearchSettings.enabled}
             />
           </Box>
-          
+
           <FormGroup>
             <FormControlLabel
               control={
-                <Switch 
-                  checked={webSearchSettings.includeInContext} 
+                <Switch
+                  checked={webSearchSettings.includeInContext}
                   onChange={handleToggleIncludeInContext}
                   disabled={!webSearchSettings.enabled}
                 />
               }
               label="将搜索结果包含在上下文中"
             />
-            
+
             <FormControlLabel
               control={
-                <Switch 
-                  checked={webSearchSettings.showTimestamp} 
+                <Switch
+                  checked={webSearchSettings.showTimestamp}
                   onChange={handleToggleShowTimestamp}
                   disabled={!webSearchSettings.enabled}
                 />
               }
               label="显示搜索结果时间戳"
             />
-            
+
             <FormControlLabel
               control={
-                <Switch 
-                  checked={webSearchSettings.filterSafeSearch} 
+                <Switch
+                  checked={webSearchSettings.filterSafeSearch}
                   onChange={handleToggleFilterSafeSearch}
                   disabled={!webSearchSettings.enabled}
                 />
               }
               label="启用安全搜索过滤"
             />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={webSearchSettings.searchWithTime}
+                  onChange={() => dispatch(toggleSearchWithTime())}
+                  disabled={!webSearchSettings.enabled}
+                />
+              }
+              label="在搜索查询中添加当前日期"
+            />
           </FormGroup>
         </Paper>
+
+        {/* 高级设置 */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            mb: 3,
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Typography
+            variant="h6"
+            gutterBottom
+            sx={{
+              fontWeight: 600,
+              color: (theme) => theme.palette.text.primary,
+              mb: 2,
+            }}
+          >
+            高级设置
+          </Typography>
+
+          <Typography variant="subtitle2" gutterBottom>
+            排除域名 (每行一个)
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            value={webSearchSettings.excludeDomains?.join('\n') || ''}
+            onChange={(e) => {
+              const domains = e.target.value.split('\n').filter(d => d.trim());
+              dispatch(setExcludeDomains(domains));
+            }}
+            placeholder="example.com&#10;spam-site.com"
+            disabled={!webSearchSettings.enabled}
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            这些域名将从搜索结果中排除
+          </Typography>
+        </Paper>
       </Box>
-      
+
       {isEditing && editingProvider && (
         <Box
           sx={{
@@ -516,7 +614,7 @@ const WebSearchSettings: React.FC = () => {
             <Typography variant="h6" gutterBottom>
               {editingProvider.id ? '编辑搜索服务' : '添加搜索服务'}
             </Typography>
-            
+
             <TextField
               fullWidth
               margin="normal"
@@ -525,7 +623,7 @@ const WebSearchSettings: React.FC = () => {
               onChange={(e) => handleProviderFieldChange('name', e.target.value)}
               variant="outlined"
             />
-            
+
             <TextField
               fullWidth
               margin="normal"
@@ -535,7 +633,7 @@ const WebSearchSettings: React.FC = () => {
               variant="outlined"
               placeholder="https://api.example.com"
             />
-            
+
             <TextField
               fullWidth
               margin="normal"
@@ -545,21 +643,21 @@ const WebSearchSettings: React.FC = () => {
               onChange={(e) => handleProviderFieldChange('apiKey', e.target.value)}
               variant="outlined"
             />
-            
+
             <FormControlLabel
               control={
-                <Switch 
-                  checked={editingProvider.enabled} 
+                <Switch
+                  checked={editingProvider.enabled}
                   onChange={(e) => handleProviderFieldChange('enabled', e.target.checked)}
                 />
               }
               label="启用此服务"
             />
-            
+
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
               <Button onClick={handleCancelEdit}>取消</Button>
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 onClick={handleSaveProvider}
                 sx={{
                   bgcolor: '#3b82f6',
@@ -578,4 +676,4 @@ const WebSearchSettings: React.FC = () => {
   );
 };
 
-export default WebSearchSettings; 
+export default WebSearchSettings;

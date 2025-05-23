@@ -9,7 +9,8 @@ import type { RootState } from '../shared/store';
 import { TopicService } from '../shared/services/TopicService';
 import { EventEmitter, EVENT_NAMES } from '../shared/services/EventService';
 import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
-import ToolsSwitch from './ToolsSwitch';
+import WebSearchProviderSelector from './WebSearchProviderSelector';
+import MCPToolsButton from './chat/MCPToolsButton';
 
 interface ChatToolbarProps {
   onClearTopic?: () => void;
@@ -32,19 +33,21 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   toggleImageGenerationMode,
   webSearchActive = false,
   toggleWebSearch,
-  toolsEnabled = false,
   onToolsEnabledChange
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [showProviderSelector, setShowProviderSelector] = useState(false);
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const dispatch = useDispatch();
 
   // 从Redux获取网络搜索设置
-  const webSearchEnabled = useSelector((state: RootState) => state.webSearch?.enabled || false);
+  const webSearchSettings = useSelector((state: RootState) => state.webSearch);
+  const webSearchEnabled = webSearchSettings?.enabled || false;
+  const currentProvider = webSearchSettings?.provider;
 
   // 获取工具栏显示样式设置
   const toolbarDisplayStyle = useSelector((state: RootState) =>
@@ -148,13 +151,34 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
     }
   ];
 
+  // 处理网络搜索按钮点击
+  const handleWebSearchClick = () => {
+    if (webSearchActive) {
+      // 如果当前处于搜索模式，则关闭搜索
+      toggleWebSearch?.();
+    } else {
+      // 如果当前不在搜索模式，显示提供商选择器
+      setShowProviderSelector(true);
+    }
+  };
+
+  // 处理提供商选择
+  const handleProviderSelect = (providerId: string) => {
+    if (providerId && toggleWebSearch) {
+      // 选择了提供商，激活搜索模式
+      toggleWebSearch();
+    }
+  };
+
   // 如果网络搜索已启用，添加网络搜索按钮
   if (webSearchEnabled && toggleWebSearch) {
+    const providerName = webSearchSettings?.providers?.find(p => p.id === currentProvider)?.name || '搜索';
+
     buttons.push({
       id: 'web-search',
       icon: <SearchIcon sx={{ fontSize: '18px', color: webSearchActive ? '#FFFFFF' : isDarkMode ? '#9E9E9E' : '#3b82f6' }} />,
-      label: webSearchActive ? '关闭搜索' : '网络搜索',
-      onClick: toggleWebSearch,
+      label: webSearchActive ? '关闭搜索' : providerName,
+      onClick: handleWebSearchClick,
       color: '#FFFFFF', // 白色文字
       bgColor: webSearchActive ? (isDarkMode ? '#424242' : '#3b82f6') : isDarkMode ? '#1E1E1E' : '#FFFFFF' // 激活时背景色变深
     });
@@ -202,13 +226,10 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
         onTouchEnd={handleTouchEnd}
         onTouchMove={handleTouchMove}
       >
-        {/* 工具开关 */}
+        {/* MCP 按钮 - 合并工具开关和MCP工具功能 */}
         {onToolsEnabledChange && (
           <Box sx={{ marginRight: '8px' }}>
-            <ToolsSwitch
-              enabled={toolsEnabled}
-              onChange={onToolsEnabledChange}
-            />
+            <MCPToolsButton />
           </Box>
         )}
         {buttons.map((button) => (
@@ -260,6 +281,13 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
           </Box>
         ))}
       </Box>
+
+      {/* 网络搜索提供商选择器 */}
+      <WebSearchProviderSelector
+        open={showProviderSelector}
+        onClose={() => setShowProviderSelector(false)}
+        onProviderSelect={handleProviderSelect}
+      />
     </Box>
   );
 };

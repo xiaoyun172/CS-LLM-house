@@ -27,37 +27,39 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
     if (topics.length > 0) {
       // 保存前对话题进行去重 - 现在由dexieStorage内部处理
       // 此处保留空实现，确保不破坏现有的状态管理行为
-      console.log('话题列表已更新，数量:', topics.length);
+
     }
   }, [topics]);
 
   // 从本地存储加载主题
   const loadTopics = async (): Promise<ChatTopic[]> => {
     try {
-      console.log('开始加载话题列表');
-
       // 使用dexieStorage获取话题
       const validTopics = await dexieStorage.getAllTopics();
-      console.log('通过dexieStorage加载了话题，数量:', validTopics.length);
 
       // 如果有主题，选择第一个
       if (validTopics.length > 0 && !currentTopic) {
-        console.log('设置第一个话题为当前话题:', validTopics[0].id);
 
         // 设置当前主题
         dispatch(newMessagesActions.setCurrentTopicId(validTopics[0].id));
 
         // 加载每个话题的消息到Redux
         for (const topic of validTopics) {
-          if (topic.messages && topic.messages.length > 0) {
-            // 注意：这里不再需要手动加载消息，因为我们已经在 App.tsx 中使用 loadTopicMessagesThunk 加载了所有话题的消息
-            console.log(`跳过处理话题 ${topic.id} 的消息`);
-          } else {
-            console.log(`话题${topic.id}仍使用旧消息格式，将在后续迁移`);
-
-            // 此处应该不会执行，因为我们已经在 App.tsx 中使用 loadTopicMessagesThunk 加载了所有话题的消息
-            console.log(`跳过加载话题 ${topic.id} 的消息`);
+          // 判断消息格式：
+          // 新格式：使用 messageIds 数组，messages 为空或不存在
+          // 旧格式：使用 messages 数组存储完整消息对象
+          if (topic.messageIds && topic.messageIds.length > 0) {
+            // 新格式：已经在 App.tsx 中使用 loadTopicMessagesThunk 加载了所有话题的消息
+            // 无需额外处理
+          } else if (topic.messages && topic.messages.length > 0) {
+            // 旧格式：需要迁移
+            try {
+              await dexieStorage.migrateTopicMessages(topic.id);
+            } catch (error) {
+              console.error(`话题 ${topic.id} 迁移失败:`, error);
+            }
           }
+          // 空话题无需处理
         }
       }
 
@@ -70,10 +72,8 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
       // 只有在首次使用应用时才创建默认话题
       if (isFirstTimeUser) {
-        console.log('首次使用应用，创建默认话题');
         return createDefaultTopic();
       } else {
-        console.log('非首次使用应用，不自动创建默认话题');
         return [];
       }
     }
@@ -81,8 +81,6 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
   // 创建默认话题
   const createDefaultTopic = async (): Promise<ChatTopic[]> => {
-    console.log('正在创建默认话题');
-
     // 尝试获取当前助手ID，以便在创建时使用
     let assistantIdForTopic = await getStorageItem<string>('currentAssistant');
     if (!assistantIdForTopic) {
@@ -108,12 +106,9 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
       isNameManuallyEdited: false
     };
 
-    console.log('默认话题创建成功:', defaultTopic);
-
     // 使用dexieStorage保存话题到数据库
     try {
       await dexieStorage.saveTopic(defaultTopic);
-      console.log('通过dexieStorage创建了默认话题:', defaultTopic.id);
     } catch (error) {
       console.error('通过dexieStorage创建默认话题失败:', error);
     }
@@ -133,8 +128,6 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
         const currentAssistant = assistantsData.find((a: Assistant) => a.id === currentAssistantId);
 
         if (currentAssistant) {
-          console.log(`正在将默认话题关联到助手"${currentAssistant.name}"`);
-
           // 将话题与当前助手关联
           const updatedAssistant = {
             ...currentAssistant,
@@ -154,13 +147,11 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
 
   // 处理新建话题
   const handleNewTopic = async () => {
-    console.log('useTopicManagement: 开始创建新话题');
     try {
       // 使用统一的TopicService创建话题
       const newTopic = await TopicService.createNewTopic();
 
       if (newTopic) {
-        console.log('useTopicManagement: 话题创建成功', newTopic.id);
         return newTopic;
       } else {
         console.error('useTopicManagement: 话题创建失败');
@@ -176,14 +167,10 @@ export function useTopicManagement(currentTopic: ChatTopic | null) {
   const handleClearTopic = () => {
     if (!currentTopic) return;
 
-    console.log('useTopicManagement: 开始清空话题内容', currentTopic.id);
-
     // 使用统一的TopicService清空话题内容
     TopicService.clearTopicContent(currentTopic.id)
       .then(success => {
-        if (success) {
-          console.log('useTopicManagement: 话题内容已清空');
-        } else {
+        if (!success) {
           console.error('useTopicManagement: 清空话题内容失败');
         }
       })

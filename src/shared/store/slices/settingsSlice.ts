@@ -16,6 +16,9 @@ export interface SettingsState {
   // 思考过程自动折叠
   thoughtAutoCollapse?: boolean;
 
+  // 默认思维链长度
+  defaultThinkingEffort?: 'off' | 'low' | 'medium' | 'high' | 'auto';
+
   // 多模型对比显示样式
   multiModelDisplayStyle?: 'horizontal' | 'grid' | 'vertical';
 
@@ -45,6 +48,7 @@ const loadFromStorage = async (): Promise<SettingsState> => {
     theme: 'system',
     thinkingDisplayStyle: 'compact',
     thoughtAutoCollapse: true,
+    defaultThinkingEffort: 'medium',
     multiModelDisplayStyle: 'horizontal',
     showToolDetails: true,
     showCitationDetails: true,
@@ -67,6 +71,7 @@ const initialState: SettingsState = {
   theme: 'system',
   thinkingDisplayStyle: 'compact',
   thoughtAutoCollapse: true,
+  defaultThinkingEffort: 'medium',
   multiModelDisplayStyle: 'horizontal',
   showToolDetails: true,
   showCitationDetails: true,

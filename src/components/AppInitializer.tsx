@@ -25,10 +25,7 @@ const AppInitializer = () => {
   // 应用初始化逻辑
   useEffect(() => {
     const initializeApp = async () => {
-      console.log('[AppInitializer] 开始初始化应用...');
-
       // 确保加载分组数据
-      console.log('[AppInitializer] 加载分组数据');
       dispatch(initGroups());
 
       try {

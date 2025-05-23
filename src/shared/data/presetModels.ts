@@ -31,7 +31,7 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.openai.com/v1',
   },
-  
+
   // SiliconFlow 模型
   {
     id: 'deepseek-ai/DeepSeek-V3',
@@ -79,7 +79,7 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.siliconflow.cn/v1',
   },
-  
+
   // Anthropic 模型
   {
     id: 'claude-3-opus',
@@ -108,7 +108,7 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.anthropic.com/v1',
   },
-  
+
   // Google 模型
   {
     id: 'gemini-pro',
@@ -146,7 +146,7 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1',
   },
-  
+
   // Grok 模型
   {
     id: 'grok-1',
@@ -166,7 +166,7 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://api.x.ai/v1',
   },
-  
+
   // 火山引擎模型
   {
     id: 'DBV1.5-pro',
@@ -204,7 +204,7 @@ export const presetModels: PresetModel[] = [
     requiresApiKey: true,
     defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3/',
   },
-  
+
   // DeepSeek 模型
   {
     id: 'deepseek-chat',
@@ -266,7 +266,7 @@ export const presetModels: PresetModel[] = [
     defaultBaseUrl: 'https://api.siliconflow.cn',
     modelTypes: [ModelType.Chat]
   },
-  
+
   // 新增: 硅基流动图像生成模型
   {
     id: 'Kwai-Kolors/Kolors',
@@ -289,6 +289,98 @@ export const presetModels: PresetModel[] = [
     defaultBaseUrl: 'https://api.siliconflow.cn',
     imageGeneration: true,
     modelTypes: [ModelType.ImageGen]
+  },
+  {
+    id: 'black-forest-labs/FLUX.1-schnell',
+    name: 'FLUX.1 Schnell',
+    provider: 'siliconflow',
+    description: 'Black Forest Labs的快速图像生成模型',
+    capabilities: ['图像生成', '文本到图像', '快速生成'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+  {
+    id: 'black-forest-labs/FLUX.1-dev',
+    name: 'FLUX.1 Dev',
+    provider: 'siliconflow',
+    description: 'FLUX.1开发版，更高质量的图像生成',
+    capabilities: ['图像生成', '文本到图像', '高质量生成'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.siliconflow.cn',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+
+  // 新增: Grok 图像生成模型
+  {
+    id: 'grok-2-image-1212',
+    name: 'Grok-2 Image 1212',
+    provider: 'grok',
+    description: 'xAI的Grok-2图像生成模型，支持高质量图像创作',
+    capabilities: ['图像生成', '文本到图像', '创意绘画', '高质量输出'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.x.ai/v1',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+  {
+    id: 'grok-2-image',
+    name: 'Grok-2 Image',
+    provider: 'grok',
+    description: 'xAI的Grok-2图像生成模型',
+    capabilities: ['图像生成', '文本到图像', '创意绘画'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.x.ai/v1',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+  {
+    id: 'grok-2-image-latest',
+    name: 'Grok-2 Image Latest',
+    provider: 'grok',
+    description: 'xAI的最新Grok-2图像生成模型',
+    capabilities: ['图像生成', '文本到图像', '创意绘画', '最新功能'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.x.ai/v1',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+
+  // 新增: Gemini 图像生成模型
+  {
+    id: 'gemini-2.0-flash-exp-image-generation',
+    name: 'Gemini 2.0 Flash Exp Image',
+    provider: 'google',
+    description: 'Google Gemini 2.0 Flash实验版图像生成模型',
+    capabilities: ['图像生成', '文本到图像', '多模态理解', '实验功能'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+  {
+    id: 'gemini-2.0-flash-preview-image-generation',
+    name: 'Gemini 2.0 Flash Preview Image',
+    provider: 'google',
+    description: 'Google Gemini 2.0 Flash预览版图像生成模型',
+    capabilities: ['图像生成', '文本到图像', '多模态理解', '预览功能'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    imageGeneration: true,
+    modelTypes: [ModelType.ImageGen]
+  },
+  {
+    id: 'gemini-2.0-flash-exp',
+    name: 'Gemini 2.0 Flash Exp',
+    provider: 'google',
+    description: 'Google Gemini 2.0 Flash实验版，支持图像生成功能',
+    capabilities: ['聊天对话', '图像生成', '文本到图像', '多模态理解', '实验功能'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    imageGeneration: true,
+    modelTypes: [ModelType.Chat, ModelType.ImageGen]
   },
 ];
 

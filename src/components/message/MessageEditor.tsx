@@ -16,7 +16,9 @@ interface MessageEditorProps {
 
 const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, onClose }) => {
   const dispatch = useDispatch();
-  const state = useSelector((state: RootState) => state);
+
+  // 只选择需要的数据，避免不必要的重渲染
+  const messageBlocks = useSelector((state: RootState) => state.messageBlocks.entities);
 
   // 获取消息内容
   const initialContent = getMainTextContent(message);
@@ -33,7 +35,7 @@ const MessageEditor: React.FC<MessageEditorProps> = ({ message, topicId, open, o
     if (topicId && editedText.trim()) {
       // 查找主文本块
       const mainTextBlockId = message.blocks.find((blockId: string) => {
-        const block = state.messageBlocks.entities[blockId];
+        const block = messageBlocks[blockId];
         return block && block.type === 'main_text';
       });
 

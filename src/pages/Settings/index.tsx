@@ -56,7 +56,6 @@ const SettingsPage: React.FC = () => {
         { id: 'system-prompts', title: '系统提示词', description: '管理全局系统提示词和提示词模板', icon: <AutoFixHighIcon />, path: '/settings/system-prompts', color: '#0ea5e9' },
         { id: 'model-combo', title: '模型组合', description: '创建和管理多模型组合', icon: <SmartToyIcon />, path: '/settings/model-combo', color: '#f43f5e' },
         { id: 'web-search', title: '网络搜索', description: '配置网络搜索和相关服务', icon: <LanguageIcon />, path: '/settings/web-search', color: '#3b82f6' },
-        { id: 'special-features', title: '特殊功能', description: '配置思考过程、多模型对比等特殊功能', icon: <AutoFixHighIcon />, path: '/settings/special-features', color: '#8b5cf6' },
         { id: 'mcp-server', title: 'MCP 服务器', description: '高级服务器配置', icon: <SettingsIcon />, path: '/settings/mcp-server', color: '#10b981' },
       ]
     },

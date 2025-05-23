@@ -2,16 +2,25 @@ import { v4 as uuid } from 'uuid';
 import { DataRepository } from '../../services/DataRepository';
 import { dexieStorage } from '../../services/DexieStorageService'; // 保持兼容性，逐步迁移
 import { createUserMessage, createAssistantMessage } from '../../utils/messageUtils';
-import { getMainTextContent } from '../../utils/blockUtils';
+import { getMainTextContent, findImageBlocks, findFileBlocks } from '../../utils/blockUtils';
 import { newMessagesActions } from '../slices/newMessagesSlice';
-import { upsertManyBlocks, upsertOneBlock, updateOneBlock, removeManyBlocks } from '../slices/messageBlocksSlice';
-import { MessageBlockStatus, AssistantMessageStatus } from '../../types/newMessage';
+import { upsertManyBlocks, upsertOneBlock, updateOneBlock, removeManyBlocks, addOneBlock } from '../slices/messageBlocksSlice';
+import { MessageBlockStatus, MessageBlockType, AssistantMessageStatus, UserMessageStatus } from '../../types/newMessage';
 import { createResponseHandler } from '../../services/messages/ResponseHandler';
 import { ApiProviderRegistry } from '../../services/messages/ApiProvider';
+import { getFileTypeByExtension, readFileContent, FileTypes } from '../../utils/fileUtils';
+import { generateImage as generateOpenAIImage } from '../../api/openai/image';
+import { generateImage as generateGeminiImage } from '../../api/gemini/image';
+import { createImageBlock, createToolBlock } from '../../utils/messageUtils';
 import { throttle } from 'lodash';
-import type { Message, MessageBlock } from '../../types/newMessage';
-import type { Model } from '../../types';
+import { createAbortController } from '../../utils/abortController';
+import type { Message, MessageBlock, ToolMessageBlock } from '../../types/newMessage';
+import type { Model, MCPTool, MCPToolResponse, MCPCallToolResponse } from '../../types';
+import type { FileType } from '../../types';
 import type { RootState, AppDispatch } from '../index';
+import { mcpService } from '../../services/MCPService';
+import { parseToolUse, parseAndCallTools, hasToolUseTags, removeToolUseTags } from '../../utils/mcpToolParser';
+// 移除未使用的导入 - MCP 工具注入现在由提供商层处理
 
 // 保存消息和块到数据库
 export const saveMessageAndBlocksToDB = async (message: Message, blocks: MessageBlock[]) => {
@@ -72,10 +81,7 @@ export const saveMessageAndBlocksToDB = async (message: Message, blocks: Message
 
 // 节流更新块 - 在processAssistantResponse中使用
 export const throttledBlockUpdate = throttle(async (id: string, blockUpdate: Partial<MessageBlock>) => {
-  // 更新Redux状态
-  store.dispatch(updateOneBlock({ id, changes: blockUpdate }));
-
-  // 更新数据库
+  // 只更新数据库，Redux状态由ResponseHandler处理
   await dexieStorage.updateMessageBlock(id, blockUpdate);
 }, 150);
 
@@ -90,7 +96,8 @@ export const sendMessage = (
   topicId: string,
   model: Model,
   images?: Array<{ url: string }>,
-  toolsEnabled?: boolean
+  toolsEnabled?: boolean,
+  files?: FileType[]
 ) => async (dispatch: AppDispatch, getState: () => RootState) => {
   try {
     // 获取当前助手ID
@@ -112,7 +119,8 @@ export const sendMessage = (
       topicId,
       modelId: model.id,
       model,
-      images
+      images,
+      files
     });
 
     // 2. 保存用户消息和块到数据库
@@ -163,15 +171,31 @@ export const sendMessage = (
  */
 const processAssistantResponse = async (
   dispatch: AppDispatch,
-  _getState: () => RootState, // 添加下划线前缀表示未使用的参数
+  _getState: () => RootState,
   assistantMessage: Message,
   topicId: string,
   model: Model,
   toolsEnabled?: boolean
 ) => {
   try {
-    // 1. 准备API请求
-    const messages = await prepareMessagesForApi(topicId, assistantMessage.id);
+    // 1. 获取 MCP 工具（如果启用）
+    let mcpTools: MCPTool[] = [];
+    if (toolsEnabled) {
+      try {
+        mcpTools = await mcpService.getAllAvailableTools();
+        console.log(`[MCP] 获取到 ${mcpTools.length} 个可用工具`);
+        if (mcpTools.length > 0) {
+          console.log(`[MCP] 工具列表:`, mcpTools.map(t => t.name || t.id).join(', '));
+        }
+      } catch (error) {
+        console.error('[MCP] 获取工具失败:', error);
+      }
+    } else {
+      console.log(`[MCP] 工具未启用 (toolsEnabled=${toolsEnabled})`);
+    }
+
+    // 2. 准备API请求
+    const messages = await prepareMessagesForApi(topicId, assistantMessage.id, mcpTools);
 
     // 2. 设置消息状态为处理中，避免显示错误消息
     dispatch(newMessagesActions.updateMessage({
@@ -181,57 +205,304 @@ const processAssistantResponse = async (
       }
     }));
 
-    // 3. 无论是否有现有块，都创建新的主文本块
-    const mainBlock = {
+    // 3. 创建占位符块（参考电脑版逻辑）
+    // 这避免了重复创建块的问题，通过动态转换块类型来处理不同的内容
+    const placeholderBlock: MessageBlock = {
       id: uuid(),
       messageId: assistantMessage.id,
-      type: 'main_text' as const,
-      content: '正在生成回复...',
+      type: MessageBlockType.UNKNOWN,
+      content: '',
       createdAt: new Date().toISOString(),
-      status: MessageBlockStatus.STREAMING // 直接设置为STREAMING状态，而不是PROCESSING
+      status: MessageBlockStatus.PROCESSING
     };
 
-    const mainTextBlockId = mainBlock.id;
+    console.log(`[sendMessage] 创建占位符块: ${placeholderBlock.id}`);
 
-    // 4. 关联块到消息
+    // 添加占位符块到Redux
+    dispatch(upsertOneBlock(placeholderBlock));
+
+    // 保存占位符块到数据库
+    await dexieStorage.saveMessageBlock(placeholderBlock);
+
+    // 4. 关联占位符块到消息
     dispatch(newMessagesActions.updateMessage({
       id: assistantMessage.id,
       changes: {
-        blocks: [mainTextBlockId]
+        blocks: [placeholderBlock.id]
       }
     }));
 
-    // 5. 保存块到Redux和数据库
-    dispatch(upsertOneBlock(mainBlock));
-    await DataRepository.blocks.save(mainBlock);
+    // 5. 更新消息数据库（同时更新messages表和topic.messages数组）
+    await dexieStorage.transaction('rw', [
+      dexieStorage.messages,
+      dexieStorage.topics
+    ], async () => {
+      // 更新messages表
+      await dexieStorage.updateMessage(assistantMessage.id, {
+        blocks: [placeholderBlock.id]
+      });
 
-    // 6. 更新消息
-    await DataRepository.messages.update(assistantMessage.id, {
-      blocks: [mainTextBlockId]
+      // 更新topic.messages数组
+      const topic = await dexieStorage.topics.get(topicId);
+      if (topic && topic.messages) {
+        const messageIndex = topic.messages.findIndex(m => m.id === assistantMessage.id);
+        if (messageIndex >= 0) {
+          topic.messages[messageIndex] = {
+            ...topic.messages[messageIndex],
+            blocks: [placeholderBlock.id]
+          };
+          await dexieStorage.topics.put(topic);
+        }
+      }
     });
 
-    // 7. 创建响应处理器
+    // 7. 创建AbortController
+    const { abortController, cleanup } = createAbortController(assistantMessage.askId, true);
+
+
+
+    // 8. 创建响应处理器，使用占位符块ID
     const responseHandler = createResponseHandler({
       messageId: assistantMessage.id,
-      blockId: mainTextBlockId,
+      blockId: placeholderBlock.id,
       topicId
     });
 
-    // 8. 获取API提供者
+    // 10. 获取API提供者
     const apiProvider = ApiProviderRegistry.get(model);
 
-    // 9. 发送API请求
+    // 9. 检查是否为图像生成模型
+    // 优先检查模型编辑界面中的"输出能力"标签（modelTypes）
+    const isImageGenerationModel =
+      // 1. 优先检查 modelTypes 中是否包含图像生成类型（对应编辑界面的"输出能力"）
+      (model.modelTypes && model.modelTypes.includes('image_gen' as any)) ||
+      // 2. 检查模型的图像生成标志
+      model.imageGeneration ||
+      model.capabilities?.imageGeneration ||
+      // 3. 兼容旧的字符串格式
+      (model.modelTypes && model.modelTypes.includes('image-generation' as any)) ||
+      // 4. 基于模型ID的后备检测（用于未正确配置的模型）
+      model.id.toLowerCase().includes('flux') ||
+      model.id.toLowerCase().includes('black-forest') ||
+      model.id.toLowerCase().includes('stable-diffusion') ||
+      model.id.toLowerCase().includes('sd') ||
+      model.id.toLowerCase().includes('dalle') ||
+      model.id.toLowerCase().includes('midjourney') ||
+      model.id.toLowerCase().includes('grok-2-image') ||
+      model.id === 'grok-2-image-1212' ||
+      model.id === 'grok-2-image' ||
+      model.id === 'grok-2-image-latest' ||
+      model.id === 'gemini-2.0-flash-exp-image-generation' ||
+      model.id === 'gemini-2.0-flash-preview-image-generation' ||
+      (model.id === 'gemini-2.0-flash-exp' && model.imageGeneration);
+
+    // 10. 发送API请求
     try {
-      // 传递工具开关参数
-      const response = await apiProvider.sendChatRequest(
-        messages,
-        model,
-        responseHandler.handleChunk,
-        { enableTools: toolsEnabled !== false } // 默认启用工具
-      );
-      return await responseHandler.complete(response);
+      let response: any;
+
+      if (isImageGenerationModel) {
+        // 获取最后一条用户消息作为图像生成提示词
+        const lastUserMessage = messages.filter(msg => msg.role === 'user').pop();
+        let prompt = '生成一张图片';
+
+        // 处理不同类型的content
+        if (lastUserMessage?.content) {
+          if (typeof lastUserMessage.content === 'string') {
+            prompt = lastUserMessage.content;
+          } else if (Array.isArray(lastUserMessage.content)) {
+            // 从多模态内容中提取文本
+            const textParts = lastUserMessage.content
+              .filter((part: any) => part.type === 'text')
+              .map((part: any) => part.text);
+            prompt = textParts.join(' ') || '生成一张图片';
+          }
+        }
+
+        // 根据模型类型选择不同的图像生成API
+        let imageUrls: string[] = [];
+
+        if (model.provider === 'google' || model.id.startsWith('gemini-')) {
+          // 使用 Gemini 图像生成API
+          imageUrls = await generateGeminiImage(model, {
+            prompt: prompt,
+            imageSize: '1024x1024',
+            batchSize: 1
+          });
+          responseHandler.handleChunk('Gemini 图像生成完成！');
+        } else {
+          // 使用 OpenAI 兼容的图像生成API（支持 Grok、SiliconFlow 等）
+          imageUrls = await generateOpenAIImage(model, {
+            prompt: prompt,
+            imageSize: '1024x1024',
+            batchSize: 1
+          });
+          responseHandler.handleChunk('图像生成完成！');
+        }
+
+        // 处理图像生成结果
+        if (imageUrls && imageUrls.length > 0) {
+          const imageUrl = imageUrls[0];
+
+          // 如果是base64图片，保存到数据库并创建引用
+          let finalImageUrl = imageUrl;
+          if (imageUrl.startsWith('data:image/')) {
+            try {
+              // 保存base64图片到数据库
+              const imageId = await dexieStorage.saveBase64Image(imageUrl, {
+                topicId: topicId,
+                messageId: assistantMessage.id,
+                source: 'ai_generated',
+                model: model.id
+              });
+
+              // 使用图片引用格式
+              finalImageUrl = `[图片:${imageId}]`;
+            } catch (error) {
+              console.error('保存生成的图片失败，使用原始base64:', error);
+              // 如果保存失败，继续使用原始base64
+            }
+          }
+
+          // 创建图片块
+          const imageBlock = createImageBlock(assistantMessage.id, {
+            url: finalImageUrl,
+            mimeType: imageUrl.startsWith('data:image/png') ? 'image/png' :
+                     imageUrl.startsWith('data:image/jpeg') ? 'image/jpeg' :
+                     'image/png'
+          });
+
+          // 添加图片块到 Redux 状态
+          dispatch(addOneBlock(imageBlock));
+
+          // 保存图片块到数据库
+          await dexieStorage.saveMessageBlock(imageBlock);
+
+          // 将图片块ID添加到消息的blocks数组
+          dispatch(newMessagesActions.upsertBlockReference({
+            messageId: assistantMessage.id,
+            blockId: imageBlock.id,
+            status: imageBlock.status
+          }));
+
+          // 更新消息的blocks数组并保存到数据库
+          const updatedMessage = {
+            ...assistantMessage,
+            blocks: [...(assistantMessage.blocks || []), imageBlock.id],
+            updatedAt: new Date().toISOString()
+          };
+
+          // 更新Redux中的消息
+          dispatch(newMessagesActions.updateMessage({
+            id: assistantMessage.id,
+            changes: updatedMessage
+          }));
+
+          // 保存消息到数据库并更新topics表
+          await dexieStorage.transaction('rw', [
+            dexieStorage.messages,
+            dexieStorage.topics
+          ], async () => {
+            // 更新messages表
+            await dexieStorage.updateMessage(assistantMessage.id, updatedMessage);
+
+            // 更新topics表中的messages数组
+            const topic = await dexieStorage.topics.get(topicId);
+            if (topic && topic.messages) {
+              const messageIndex = topic.messages.findIndex(m => m.id === assistantMessage.id);
+              if (messageIndex >= 0) {
+                topic.messages[messageIndex] = updatedMessage;
+                await dexieStorage.topics.put(topic);
+              }
+            }
+          });
+
+          response = '图像生成完成！';
+        } else {
+          response = '图像生成失败，没有返回有效的图像URL。';
+        }
+      } else {
+
+        // 将简化的消息对象转换为Message类型，但保持content的原始格式
+        const convertedMessages = messages.map((msg: any) => ({
+          id: `temp-${Date.now()}-${Math.random()}`,
+          role: msg.role,
+          content: msg.content, // 保持原始content格式（可能是字符串或数组）
+          assistantId: '',
+          topicId: topicId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: 'success' as any,
+          blocks: []
+        }));
+
+        // 获取 MCP 模式设置
+        const mcpMode = localStorage.getItem('mcp-mode') as 'prompt' | 'function' || 'function';
+        console.log(`[MCP] 当前模式: ${mcpMode}`);
+
+        // 使用Provider的sendChatMessage方法，避免重复调用
+        response = await apiProvider.sendChatMessage(
+          convertedMessages,
+          {
+            onUpdate: (content: string, reasoning?: string) => {
+              // 传递推理内容给ResponseHandler（兼容旧接口）
+              responseHandler.handleChunk(content, reasoning);
+            },
+            onChunk: (chunk: import('../../types/chunk').Chunk) => {
+              // 使用新的 Chunk 事件处理（电脑版架构）
+              responseHandler.handleChunkEvent(chunk);
+            },
+            enableTools: toolsEnabled !== false, // 默认启用工具
+            // 始终传递 MCP 工具给提供商，让提供商的智能切换机制决定如何使用
+            mcpTools: mcpTools,
+            mcpMode: mcpMode, // 传递 MCP 模式
+            abortSignal: abortController.signal // 传递中断信号
+          }
+        );
+      }
+
+      // 处理不同类型的响应
+      let finalContent: string;
+      let reasoning: string | undefined;
+
+      if (typeof response === 'string') {
+        finalContent = response;
+      } else if (response && typeof response === 'object' && 'content' in response) {
+        finalContent = response.content;
+        // 提取思考过程
+        reasoning = response.reasoning || response.reasoning_content;
+      } else {
+        finalContent = '';
+      }
+
+      // 处理 MCP 工具调用（如果内容包含工具使用标签）
+      // 在提示词注入模式下，AI 可能会使用 XML 标签格式调用工具
+      if (toolsEnabled && mcpTools.length > 0 && hasToolUseTags(finalContent, mcpTools)) {
+        const currentMcpMode = localStorage.getItem('mcp-mode') || 'function';
+        console.log(`[MCP] 检测到工具调用，模式: ${currentMcpMode}`);
+        await handleMCPToolCalls(
+          finalContent,
+          mcpTools,
+          assistantMessage.id,
+          topicId,
+          dispatch
+        );
+
+        // 从最终内容中移除工具使用标签
+        finalContent = removeToolUseTags(finalContent);
+      }
+
+      // 对于非流式响应，onUpdate回调已经在Provider层正确处理了思考过程和普通文本
+      // 不需要重复处理，避免重复调用导致的问题
+      console.log(`[processAssistantResponse] 非流式响应处理完成，内容长度: ${finalContent.length}, 思考过程长度: ${reasoning?.length || 0}`);
+
+      return await responseHandler.complete(finalContent);
     } catch (error) {
       return await responseHandler.fail(error as Error);
+    } finally {
+      // 清理AbortController
+      if (cleanup) {
+        cleanup();
+      }
     }
   } catch (error) {
     console.error('处理助手响应失败:', error);
@@ -247,7 +518,11 @@ const processAssistantResponse = async (
 /**
  * 准备API请求的消息
  */
-const prepareMessagesForApi = async (topicId: string, assistantMessageId: string) => {
+const prepareMessagesForApi = async (
+  topicId: string,
+  assistantMessageId: string,
+  _mcpTools?: MCPTool[] // 添加下划线前缀表示未使用的参数
+) => {
   // 获取主题的所有消息
   const messages = await dexieStorage.getMessagesByTopicId(topicId);
 
@@ -286,39 +561,101 @@ const prepareMessagesForApi = async (topicId: string, assistantMessageId: string
   }
 
   // 转换为API请求格式，只包含当前助手消息之前的消息
-  const apiMessages = sortedMessages
-    .filter(message => {
-      // 跳过当前正在处理的助手消息和所有system消息
-      if (message.id === assistantMessageId || message.role === 'system') {
-        return false;
+  const apiMessages = [];
+
+  for (const message of sortedMessages) {
+    // 跳过当前正在处理的助手消息和所有system消息
+    if (message.id === assistantMessageId || message.role === 'system') {
+      continue;
+    }
+
+    // 只包含创建时间早于当前助手消息的消息
+    const messageTime = new Date(message.createdAt).getTime();
+    if (messageTime >= assistantMessageTime) {
+      continue;
+    }
+
+    // 获取消息内容 - 简单版本，直接使用文本内容
+    const content = getMainTextContent(message);
+
+    // 检查是否有文件或图片块
+    const imageBlocks = findImageBlocks(message);
+    const fileBlocks = findFileBlocks(message);
+
+    // 如果没有文件和图片，使用简单格式
+    if (imageBlocks.length === 0 && fileBlocks.length === 0) {
+      apiMessages.push({
+        role: message.role,
+        content: content || '' // 确保content不为undefined或null
+      });
+    } else {
+      // 有文件或图片时，使用多模态格式
+      const parts = [];
+
+      // 确保至少有一个文本部分，即使内容为空
+      // 这样可以避免parts数组为空导致API请求失败
+      parts.push({ type: 'text', text: content || '' });
+
+      // 处理图片块
+      for (const imageBlock of imageBlocks) {
+        if (imageBlock.url) {
+          parts.push({
+            type: 'image_url',
+            image_url: {
+              url: imageBlock.url
+            }
+          });
+        } else if (imageBlock.file && imageBlock.file.base64Data) {
+          let base64Data = imageBlock.file.base64Data;
+          if (base64Data.includes(',')) {
+            base64Data = base64Data.split(',')[1];
+          }
+          parts.push({
+            type: 'image_url',
+            image_url: {
+              url: `data:${imageBlock.file.mimeType || 'image/jpeg'};base64,${base64Data}`
+            }
+          });
+        }
       }
 
-      // 只包含创建时间早于当前助手消息的消息
-      const messageTime = new Date(message.createdAt).getTime();
-      return messageTime < assistantMessageTime;
-    })
-    .map(message => {
-      // 获取消息内容
-      const content = getMainTextContent(message);
+      // 处理文件块
+      for (const fileBlock of fileBlocks) {
+        if (fileBlock.file) {
+          const fileType = getFileTypeByExtension(fileBlock.file.name || fileBlock.file.origin_name || '');
 
-      // 记录消息内容，便于调试
-      console.log(`[prepareMessagesForApi] 消息 ${message.id}, 角色: ${message.role}, 内容: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
+          // 只处理文本和文档类型的文件
+          if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+            try {
+              const fileContent = await readFileContent(fileBlock.file);
+              if (fileContent) {
+                // 按照电脑版格式：文件名\n文件内容
+                const fileName = fileBlock.file.origin_name || fileBlock.file.name || '未知文件';
+                parts.push({
+                  type: 'text',
+                  text: `${fileName}\n${fileContent}`
+                });
+              }
+            } catch (error) {
+              console.error(`[prepareMessagesForApi] 读取文件内容失败:`, error);
+            }
+          }
+        }
+      }
 
-      return {
+      apiMessages.push({
         role: message.role,
-        content: content
-      };
-    });
+        content: parts
+      });
+    }
+  }
 
-  // 在数组开头无条件添加新的系统消息
+  // 在数组开头添加系统消息
+  // 注意：MCP 工具注入现在由提供商层的智能切换机制处理
   apiMessages.unshift({
     role: 'system',
     content: systemPrompt
   });
-
-  // 记录日志
-  console.log(`[prepareMessagesForApi] 准备API消息: 总数=${apiMessages.length}, 系统提示词=${systemPrompt.substring(0, 50)}${systemPrompt.length > 50 ? '...' : ''}`);
-  console.log(`[prepareMessagesForApi] 只包含助手消息 ${assistantMessageId} 之前的消息`);
 
   return apiMessages;
 };
@@ -354,7 +691,7 @@ export const deleteMessage = (messageId: string, topicId: string) => async (disp
     ], async () => {
       // 删除消息块
       if (blockIds.length > 0) {
-        await dexieStorage.deleteMessageBlocksByIds(blockIds);
+        await dexieStorage.message_blocks.bulkDelete(blockIds);
       }
 
       // 删除messages表中的消息（保持兼容性）
@@ -388,7 +725,7 @@ export const deleteMessage = (messageId: string, topicId: string) => async (disp
 
     return true;
   } catch (error) {
-    console.error(`删除消息 ${messageId} 失败:`, error);
+    console.error(`删除消息失败:`, error);
     throw error;
   }
 };
@@ -582,5 +919,185 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
   }
 };
 
-// 导出store实例，用于throttledBlockUpdate
-import store from '../index';
+/**
+ * 处理 MCP 工具调用
+ */
+const handleMCPToolCalls = async (
+  content: string,
+  mcpTools: MCPTool[],
+  messageId: string,
+  _topicId: string,
+  dispatch: AppDispatch
+) => {
+  try {
+    console.log('[MCP] 开始处理工具调用');
+
+    // 解析工具使用
+    const toolResponses = parseToolUse(content, mcpTools);
+
+    if (toolResponses.length === 0) {
+      console.log('[MCP] 未找到有效的工具调用');
+      return;
+    }
+
+    console.log(`[MCP] 找到 ${toolResponses.length} 个工具调用`);
+
+    // 创建工具块
+    const toolBlock = createToolBlock(messageId, {
+      toolResponses,
+      status: MessageBlockStatus.PROCESSING
+    });
+
+    // 添加工具块到 Redux 状态
+    dispatch(addOneBlock(toolBlock));
+
+    // 保存工具块到数据库
+    await DataRepository.blocks.save(toolBlock);
+
+    // 将工具块ID添加到消息的blocks数组
+    dispatch(newMessagesActions.upsertBlockReference({
+      messageId: messageId,
+      blockId: toolBlock.id,
+      status: toolBlock.status
+    }));
+
+    // 更新消息的blocks数组
+    const message = await DataRepository.messages.getById(messageId);
+    if (message) {
+      const updatedMessage = {
+        ...message,
+        blocks: [...(message.blocks || []), toolBlock.id],
+        updatedAt: new Date().toISOString()
+      };
+
+      // 更新Redux中的消息
+      dispatch(newMessagesActions.updateMessage({
+        id: messageId,
+        changes: updatedMessage
+      }));
+
+      // 保存消息到数据库
+      await DataRepository.messages.update(messageId, updatedMessage);
+    }
+
+    // 执行工具调用
+    const results = await parseAndCallTools(
+      toolResponses,
+      mcpTools,
+      (toolResponse: MCPToolResponse, _result: MCPCallToolResponse) => {
+        // 工具调用状态更新回调
+        console.log(`[MCP] 工具 ${toolResponse.tool.name} 状态更新:`, toolResponse.status);
+
+        // 只在工具完成时更新工具块
+        if (toolResponse.status === 'done' || toolResponse.status === 'error') {
+          const finalStatus = toolResponse.status === 'done' ? MessageBlockStatus.SUCCESS : MessageBlockStatus.ERROR;
+
+          // 按照电脑版的方式，直接设置 content 为工具响应
+          const changes: Partial<ToolMessageBlock> = {
+            content: toolResponse.response,
+            status: finalStatus,
+            metadata: { rawMcpToolResponse: toolResponse }
+          };
+
+          console.log(`[MCP] 工具完成，更新工具块:`, {
+            blockId: toolBlock.id,
+            toolName: toolResponse.tool.name,
+            status: toolResponse.status,
+            finalStatus,
+            hasResponse: !!toolResponse.response,
+            contentType: typeof toolResponse.response
+          });
+
+          // 更新 Redux 状态
+          dispatch(updateOneBlock({
+            id: toolBlock.id,
+            changes
+          }));
+
+          // 更新数据库
+          DataRepository.blocks.update(toolBlock.id, changes);
+        }
+      }
+    );
+
+    console.log(`[MCP] 工具调用完成，共 ${results.length} 个结果`);
+
+    // 🔥 关键修复：将工具调用结果添加到对话上下文中
+    // 为每个工具调用结果创建一个用户消息，包含工具结果
+    for (const toolResponse of toolResponses) {
+      if (toolResponse.response && toolResponse.status === 'done') {
+        const toolResultContent = formatToolResultForContext(toolResponse);
+
+        // 创建包含工具结果的用户消息
+        const { message: toolResultMessage } = createUserMessage({
+          content: toolResultContent,
+          assistantId: message!.assistantId,
+          topicId: message!.topicId,
+          modelId: '', // 工具结果消息不需要模型ID
+          model: {} as any // 工具结果消息不需要模型
+        });
+
+        // 设置消息状态
+        toolResultMessage.status = UserMessageStatus.SUCCESS;
+
+        // 添加到 Redux 状态
+        dispatch(newMessagesActions.addMessage({
+          topicId: message!.topicId,
+          message: toolResultMessage
+        }));
+
+        // 保存到数据库
+        await DataRepository.messages.save(toolResultMessage);
+
+        console.log(`[MCP] 工具结果已添加到对话上下文:`, toolResponse.tool.name);
+      }
+    }
+
+  } catch (error) {
+    console.error('[MCP] 工具调用处理失败:', error);
+  }
+};
+
+/**
+ * 格式化工具调用结果为上下文内容
+ * 基于电脑版的实现
+ */
+function formatToolResultForContext(toolResponse: MCPToolResponse): string {
+  const { tool, response } = toolResponse;
+
+  if (!response) {
+    return `工具 ${tool.name} 调用失败：无响应`;
+  }
+
+  if (response.isError) {
+    const errorContent = response.content?.[0]?.text || '未知错误';
+    return `工具 ${tool.name} 调用失败：${errorContent}`;
+  }
+
+  // 构建工具结果消息，格式与电脑版保持一致
+  let resultText = `Here is the result of mcp tool use \`${tool.name}\`:\n\n`;
+
+  if (response.content && response.content.length > 0) {
+    for (const item of response.content) {
+      switch (item.type) {
+        case 'text':
+          resultText += item.text || '';
+          break;
+        case 'image':
+          resultText += `[图像数据: ${item.mimeType || 'unknown'}]`;
+          break;
+        case 'resource':
+          resultText += `[资源数据: ${item.mimeType || 'unknown'}]`;
+          break;
+        default:
+          resultText += `[未知内容类型: ${item.type}]`;
+          break;
+      }
+      resultText += '\n';
+    }
+  } else {
+    resultText += '无响应内容';
+  }
+
+  return resultText.trim();
+}

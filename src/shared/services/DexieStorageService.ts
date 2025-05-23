@@ -7,6 +7,7 @@ import type { Message } from '../types/newMessage.ts';
 import { DB_CONFIG } from '../types/DatabaseSchema';
 import { throttle } from 'lodash';
 import { makeSerializable, diagnoseSerializationIssues } from '../utils/serialization';
+import { DataRepairService } from './DataRepairService';
 
 /**
  * 基于Dexie.js的统一存储服务
@@ -21,6 +22,7 @@ class DexieStorageService extends Dexie {
   metadata!: Dexie.Table<any, string>;
   message_blocks!: Dexie.Table<MessageBlock, string>;
   messages!: Dexie.Table<Message, string>;
+  files!: Dexie.Table<any, string>;
 
   private static instance: DexieStorageService;
 
@@ -49,6 +51,28 @@ class DexieStorageService extends Dexie {
       [DB_CONFIG.STORES.MESSAGE_BLOCKS]: 'id, messageId',
       [DB_CONFIG.STORES.MESSAGES]: 'id, topicId, assistantId',
     }).upgrade(() => this.upgradeToV5());
+
+    // 添加版本6，增加文件存储表
+    this.version(6).stores({
+      [DB_CONFIG.STORES.ASSISTANTS]: 'id',
+      [DB_CONFIG.STORES.TOPICS]: 'id, _lastMessageTimeNum, messages',
+      [DB_CONFIG.STORES.SETTINGS]: 'id',
+      [DB_CONFIG.STORES.IMAGES]: 'id',
+      [DB_CONFIG.STORES.IMAGE_METADATA]: 'id, topicId, created',
+      [DB_CONFIG.STORES.METADATA]: 'id',
+      [DB_CONFIG.STORES.MESSAGE_BLOCKS]: 'id, messageId',
+      [DB_CONFIG.STORES.MESSAGES]: 'id, topicId, assistantId',
+      files: 'id, name, origin_name, size, ext, type, created_at, count, hash',
+    }).upgrade(() => this.upgradeToV6());
+  }
+
+  /**
+   * 升级到数据库版本6：添加文件存储表
+   */
+  private async upgradeToV6(): Promise<void> {
+    console.log('开始升级到数据库版本6: 添加文件存储表...');
+    // 文件表会自动创建，无需特殊处理
+    console.log('数据库升级到版本6完成');
   }
 
   /**
@@ -583,8 +607,62 @@ class DexieStorageService extends Dexie {
     await this.imageMetadata.delete(id);
   }
 
-  async saveBase64Image(_base64Data: string, _metadata: any = {}): Promise<string> {
-    throw new Error('未实现的方法 saveBase64Image');
+  async saveBase64Image(base64Data: string, metadata: any = {}): Promise<string> {
+    try {
+      // 生成唯一ID
+      const id = metadata.id || uuid();
+
+      // 将base64转换为Blob
+      const blob = this.base64ToBlob(base64Data);
+
+      // 保存Blob到images表
+      await this.images.put(blob, id);
+
+      // 保存元数据到imageMetadata表
+      const imageMetadata = {
+        ...metadata,
+        id,
+        created: new Date().toISOString(),
+        size: blob.size,
+        type: blob.type
+      };
+      await this.imageMetadata.put(imageMetadata);
+
+      return id;
+    } catch (error) {
+      console.error('保存base64图片失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 将base64字符串转换为Blob
+   */
+  private base64ToBlob(base64Data: string): Blob {
+    // 处理data URL格式 (data:image/png;base64,...)
+    let base64String = base64Data;
+    let mimeType = 'image/png'; // 默认类型
+
+    if (base64Data.startsWith('data:')) {
+      const [header, data] = base64Data.split(',');
+      base64String = data;
+
+      // 提取MIME类型
+      const mimeMatch = header.match(/data:([^;]+)/);
+      if (mimeMatch) {
+        mimeType = mimeMatch[1];
+      }
+    }
+
+    // 将base64转换为二进制数据
+    const binaryString = atob(base64String);
+    const bytes = new Uint8Array(binaryString.length);
+
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    return new Blob([bytes], { type: mimeType });
   }
 
   async saveMetadata(key: string, value: any): Promise<void> {
@@ -939,7 +1017,6 @@ class DexieStorageService extends Dexie {
     console.log('[DexieStorageService] repairMessagesData 已废弃，请使用 DataRepairService.repairMessagesData()');
 
     try {
-      const { DataRepairService } = await import('./DataRepairService');
       await DataRepairService.repairMessagesData();
     } catch (error) {
       console.error('[DexieStorageService] 委托修复消息数据失败:', error);

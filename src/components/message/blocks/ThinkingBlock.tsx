@@ -53,7 +53,8 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
   const [expanded, setExpanded] = useState(!thoughtAutoCollapse);
   const theme = useTheme();
   const isThinking = block.status === MessageBlockStatus.STREAMING;
-  const [thinkingTime, setThinkingTime] = useState(block.thinking_millsec || 0);
+  // 修复：使用稳定的思考时间，避免每次渲染都变化
+  const [thinkingTime, setThinkingTime] = useState(() => block.thinking_millsec || 0);
   const [copied, setCopied] = useState(false);
 
   // 添加强制更新机制
@@ -108,7 +109,8 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
     }
   }, [isThinking, block.content]);
 
-  // 更新思考时间计时器
+  // 修复：分离思考时间更新和自动折叠逻辑
+  // 思考时间计时器 - 只在思考状态变化时更新
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
 
@@ -117,14 +119,6 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
       timer = setInterval(() => {
         setThinkingTime(prev => prev + 100);
       }, 100);
-    } else if (block.thinking_millsec) {
-      // 如果思考已完成，使用服务器返回的思考时间
-      setThinkingTime(block.thinking_millsec);
-    }
-
-    // 如果思考完成且设置为自动折叠，则折叠思考过程
-    if (!isThinking && thoughtAutoCollapse) {
-      setExpanded(false);
     }
 
     return () => {
@@ -132,7 +126,22 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
         clearInterval(timer);
       }
     };
-  }, [isThinking, block.thinking_millsec, thoughtAutoCollapse]);
+  }, [isThinking]); // 只依赖思考状态
+
+  // 修复：只在思考完成时设置最终时间，避免重复设置
+  useEffect(() => {
+    if (!isThinking && block.thinking_millsec && block.thinking_millsec !== thinkingTime) {
+      // 只有当思考完成且服务器返回的时间与当前时间不同时才更新
+      setThinkingTime(block.thinking_millsec);
+    }
+  }, [isThinking, block.thinking_millsec]); // 移除 thinkingTime 依赖避免循环
+
+  // 自动折叠逻辑 - 独立处理
+  useEffect(() => {
+    if (!isThinking && thoughtAutoCollapse) {
+      setExpanded(false);
+    }
+  }, [isThinking, thoughtAutoCollapse]);
 
   // 如果设置为隐藏思考过程，则不显示
   if (thinkingDisplayStyle === 'hidden') {
@@ -151,6 +160,9 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
         borderRadius: '8px',
         overflow: 'hidden',
         transition: 'all 0.2s ease',
+        width: '100%', // 固定占满屏幕宽度
+        maxWidth: '100%', // 确保不超出屏幕
+        minWidth: 0, // 允许收缩
         '&:hover': {
           backgroundColor: theme.palette.mode === 'dark'
             ? 'rgba(255, 255, 255, 0.05)'
@@ -212,7 +224,14 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
 
       {/* 内容区域 */}
       <Collapse in={expanded}>
-        <Box sx={{ p: 2 }}>
+        <Box sx={{
+          p: 2,
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflow: 'hidden' // 防止内容溢出导致重排
+        }}>
           <Markdown content={memoizedContent} allowHtml={false} />
         </Box>
       </Collapse>
@@ -227,7 +246,10 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
         mb: 2,
         border: `1px solid ${theme.palette.divider}`,
         borderRadius: '8px',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        width: '100%', // 固定占满屏幕宽度
+        maxWidth: '100%', // 确保不超出屏幕
+        minWidth: 0 // 允许收缩
       }}
     >
       <Box
@@ -264,7 +286,14 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
         </IconButton>
       </Box>
 
-      <Box sx={{ p: 2 }} key={`thinking-content-${updateCounter}`}>
+      <Box sx={{
+        p: 2,
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box',
+        overflow: 'hidden' // 防止内容溢出导致重排
+      }} key={`thinking-content-${updateCounter}`}>
         <Markdown content={memoizedContent} allowHtml={false} />
       </Box>
     </StyledPaper>
@@ -278,6 +307,14 @@ const StyledPaper = styled(Paper)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   boxShadow: 'none',
   transition: theme.transitions.create(['background-color', 'box-shadow']),
+  // 性能优化：固定布局属性，避免重排
+  width: '100%',
+  maxWidth: '100%',
+  minWidth: 0,
+  boxSizing: 'border-box',
+  // 启用硬件加速
+  transform: 'translateZ(0)',
+  willChange: 'background-color, box-shadow'
 }));
 
 export default React.memo(ThinkingBlock);

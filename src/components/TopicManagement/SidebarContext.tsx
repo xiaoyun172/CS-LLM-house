@@ -2,15 +2,18 @@ import React, { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 import type { Assistant } from '../../shared/types/Assistant';
 import type { ChatTopic } from '../../shared/types';
+import type { ThinkingOption } from '../../shared/config/reasoningConfig';
 
 // 定义设置类型
 export interface Settings {
   streamOutput: boolean;
   showMessageDivider: boolean;
   copyableCodeBlocks: boolean;
+  highPerformanceStreaming: boolean; // 新增：高性能流式输出
   contextLength: number;
   contextCount: number;
   mathRenderer: 'KaTeX' | 'MathJax';
+  defaultThinkingEffort: ThinkingOption;
 }
 
 export interface SettingItem {
@@ -54,6 +57,13 @@ export interface SidebarContextType {
   handleContextLengthChange: (value: number) => void;
   handleContextCountChange: (value: number) => void;
   handleMathRendererChange: (value: any) => void;
+  handleThinkingEffortChange: (value: ThinkingOption) => void;
+
+  // MCP 相关状态和函数
+  mcpMode?: 'prompt' | 'function';
+  toolsEnabled?: boolean;
+  handleMCPModeChange?: (mode: 'prompt' | 'function') => void;
+  handleToolsToggle?: (enabled: boolean) => void;
 
   // 刷新函数
   refreshTopics: () => Promise<void>;

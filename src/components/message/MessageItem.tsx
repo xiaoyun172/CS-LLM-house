@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { createSelector } from '@reduxjs/toolkit';
 import {
   Box,
   Avatar,
@@ -11,23 +12,23 @@ import {
 import PersonIcon from '@mui/icons-material/Person';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import type { Message, MessageBlock } from '../../shared/types/newMessage.ts';
-import { MessageBlockType } from '../../shared/types/newMessage.ts';
 import { messageBlocksSelectors } from '../../shared/store/slices/messageBlocksSlice';
 import { dexieStorage } from '../../shared/services/DexieStorageService';
 import { upsertManyBlocks } from '../../shared/store/slices/messageBlocksSlice';
-import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventEmitter';
+// import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventEmitter';
 import MessageActions from './MessageActions';
 import MessageBlockRenderer from './MessageBlockRenderer';
 import type { RootState } from '../../shared/store';
-import { versionService } from '../../shared/services/VersionService';
 
 interface MessageItemProps {
   message: Message;
   showAvatar?: boolean;
   isCompact?: boolean;
+  messageIndex?: number; // 消息在全局列表中的索引，用于分支功能
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onSwitchVersion?: (versionId: string) => void;
+  onResend?: (messageId: string) => void;
   forceUpdate?: () => void;
 }
 
@@ -35,72 +36,72 @@ const MessageItem: React.FC<MessageItemProps> = ({
   message,
   showAvatar = true,
   isCompact = false,
+  messageIndex,
   onRegenerate,
   onDelete,
   onSwitchVersion,
+  onResend,
   forceUpdate
 }) => {
   const dispatch = useDispatch();
   const theme = useTheme();
   // 新增状态来存储模型头像
   const [modelAvatar, setModelAvatar] = useState<string | null>(null);
+  // 新增状态来存储用户头像
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+
+  // 使用 useRef 存储 forceUpdate 引用，避免依赖项问题
+  const forceUpdateRef = useRef(forceUpdate);
+
+  // 更新 forceUpdateRef 的当前值
+  useEffect(() => {
+    forceUpdateRef.current = forceUpdate;
+  }, [forceUpdate]);
+
+  // 创建记忆化的 providers selector
+  const providers = useSelector((state: RootState) => state.settings.providers || [],
+    (prev, next) => prev === next // 浅比较，因为providers数组引用应该是稳定的
+  );
+
+  // 获取供应商友好名称的函数 - 使用useMemo进一步优化
+  const getProviderName = useMemo(() => {
+    const providerMap = new Map(providers.map(p => [p.id, p.name]));
+    return (providerId: string) => providerMap.get(providerId) || providerId;
+  }, [providers]);
+
+  // 创建记忆化的 selector 来避免不必要的重新渲染
+  const selectMessageBlocks = useMemo(
+    () => createSelector(
+      [
+        (state: RootState) => state,
+        () => message.blocks
+      ],
+      (state, blockIds) =>
+        blockIds
+          .map((blockId: string) => messageBlocksSelectors.selectById(state, blockId))
+          .filter(Boolean) as MessageBlock[]
+    ),
+    [message.blocks] // 只有当 message.blocks 改变时才重新创建 selector
+  );
 
   // 从Redux状态中获取块
-  const blocks = useSelector((state: RootState) =>
-    message.blocks
-      .map((blockId: string) => messageBlocksSelectors.selectById(state, blockId))
-      .filter(Boolean) as MessageBlock[]
-  );
+  const blocks = useSelector(selectMessageBlocks);
 
   const loading = useSelector((state: RootState) =>
     state.messageBlocks.loadingState === 'loading'
   );
 
-  // 调试日志
-  console.log(`[MessageItem] 渲染消息: ID=${message.id}, 角色=${message.role}, 状态=${message.status}, 块数量=${blocks.length}, 版本数量=${message.versions?.length || 0}`);
 
-  // 记录当前活跃版本
-  if (message.versions && message.versions.length > 0) {
-    const activeVersion = message.versions.find(v => v.isActive);
-    console.log(`[MessageItem] 当前活跃版本: ${activeVersion?.id}, 版本块数量: ${activeVersion?.blocks?.length || 0}`);
-  }
-
-  // 记录消息块信息
-  if (blocks.length > 0) {
-    blocks.forEach(block => {
-      // 安全地获取内容长度
-      let contentLength = 0;
-      if (block.type === MessageBlockType.MAIN_TEXT ||
-          block.type === MessageBlockType.CODE ||
-          block.type === MessageBlockType.THINKING ||
-          block.type === MessageBlockType.CITATION ||
-          block.type === MessageBlockType.TRANSLATION) {
-        contentLength = (block as any).content?.length || 0;
-      }
-      console.log(`[MessageItem] 块信息: ID=${block.id}, 类型=${block.type}, 状态=${block.status}, 内容长度=${contentLength}`);
-    });
-  }
 
   // 如果Redux中没有块，从数据库加载
   useEffect(() => {
     const loadBlocks = async () => {
       if (blocks.length === 0 && message.blocks.length > 0) {
-        console.log(`[MessageItem] 从数据库加载块: 消息ID=${message.id}, 块ID列表=${message.blocks.join(',')}`);
         try {
           const messageBlocks: MessageBlock[] = [];
           for (const blockId of message.blocks) {
             const block = await dexieStorage.getMessageBlock(blockId);
             if (block) {
-              // 安全地获取内容长度
-              let contentLength = 0;
-              if (block.type === MessageBlockType.MAIN_TEXT ||
-                  block.type === MessageBlockType.CODE ||
-                  block.type === MessageBlockType.THINKING ||
-                  block.type === MessageBlockType.CITATION ||
-                  block.type === MessageBlockType.TRANSLATION) {
-                contentLength = (block as any).content?.length || 0;
-              }
-              console.log(`[MessageItem] 从数据库加载块成功: ID=${block.id}, 类型=${block.type}, 内容长度=${contentLength}`);
               messageBlocks.push(block);
             } else {
               console.warn(`[MessageItem] 数据库中找不到块: ID=${blockId}`);
@@ -108,7 +109,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
           }
 
           if (messageBlocks.length > 0) {
-            console.log(`[MessageItem] 更新Redux状态: 加载了${messageBlocks.length}个块`);
             dispatch(upsertManyBlocks(messageBlocks));
           } else {
             console.warn(`[MessageItem] 数据库中没有找到任何块: 消息ID=${message.id}`);
@@ -124,102 +124,56 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   // 在块状态变化时，可以使用forceUpdate触发重新渲染
   useEffect(() => {
-    if (message.status === 'streaming' && forceUpdate) {
-      // 定期触发强制更新以确保UI反映最新状态
+    if (message.status === 'streaming') {
+      // 减少强制更新频率，避免过度渲染
       const interval = setInterval(() => {
-        forceUpdate();
-      }, 100);
+        if (forceUpdateRef.current) {
+          forceUpdateRef.current();
+        }
+      }, 200); // 增加到200ms，减少更新频率
 
-      // 监听流式输出事件
-      const textDeltaHandler = () => {
-        forceUpdate();
-      };
-
-      // 订阅事件
-      const unsubscribeTextDelta = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_DELTA, textDeltaHandler);
-      const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, textDeltaHandler);
-      const unsubscribeThinkingDelta = EventEmitter.on(EVENT_NAMES.STREAM_THINKING_DELTA, textDeltaHandler);
+      // 移除事件监听器中的 forceUpdate 调用，避免无限循环
+      // 流式输出的更新应该由 MainTextBlock 组件自己处理
 
       return () => {
         clearInterval(interval);
-        unsubscribeTextDelta();
-        unsubscribeTextComplete();
-        unsubscribeThinkingDelta();
       };
     }
-  }, [message.status, forceUpdate]);
+  }, [message.status]); // 只依赖message.status，避免无限循环
 
-  // 自动加载最新版本
+  // 版本恢复逻辑已移至TopicService.loadTopicMessages中统一处理
+  // 这里不再需要重复的版本恢复逻辑
+
+  // 获取用户头像
   useEffect(() => {
-    const autoLoadLatestVersion = async () => {
-      // 只处理助手消息
-      if (message.role !== 'assistant') return;
-
-      // 检查消息是否有版本但没有块
-      if (message.versions && message.versions.length > 0 &&
-          (!message.blocks || message.blocks.length === 0)) {
-        console.log(`[MessageItem] 检测到消息有版本但没有块，尝试加载最新版本: 消息ID=${message.id}`);
-
-        // 首先检查localStorage中是否有保存的最新版本ID
-        const latestVersionId = localStorage.getItem(`message_latest_version_${message.id}`);
-
-        if (latestVersionId) {
-          console.log(`[MessageItem] 从localStorage找到最新版本ID: ${latestVersionId}`);
-          // 切换到最新版本
-          try {
-            const success = await versionService.switchToVersion(latestVersionId);
-            if (success) {
-              console.log(`[MessageItem] 成功切换到最新版本: ${latestVersionId}`);
-              // 清除localStorage中的版本ID
-              localStorage.removeItem(`message_latest_version_${message.id}`);
-              // 如果有forceUpdate函数，调用它触发重新渲染
-              if (forceUpdate) forceUpdate();
-            } else {
-              console.error(`[MessageItem] 切换到最新版本失败: ${latestVersionId}`);
-            }
-          } catch (error) {
-            console.error(`[MessageItem] 切换版本时出错:`, error);
-          }
+    const fetchUserAvatar = () => {
+      try {
+        const savedUserAvatar = localStorage.getItem('user_avatar');
+        if (savedUserAvatar) {
+          setUserAvatar(savedUserAvatar);
         } else {
-          // 如果localStorage中没有保存的版本ID，尝试找到活跃版本
-          const activeVersion = message.versions.find(v => v.isActive);
-          if (activeVersion) {
-            console.log(`[MessageItem] 找到活跃版本: ${activeVersion.id}`);
-            try {
-              const success = await versionService.switchToVersion(activeVersion.id);
-              if (success) {
-                console.log(`[MessageItem] 成功切换到活跃版本: ${activeVersion.id}`);
-                if (forceUpdate) forceUpdate();
-              } else {
-                console.error(`[MessageItem] 切换到活跃版本失败: ${activeVersion.id}`);
-              }
-            } catch (error) {
-              console.error(`[MessageItem] 切换版本时出错:`, error);
-            }
-          } else {
-            // 如果没有活跃版本，使用最后一个版本
-            const lastVersion = message.versions[message.versions.length - 1];
-            if (lastVersion) {
-              console.log(`[MessageItem] 使用最后一个版本: ${lastVersion.id}`);
-              try {
-                const success = await versionService.switchToVersion(lastVersion.id);
-                if (success) {
-                  console.log(`[MessageItem] 成功切换到最后一个版本: ${lastVersion.id}`);
-                  if (forceUpdate) forceUpdate();
-                } else {
-                  console.error(`[MessageItem] 切换到最后一个版本失败: ${lastVersion.id}`);
-                }
-              } catch (error) {
-                console.error(`[MessageItem] 切换版本时出错:`, error);
-              }
-            }
-          }
+          setUserAvatar(null);
         }
+      } catch (error) {
+        console.error('获取用户头像失败:', error);
       }
     };
 
-    autoLoadLatestVersion();
-  }, [message.id, message.role, message.versions, message.blocks, forceUpdate]);
+    fetchUserAvatar();
+
+    // 监听 localStorage 变化，实时更新头像
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'user_avatar') {
+        setUserAvatar(e.newValue);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // 尝试获取模型头像
   useEffect(() => {
@@ -231,11 +185,9 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
           if (modelConfig?.avatar) {
             // 如果数据库中有头像，使用它
-            console.log(`[MessageItem] 从数据库获取模型头像: ${message.model.id}`);
             setModelAvatar(modelConfig.avatar);
           } else if (message.model.iconUrl) {
             // 如果模型有iconUrl，使用它
-            console.log(`[MessageItem] 使用模型iconUrl: ${message.model.id}`);
             setModelAvatar(message.model.iconUrl);
 
             // 同时保存到数据库以便将来使用
@@ -291,16 +243,27 @@ const MessageItem: React.FC<MessageItemProps> = ({
           {isUserMessage ? (
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexDirection: 'row-reverse' }}>
               {/* 用户头像 */}
-              <Avatar
-                sx={{
-                  bgcolor: '#00c853', // 绿色背景
-                  width: 36,
-                  height: 36,
-                  borderRadius: '20%', // 更接近方形的头像
-                }}
-              >
-                <PersonIcon sx={{ fontSize: 20, color: 'white' }} />
-              </Avatar>
+              {userAvatar ? (
+                <Avatar
+                  src={userAvatar}
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '20%', // 更接近方形的头像
+                  }}
+                />
+              ) : (
+                <Avatar
+                  sx={{
+                    bgcolor: '#00c853', // 绿色背景
+                    width: 36,
+                    height: 36,
+                    borderRadius: '20%', // 更接近方形的头像
+                  }}
+                >
+                  <PersonIcon sx={{ fontSize: 20, color: 'white' }} />
+                </Avatar>
+              )}
 
               {/* 用户名称和时间 */}
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -375,7 +338,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 >
                   {/* 模型名 + 供应商名称 */}
                   {message.model ?
-                    `${message.model.name}${message.model.provider ? ' | ' + message.model.provider : ''}`
+                    `${message.model.name}${message.model.provider ? ' | ' + getProviderName(message.model.provider) : ''}`
                     : (message.modelId || 'AI')}
                 </Typography>
                 {/* 时间显示 */}
@@ -474,36 +437,40 @@ const MessageItem: React.FC<MessageItemProps> = ({
             <MessageActions
               message={message as any}
               topicId={message.topicId}
+              messageIndex={messageIndex}
               onRegenerate={onRegenerate}
               onDelete={onDelete}
               onSwitchVersion={onSwitchVersion}
+              onResend={onResend}
               renderMode="full" // 完整模式，显示版本指示器和播放按钮
             />
           </Box>
         )}
 
-        {/* 三点菜单按钮 - 只对AI消息显示，放置在气泡内的右上角 */}
-        {!isUserMessage && (
-          <Box sx={{
-            position: 'absolute',
-            top: 5, // 放在气泡内部的右上角
-            right: 5, // 放在气泡内部的右上角
-            display: 'flex',
-            flexDirection: 'row',
-            zIndex: 10,
-            pointerEvents: 'auto', // 确保可点击
-          }}>
-            <MessageActions
-              message={message as any}
-              topicId={message.topicId}
-              onRegenerate={onRegenerate}
-              onDelete={onDelete}
-              onSwitchVersion={onSwitchVersion}
-              renderMode="menuOnly" // 只显示三点菜单按钮
-            />
-          </Box>
-        )}
+        {/* 三点菜单按钮 - 对所有消息显示，放置在气泡内的右上角 */}
+        <Box sx={{
+          position: 'absolute',
+          top: 5, // 放在气泡内部的右上角
+          right: 5, // 放在气泡内部的右上角
+          display: 'flex',
+          flexDirection: 'row',
+          zIndex: 10,
+          pointerEvents: 'auto', // 确保可点击
+        }}>
+          <MessageActions
+            message={message as any}
+            topicId={message.topicId}
+            messageIndex={messageIndex}
+            onRegenerate={onRegenerate}
+            onDelete={onDelete}
+            onSwitchVersion={onSwitchVersion}
+            onResend={onResend}
+            renderMode="menuOnly" // 只显示三点菜单按钮
+          />
+        </Box>
       </Box>
+
+
     </Box>
   );
 };

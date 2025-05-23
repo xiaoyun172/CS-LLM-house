@@ -1,18 +1,38 @@
 import type { Model } from '../../types';
-import { getProviderApi, testConnection } from '../ProviderFactory';
+import { getActualProviderType, testConnection } from '../ProviderFactory';
+import { OpenAIProvider } from '../../api/openai';
+import { AnthropicProvider } from '../../api/anthropic';
+import { GeminiProvider } from '../../api/gemini';
 
 /**
- * API提供商注册表 - 简化版本，参考电脑版架构
+ * API提供商注册表 - 修复版本，避免重复请求
  * 负责管理和获取API服务提供商
  */
 export const ApiProviderRegistry = {
   /**
-   * 获取API提供商 - 直接委托给ProviderFactory
+   * 获取API提供商 - 返回Provider实例而不是API模块
    * @param model 模型配置
    * @returns API提供商实例
    */
   get(model: Model) {
-    return getProviderApi(model);
+    // 直接创建Provider实例，避免通过API模块的双重调用
+    const providerType = getActualProviderType(model);
+
+    switch (providerType) {
+      case 'anthropic':
+        return new AnthropicProvider(model);
+      case 'gemini':
+        return new GeminiProvider(model);
+      case 'azure-openai':
+      case 'openai':
+      case 'deepseek':
+      case 'google':
+      case 'grok':
+      case 'siliconflow':
+      case 'volcengine':
+      default:
+        return new OpenAIProvider(model);
+    }
   },
 
   /**

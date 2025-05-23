@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { v4 as uuidv4 } from 'uuid';
 import * as tinyPinyin from 'tiny-pinyin';
 import type { Assistant } from '../../../shared/types/Assistant';
-import type { RootState } from '../../../shared/store';
+
 import { AssistantService } from '../../../shared/services';
 import { dexieStorage } from '../../../shared/services/DexieStorageService';
 import { addItemToGroup } from '../../../shared/store/slices/groupsSlice';
@@ -28,8 +28,7 @@ export function useAssistantTabLogic(
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
 
-  // 从Redux获取助手列表，用于调试
-  const reduxAssistants = useSelector((state: RootState) => state.assistants.assistants);
+
 
   // 使用助手分组钩子
   const {
@@ -61,12 +60,7 @@ export function useAssistantTabLogic(
   const [editAssistantName, setEditAssistantName] = useState('');
   const [editAssistantPrompt, setEditAssistantPrompt] = useState('');
 
-  // 添加调试日志，监控助手列表变化
-  useEffect(() => {
-    console.log('[AssistantTab] userAssistants 更新:', userAssistants.length);
-    console.log('[AssistantTab] reduxAssistants:', reduxAssistants.length);
-    console.log('[AssistantTab] ungroupedAssistants:', ungroupedAssistants?.length || 0);
-  }, [userAssistants, reduxAssistants, ungroupedAssistants]);
+
 
   // 显示通知
   const showNotification = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'success') => {

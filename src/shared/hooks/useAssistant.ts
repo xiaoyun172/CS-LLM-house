@@ -22,19 +22,10 @@ export function useAssistant(assistantId: string | null) {
   // 添加加载状态
   const [isLoading, setIsLoading] = useState(false);
 
-  console.log(`[useAssistant] Hook初始化，assistantId: ${assistantId}`, {
-    found: !!assistant,
-    topicIdsFromStore: assistant?.topicIds?.length || 0,
-    topicsFromStore: assistant?.topics?.length || 0,
-    isLoading
-  });
+
 
   const loadAssistantTopics = useCallback(async () => {
     if (!assistantId || !assistant) {
-      console.log(`[useAssistant] 无法加载话题，assistantId或assistant为空`, {
-        assistantId,
-        assistant: !!assistant
-      });
       return;
     }
 
@@ -42,14 +33,11 @@ export function useAssistant(assistantId: string | null) {
     const hasTopics = assistant.topics && assistant.topics.length > 0;
 
     if (hasTopics) {
-      console.log(`[useAssistant] 助手 ${assistantId} 已有话题数据，跳过加载`);
       return;
     }
 
     // 只有在需要从数据库加载时才设置加载状态
     setIsLoading(true);
-    console.log('[useAssistant] 开始加载助手话题，assistantId:', assistantId, '加载状态:', true);
-    console.log('[useAssistant] 助手对象:', assistant.name, assistant.id);
 
     try {
       // 直接从数据库获取所有话题
@@ -58,11 +46,8 @@ export function useAssistant(assistantId: string | null) {
       // 通过assistantId筛选出属于当前助手的话题
       const assistantTopics = allTopics.filter(topic => topic.assistantId === assistantId);
 
-      console.log(`[useAssistant] 已加载助手 ${assistantId} 的话题，数量: ${assistantTopics.length}`);
-
       // 如果没有找到话题，可能需要创建默认话题
       if (assistantTopics.length === 0) {
-        console.log('[useAssistant] 未找到该助手的话题，尝试创建默认话题');
         try {
           // 设置当前助手ID
           await dexieStorage.saveSetting('currentAssistant', assistantId);
@@ -73,7 +58,6 @@ export function useAssistant(assistantId: string | null) {
 
           // 保存话题到数据库
           await dexieStorage.saveTopic(newTopic);
-          console.log('[useAssistant] 已创建并保存默认话题:', newTopic.id);
 
           // 将新创建的话题添加到结果中
           assistantTopics.push(newTopic);
@@ -89,8 +73,6 @@ export function useAssistant(assistantId: string | null) {
         return timeB - timeA;
       });
 
-      console.log('[useAssistant] 成功加载助手话题，总数:', sortedTopics.length);
-
       // 更新Redux状态
       if (sortedTopics.length > 0) {
         dispatch(updateAssistantTopics({ assistantId, topics: sortedTopics }));
@@ -100,7 +82,6 @@ export function useAssistant(assistantId: string | null) {
     } finally {
       // 无论成功失败都重置加载状态
       setIsLoading(false);
-      console.log('[useAssistant] 话题加载完成，加载状态:', false);
     }
   }, [assistantId, assistant, dispatch]);
 
@@ -113,7 +94,6 @@ export function useAssistant(assistantId: string | null) {
 
     const handleTopicChange = (eventData: any) => {
       if (eventData && (eventData.assistantId === assistantId || !eventData.assistantId)) {
-        console.log('[useAssistant] 收到话题变更事件，准备刷新话题:', eventData);
         loadAssistantTopics();
       }
     };
@@ -143,7 +123,6 @@ export function useAssistant(assistantId: string | null) {
 
       // 更新Redux状态
       dispatch(addTopic({ assistantId, topic }));
-      console.log('[useAssistant] 成功添加话题到助手:', { topicId: topic.id, assistantId });
       return true;
     } catch (err) {
       console.error('添加话题失败:', err);
@@ -158,7 +137,6 @@ export function useAssistant(assistantId: string | null) {
       await dexieStorage.deleteTopic(topicId);
 
       dispatch(removeTopic({ assistantId, topicId }));
-      console.log('[useAssistant] 成功从助手中删除话题:', { topicId, assistantId });
       return true;
     } catch (err) {
       console.error('删除话题失败:', err);
@@ -177,7 +155,6 @@ export function useAssistant(assistantId: string | null) {
     try {
       await dexieStorage.saveTopic(topic);
       dispatch(updateTopic({ assistantId, topic }));
-      console.log('[useAssistant] 成功更新话题:', { topicId: topic.id, assistantId });
       return true;
     } catch (err) {
       console.error('更新话题失败:', err);

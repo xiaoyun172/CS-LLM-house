@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   IconButton,
   Menu,
@@ -10,7 +10,12 @@ import {
   Typography,
   List,
   ListItem,
-  ListItemText
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
@@ -23,24 +28,27 @@ import { TTSService } from '../../shared/services/TTSService';
 import { getMainTextContent } from '../../shared/utils/messageUtils';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { TopicService } from '../../shared/services/TopicService';
-import { newMessagesActions } from '../../shared/store/slices/newMessagesSlice';
+import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventService';
 
 interface MessageActionsProps {
   message: Message;
   topicId?: string;
+  messageIndex?: number; // 消息在列表中的索引，用于分支功能
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onSwitchVersion?: (messageId: string) => void;
+  onResend?: (messageId: string) => void; // 新增重新发送回调
   renderMode?: 'full' | 'menuOnly'; // 新增渲染模式参数
 }
 
 const MessageActions: React.FC<MessageActionsProps> = ({
   message,
   topicId,
+  messageIndex = 0,
   onRegenerate,
   onDelete,
   onSwitchVersion,
+  onResend,
   renderMode = 'full' // 默认为完整渲染模式
 }) => {
   const isUser = message.role === 'user';
@@ -63,6 +71,14 @@ const MessageActions: React.FC<MessageActionsProps> = ({
   // 版本切换弹出框状态
   const [versionAnchorEl, setVersionAnchorEl] = useState<null | HTMLElement>(null);
   const versionPopoverOpen = Boolean(versionAnchorEl);
+
+  // 确认对话框状态
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmDialogConfig, setConfirmDialogConfig] = useState<{
+    title: string;
+    content: string;
+    onConfirm: () => void;
+  }>({ title: '', content: '', onConfirm: () => {} });
 
   // TTS播放状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -146,13 +162,21 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     handleMenuClose();
   };
 
-  // 删除消息
-  const handleDeleteClick = () => {
-    if (onDelete) {
-      onDelete(message.id);
-    }
+  // 删除消息 - 添加确认对话框
+  const handleDeleteClick = useCallback(() => {
+    setConfirmDialogConfig({
+      title: '删除消息',
+      content: '确定要删除此消息吗？此操作不可撤销。',
+      onConfirm: () => {
+        if (onDelete) {
+          onDelete(message.id);
+        }
+        setConfirmDialogOpen(false);
+      }
+    });
+    setConfirmDialogOpen(true);
     handleMenuClose();
-  };
+  }, [onDelete, message.id]);
 
   // 重新生成消息
   const handleRegenerateClick = () => {
@@ -162,48 +186,52 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     handleMenuClose();
   };
 
-  // 创建分支
-  const handleCreateBranch = async () => {
-    try {
-      if (!topicId) {
-        console.error('[MessageActions] 无法创建分支: 缺少topicId');
-        alert('无法创建分支: 缺少主题ID');
-        return;
-      }
-
-      // 显示加载提示
-      alert('正在创建分支...');
-
-      // 调用TopicService创建分支
-      const newTopic = await TopicService.createTopicBranch(topicId, message.id);
-
-      if (newTopic) {
-        console.log(`[MessageActions] 成功创建分支主题: ${newTopic.id}`);
-
-        // 确保切换到新主题
-        import('../../shared/store').then(({ default: store }) => {
-          // 显式设置当前主题ID
-          store.dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
-
-          // 强制刷新页面以确保切换到新主题
-          setTimeout(() => {
-            window.location.reload();
-          }, 500);
-        });
-
-        // 成功提示
-        alert(`已创建分支: ${newTopic.name}，即将切换到新分支...`);
-      } else {
-        console.error('[MessageActions] 创建分支失败');
-        alert('创建分支失败，请重试');
-      }
-    } catch (error) {
-      console.error('[MessageActions] 创建分支错误:', error);
-      alert('创建分支时发生错误');
+  // 重新发送消息（用户消息）
+  const handleResendClick = () => {
+    if (onResend) {
+      onResend(message.id);
     }
-
     handleMenuClose();
   };
+
+  // 保存消息内容
+  const handleSaveContent = () => {
+    try {
+      const textContent = getMainTextContent(message);
+      const timestamp = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
+      const fileName = `message_${timestamp}.txt`;
+
+      // 创建下载链接
+      const blob = new Blob([textContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      alert('消息内容已保存');
+    } catch (error) {
+      console.error('保存消息内容失败:', error);
+      alert('保存失败');
+    }
+    handleMenuClose();
+  };
+
+  // 创建分支 - 使用电脑版的事件机制
+  const handleCreateBranch = useCallback(() => {
+    if (messageIndex === undefined) {
+      console.error('[MessageActions] 无法创建分支: 缺少messageIndex');
+      return;
+    }
+
+    // 发送NEW_BRANCH事件，传递消息索引
+    EventEmitter.emit(EVENT_NAMES.NEW_BRANCH, messageIndex);
+
+    handleMenuClose();
+  }, [messageIndex]);
 
   // 文本转语音
   const handleTextToSpeech = async () => {
@@ -232,8 +260,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
   // 旧逻辑: const hasMultipleVersions = Array.isArray(message.versions) && message.versions.length > 1;
   const hasMultipleVersions = Array.isArray(message.versions) && message.versions.length >= 1;
 
-  // 调试日志，查看versions数据
-  console.log(`[MessageActions] 消息ID=${message.id}, 角色=${message.role}, 有versions属性=${!!message.versions}, 版本数量=${message.versions?.length || 0}`, message.versions);
+
 
   // 获取当前版本号
   const getCurrentVersionNumber = () => {
@@ -462,7 +489,13 @@ const MessageActions: React.FC<MessageActionsProps> = ({
         }}
       >
         <MenuItem onClick={handleCopyContent}>复制内容</MenuItem>
+        <MenuItem onClick={handleSaveContent}>保存内容</MenuItem>
         <MenuItem onClick={handleEditClick}>编辑</MenuItem>
+
+        {/* 用户消息特有功能 */}
+        {isUser && <MenuItem onClick={handleResendClick}>重新发送</MenuItem>}
+
+        {/* AI消息特有功能 */}
         {!isUser && <MenuItem onClick={handleRegenerateClick}>重新生成</MenuItem>}
         {!isUser && <MenuItem onClick={() => {
           handleMenuClose();
@@ -470,6 +503,8 @@ const MessageActions: React.FC<MessageActionsProps> = ({
           const messageElement = document.getElementById(`message-${message.id}`);
           setVersionAnchorEl(messageElement || document.body);
         }}>查看历史版本</MenuItem>}
+
+        {/* 通用功能 */}
         <MenuItem onClick={handleCreateBranch} sx={{ display: 'flex', alignItems: 'center' }}>
           <CallSplitIcon fontSize="small" sx={{ mr: 1 }} />
           分支
@@ -484,6 +519,25 @@ const MessageActions: React.FC<MessageActionsProps> = ({
         open={editDialogOpen}
         onClose={() => setEditDialogOpen(false)}
       />
+
+      {/* 确认对话框 */}
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={() => setConfirmDialogOpen(false)}
+      >
+        <DialogTitle>{confirmDialogConfig.title}</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmDialogConfig.content}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialogOpen(false)}>
+            取消
+          </Button>
+          <Button onClick={confirmDialogConfig.onConfirm} variant="contained" color="error">
+            确认
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

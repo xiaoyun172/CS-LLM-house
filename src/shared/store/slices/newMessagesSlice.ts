@@ -181,8 +181,7 @@ const newMessagesSlice = createSlice({
         state.messageIdsByTopic[topicId] = [...existingIds, ...newIds];
       }
 
-      // 调试日志
-      console.log(`[newMessagesSlice] 接收消息: 主题ID=${topicId}, 消息数量=${messages.length}, 总消息ID数量=${state.messageIdsByTopic[topicId].length}`);
+
     },
 
     // 添加消息
@@ -345,11 +344,14 @@ export const loadTopicMessagesThunk = createAsyncThunk(
 
       // 加载消息块
       const messageIds = sortedMessages.map(msg => msg.id);
+      console.log(`[loadTopicMessagesThunk] 加载话题 ${topicId} 的消息，消息数量: ${sortedMessages.length}，消息ID: [${messageIds.join(', ')}]`);
+
       const blocks = [];
       const processedBlockIds = new Set<string>(); // 用于跟踪已处理的块ID
 
       for (const messageId of messageIds) {
         const messageBlocks = await dexieStorage.getMessageBlocksByMessageId(messageId);
+        console.log(`[loadTopicMessagesThunk] 消息 ${messageId} 有 ${messageBlocks.length} 个块: [${messageBlocks.map(b => `${b.id}(${b.type})`).join(', ')}]`);
 
         // 过滤掉已处理的块
         const uniqueBlocks = messageBlocks.filter(block => {
@@ -363,11 +365,22 @@ export const loadTopicMessagesThunk = createAsyncThunk(
         blocks.push(...uniqueBlocks);
       }
 
+      console.log(`[loadTopicMessagesThunk] 总共加载到 ${blocks.length} 个消息块`);
+
+      // 详细记录每个消息的块信息
+      for (const message of sortedMessages) {
+        const messageBlocks = blocks.filter(block => block.messageId === message.id);
+        console.log(`[loadTopicMessagesThunk] 消息 ${message.id} 的 blocks 数组: [${message.blocks?.join(', ') || '空'}]，实际加载的块: [${messageBlocks.map(b => `${b.id}(${b.type})`).join(', ')}]`);
+      }
+
       // 更新Redux状态 - 使用去重后的消息
       dispatch(newMessagesActions.messagesReceived({ topicId, messages: sortedMessages }));
 
       if (blocks.length > 0) {
+        console.log(`[loadTopicMessagesThunk] 将 ${blocks.length} 个块添加到 Redux`);
         dispatch(upsertManyBlocks(blocks));
+      } else {
+        console.log(`[loadTopicMessagesThunk] 没有块需要添加到 Redux`);
       }
 
       return messages;

@@ -6,7 +6,7 @@ import type { Message, MessageBlock } from '../types/newMessage.ts';
 // 统一的数据库配置
 export const DB_CONFIG = {
   NAME: 'aetherlink-db-new',
-  VERSION: 5, // 增加版本号以触发数据库升级
+  VERSION: 6, // 修正版本号，与DexieStorageService中的实际版本保持一致
   STORES: {
     TOPICS: 'topics' as const,
     ASSISTANTS: 'assistants' as const,

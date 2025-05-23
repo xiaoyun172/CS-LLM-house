@@ -7,21 +7,19 @@ import {
   ListItemText,
   Divider,
   Typography,
-  Slider,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Avatar,
   IconButton,
-  Tooltip,
-  TextField
+  Tooltip
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import FaceIcon from '@mui/icons-material/Face';
 import type { MathRendererType } from '../../../shared/types';
+import type { ThinkingOption } from '../../../shared/config/reasoningConfig';
 import SettingGroups from './SettingGroups';
 import AvatarUploader from '../../settings/AvatarUploader';
+import MCPSidebarControls from '../../chat/MCPSidebarControls';
+import ThrottleLevelSelector from './ThrottleLevelSelector';
+import ContextSettings from './ContextSettings';
 
 interface Setting {
   id: string;
@@ -36,9 +34,15 @@ interface SettingsTabProps {
   onContextLengthChange?: (value: number) => void;
   onContextCountChange?: (value: number) => void;
   onMathRendererChange?: (value: MathRendererType) => void;
+  onThinkingEffortChange?: (value: ThinkingOption) => void;
   initialContextLength?: number;
   initialContextCount?: number;
   initialMathRenderer?: MathRendererType;
+  initialThinkingEffort?: ThinkingOption;
+  mcpMode?: 'prompt' | 'function';
+  toolsEnabled?: boolean;
+  onMCPModeChange?: (mode: 'prompt' | 'function') => void;
+  onToolsToggle?: (enabled: boolean) => void;
 }
 
 /**
@@ -50,14 +54,21 @@ export default function SettingsTab({
   onContextLengthChange,
   onContextCountChange,
   onMathRendererChange,
+  onThinkingEffortChange,
   initialContextLength = 16000,
   initialContextCount = 5,
-  initialMathRenderer = 'KaTeX'
+  initialMathRenderer = 'KaTeX',
+  initialThinkingEffort = 'medium',
+  mcpMode = 'function',
+  toolsEnabled = true,
+  onMCPModeChange,
+  onToolsToggle
 }: SettingsTabProps) {
   // 本地状态
   const [contextLength, setContextLength] = useState<number>(initialContextLength);
   const [contextCount, setContextCount] = useState<number>(initialContextCount);
   const [mathRenderer, setMathRenderer] = useState<MathRendererType>(initialMathRenderer);
+  const [thinkingEffort, setThinkingEffort] = useState<ThinkingOption>(initialThinkingEffort);
   const [userAvatar, setUserAvatar] = useState<string>("");
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = useState(false);
 
@@ -70,6 +81,10 @@ export default function SettingsTab({
         if (appSettings.contextLength) setContextLength(appSettings.contextLength);
         if (appSettings.contextCount) setContextCount(appSettings.contextCount);
         if (appSettings.mathRenderer) setMathRenderer(appSettings.mathRenderer);
+        if (appSettings.defaultThinkingEffort) setThinkingEffort(appSettings.defaultThinkingEffort);
+
+        // 加载流式输出设置
+        console.log(`[SettingsTab] 从localStorage加载的设置:`, appSettings);
       }
 
       // 加载用户头像
@@ -85,7 +100,7 @@ export default function SettingsTab({
   // 如果没有传入设置，使用默认设置
   const availableSettings = settings.length ? settings : [
     { id: 'streamOutput', name: '流式输出', defaultValue: true, description: '实时显示AI回答，打字机效果' },
-    { id: 'showMessageDivider', name: '消息分割线', defaultValue: true, description: '在消息之间显示分割线' },
+    { id: 'showMessageDivider', name: '对话分割线', defaultValue: true, description: '在对话轮次之间显示分割线' },
     { id: 'copyableCodeBlocks', name: '代码块可复制', defaultValue: true, description: '允许复制代码块的内容' },
   ];
 
@@ -104,65 +119,21 @@ export default function SettingsTab({
   };
 
   const handleSettingChange = (settingId: string, value: boolean) => {
+    // 保存到localStorage
+    try {
+      const appSettingsJSON = localStorage.getItem('appSettings');
+      const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
+      localStorage.setItem('appSettings', JSON.stringify({
+        ...appSettings,
+        [settingId]: value
+      }));
+      console.log(`[SettingsTab] 设置已保存: ${settingId} = ${value}`);
+    } catch (error) {
+      console.error('保存设置失败', error);
+    }
+
     if (onSettingChange) {
       onSettingChange(settingId, value);
-    }
-  };
-
-  const handleContextLengthChange = (_event: Event, newValue: number | number[]) => {
-    const value = newValue as number;
-    setContextLength(value);
-    if (onContextLengthChange) {
-      onContextLengthChange(value);
-    }
-    // 保存到localStorage
-    try {
-      const appSettingsJSON = localStorage.getItem('appSettings');
-      const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
-      localStorage.setItem('appSettings', JSON.stringify({
-        ...appSettings,
-        contextLength: value
-      }));
-    } catch (error) {
-      console.error('保存设置失败', error);
-    }
-  };
-
-  const handleContextCountChange = (_event: Event, newValue: number | number[]) => {
-    const value = newValue as number;
-    setContextCount(value);
-    if (onContextCountChange) {
-      onContextCountChange(value);
-    }
-    // 保存到localStorage
-    try {
-      const appSettingsJSON = localStorage.getItem('appSettings');
-      const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
-      localStorage.setItem('appSettings', JSON.stringify({
-        ...appSettings,
-        contextCount: value
-      }));
-    } catch (error) {
-      console.error('保存设置失败', error);
-    }
-  };
-
-  const handleMathRendererChange = (event: React.ChangeEvent<{ value: unknown }>) => {
-    const value = event.target.value as MathRendererType;
-    setMathRenderer(value);
-    if (onMathRendererChange) {
-      onMathRendererChange(value);
-    }
-    // 保存到localStorage
-    try {
-      const appSettingsJSON = localStorage.getItem('appSettings');
-      const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
-      localStorage.setItem('appSettings', JSON.stringify({
-        ...appSettings,
-        mathRenderer: value
-      }));
-    } catch (error) {
-      console.error('保存设置失败', error);
     }
   };
 
@@ -172,11 +143,6 @@ export default function SettingsTab({
       id: 'general',
       title: '常规设置',
       settings: availableSettings
-    },
-    {
-      id: 'context',
-      title: '上下文设置',
-      settings: []
     }
   ];
 
@@ -243,108 +209,94 @@ export default function SettingsTab({
       {/* 使用SettingGroups渲染设置分组 */}
       <SettingGroups groups={settingGroups} onSettingChange={handleSettingChange} />
 
+      {/* 节流强度选择器 */}
+      <ThrottleLevelSelector />
+
+      {/* 可折叠的上下文设置 */}
+      <ContextSettings
+        contextLength={contextLength}
+        contextCount={contextCount}
+        mathRenderer={mathRenderer}
+        thinkingEffort={thinkingEffort}
+        onContextLengthChange={(value) => {
+          setContextLength(value);
+          if (onContextLengthChange) {
+            onContextLengthChange(value);
+          }
+          // 保存到localStorage
+          try {
+            const appSettingsJSON = localStorage.getItem('appSettings');
+            const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
+            localStorage.setItem('appSettings', JSON.stringify({
+              ...appSettings,
+              contextLength: value
+            }));
+          } catch (error) {
+            console.error('保存设置失败', error);
+          }
+        }}
+        onContextCountChange={(value) => {
+          setContextCount(value);
+          if (onContextCountChange) {
+            onContextCountChange(value);
+          }
+          // 保存到localStorage
+          try {
+            const appSettingsJSON = localStorage.getItem('appSettings');
+            const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
+            localStorage.setItem('appSettings', JSON.stringify({
+              ...appSettings,
+              contextCount: value
+            }));
+          } catch (error) {
+            console.error('保存设置失败', error);
+          }
+        }}
+        onMathRendererChange={(value) => {
+          setMathRenderer(value);
+          if (onMathRendererChange) {
+            onMathRendererChange(value);
+          }
+          // 保存到localStorage
+          try {
+            const appSettingsJSON = localStorage.getItem('appSettings');
+            const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
+            localStorage.setItem('appSettings', JSON.stringify({
+              ...appSettings,
+              mathRenderer: value
+            }));
+          } catch (error) {
+            console.error('保存设置失败', error);
+          }
+        }}
+        onThinkingEffortChange={(value) => {
+          setThinkingEffort(value);
+          if (onThinkingEffortChange) {
+            onThinkingEffortChange(value);
+          }
+          // 保存到localStorage
+          try {
+            const appSettingsJSON = localStorage.getItem('appSettings');
+            const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
+            localStorage.setItem('appSettings', JSON.stringify({
+              ...appSettings,
+              defaultThinkingEffort: value
+            }));
+          } catch (error) {
+            console.error('保存思维链长度设置失败', error);
+          }
+        }}
+      />
+
       <Divider sx={{ my: 1 }} />
 
-      {/* 上下文长度控制 */}
-      <ListItem sx={{ px: 2, py: 1, flexDirection: 'column', alignItems: 'stretch' }}>
-        <Box sx={{ width: '100%', mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="body2" fontWeight="medium">
-              上下文长度: {contextLength === 64000 ? '不限' : contextLength} 字符
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              每条消息的最大上下文长度
-            </Typography>
-          </Box>
-          <Box sx={{ width: '80px' }}>
-            <TextField
-              size="small"
-              type="number"
-              value={contextLength}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                const value = parseInt(e.target.value);
-                if (!isNaN(value) && value >= 0 && value <= 64000) {
-                  setContextLength(value);
-                  if (onContextLengthChange) {
-                    onContextLengthChange(value);
-                  }
-                  // 保存到localStorage
-                  try {
-                    const appSettingsJSON = localStorage.getItem('appSettings');
-                    const appSettings = appSettingsJSON ? JSON.parse(appSettingsJSON) : {};
-                    localStorage.setItem('appSettings', JSON.stringify({
-                      ...appSettings,
-                      contextLength: value
-                    }));
-                  } catch (error) {
-                    console.error('保存设置失败', error);
-                  }
-                }
-              }}
-              InputProps={{
-                inputProps: { min: 0, max: 64000 }
-              }}
-            />
-          </Box>
-        </Box>
-        <Slider
-          value={contextLength}
-          onChange={handleContextLengthChange}
-          min={0}
-          max={64000}
-          step={1000}
-          marks={[
-            { value: 0, label: '0' },
-            { value: 16000, label: '16K' },
-            { value: 32000, label: '32K' },
-            { value: 48000, label: '48K' },
-            { value: 64000, label: '64K' }
-          ]}
-        />
-      </ListItem>
-
-      {/* 上下文消息数量控制 */}
-      <ListItem sx={{ px: 2, py: 1, flexDirection: 'column', alignItems: 'stretch' }}>
-        <Box sx={{ width: '100%', mb: 1 }}>
-          <Typography variant="body2" fontWeight="medium">
-            上下文消息数: {contextCount === 100 ? '最大' : contextCount} 条
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            每次请求包含的历史消息数量
-          </Typography>
-        </Box>
-        <Slider
-          value={contextCount}
-          onChange={handleContextCountChange}
-          min={0}
-          max={100}
-          step={1}
-          marks={[
-            { value: 0, label: '0' },
-            { value: 25, label: '25' },
-            { value: 50, label: '50' },
-            { value: 75, label: '75' },
-            { value: 100, label: '最大' }
-          ]}
-        />
-      </ListItem>
-
-      {/* 数学公式渲染器选择 */}
-      <ListItem sx={{ px: 2, py: 1, flexDirection: 'column', alignItems: 'stretch' }}>
-        <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-          <InputLabel id="math-renderer-label">数学公式渲染器</InputLabel>
-          <Select
-            labelId="math-renderer-label"
-            id="math-renderer-select"
-            value={mathRenderer}
-            label="数学公式渲染器"
-            onChange={handleMathRendererChange as any}
-          >
-            <MenuItem value="KaTeX">KaTeX (轻量)</MenuItem>
-            <MenuItem value="MathJax">MathJax (兼容性好)</MenuItem>
-          </Select>
-        </FormControl>
-      </ListItem>
+      {/* MCP 工具控制 */}
+      <MCPSidebarControls
+        mcpMode={mcpMode}
+        toolsEnabled={toolsEnabled}
+        onMCPModeChange={onMCPModeChange}
+        onToolsToggle={onToolsToggle}
+      />
 
       {/* 头像上传对话框 */}
       <AvatarUploader

@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useReducer, useRef } from 'react';
-import { Box } from '@mui/material';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { MainTextMessageBlock } from '../../../shared/types/newMessage';
 import { MessageBlockStatus } from '../../../shared/types/newMessage';
 import Markdown from '../Markdown';
-import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventEmitter';
+import { shouldUseHighPerformanceMode } from '../../../shared/utils/performanceSettings';
+import HighPerformanceStreamingContainer from './HighPerformanceStreamingContainer';
 
 interface Props {
   block: MainTextMessageBlock;
@@ -11,156 +11,102 @@ interface Props {
 }
 
 /**
- * 主文本块组件
- * 完全重写，与电脑版保持一致
- * 负责渲染消息的主要文本内容
+ * 智能流式文本容器
+ * 根据性能设置选择最佳渲染策略
+ */
+const StreamingTextContainer: React.FC<{ content: string; isStreaming: boolean; onComplete?: () => void }> = ({ content, isStreaming, onComplete }) => {
+  // 检查是否启用高性能模式
+  const useHighPerformanceMode = shouldUseHighPerformanceMode(isStreaming);
+
+  console.log(`[StreamingTextContainer] isStreaming: ${isStreaming}, useHighPerformanceMode: ${useHighPerformanceMode}`);
+
+  // 如果启用高性能模式且正在流式输出，使用超高性能容器
+  if (useHighPerformanceMode && isStreaming) {
+    console.log(`[StreamingTextContainer] 使用高性能容器`);
+    return (
+      <HighPerformanceStreamingContainer
+        content={content}
+        isStreaming={isStreaming}
+        onComplete={onComplete}
+      />
+    );
+  }
+
+  // 否则始终使用标准 Markdown 渲染（无论是否流式）
+  console.log(`[StreamingTextContainer] 使用 Markdown 渲染`);
+  return <Markdown content={content} allowHtml={false} />;
+};
+
+/**
+ * 主文本块组件 - 高性能版本
+ * 流式输出时使用轻量级渲染，完成后自动切换到完整渲染
  */
 const MainTextBlock: React.FC<Props> = ({ block, role }) => {
-  // 用户消息可以选择是否使用Markdown渲染
   const isUserMessage = role === 'user';
+  const content = block.content || '';
 
-  // 添加强制更新机制
-  const [updateCounter, forceUpdate] = useReducer(state => state + 1, 0);
+  // 判断是否正在流式输出
+  const isStreaming = block.status === MessageBlockStatus.STREAMING;
 
-  // 使用ref跟踪当前内容，避免闭包问题
-  const contentRef = useRef<string>(block.content || '');
+  // 状态切换优化：使用延迟切换避免闪烁
+  const [renderMode, setRenderMode] = useState<'streaming' | 'complete'>(() =>
+    isStreaming ? 'streaming' : 'complete'
+  );
 
-  // 使用state管理显示内容
-  const [content, setContent] = useState(block.content || '');
-
-  // 跟踪是否已经替换了占位符
-  const hasReplacedPlaceholder = useRef<boolean>(false);
-
-  // 跟踪最后一次更新时间
-  const lastUpdateTime = useRef<number>(Date.now());
-
-  // 只在非流式输出状态下更新内容
+  // 监听状态变化，延迟切换渲染模式
   useEffect(() => {
-    if (block.status !== MessageBlockStatus.STREAMING) {
-      contentRef.current = block.content || '';
-      setContent(block.content || '');
+    console.log(`[MainTextBlock] isStreaming 变化: ${isStreaming}, 当前 renderMode: ${renderMode}`);
+
+    if (isStreaming) {
+      // 立即切换到流式模式
+      console.log(`[MainTextBlock] 切换到流式模式`);
+      setRenderMode('streaming');
+    } else {
+      // 延迟切换到完整模式，避免闪烁
+      console.log(`[MainTextBlock] 准备切换到完整模式，延迟100ms`);
+      const timer = setTimeout(() => {
+        console.log(`[MainTextBlock] 切换到完整模式`);
+        setRenderMode('complete');
+      }, 100); // 100ms 延迟，给用户一个平滑的过渡
+
+      return () => {
+        clearTimeout(timer);
+      };
     }
-  }, [block.content, block.status]);
-
-  // 添加流式输出事件监听
-  useEffect(() => {
-    // 只在流式输出状态下添加事件监听
-    if (block.status !== MessageBlockStatus.STREAMING) {
-      return;
-    }
-
-    // 处理文本增量事件
-    const handleTextDelta = (data: any) => {
-      // 更新最后一次更新时间
-      lastUpdateTime.current = Date.now();
-
-      // 如果没有文本，忽略
-      if (!data.text) {
-        return;
-      }
-
-      // 如果是第一个文本块，直接替换内容
-      if (data.isFirstChunk === true) {
-        contentRef.current = data.text;
-        setContent(data.text);
-        hasReplacedPlaceholder.current = true;
-        forceUpdate();
-        return;
-      }
-
-      // 如果当前内容是占位符，但收到了实际内容，替换占位符
-      if (contentRef.current === '正在生成回复...' && !hasReplacedPlaceholder.current) {
-        contentRef.current = data.text;
-        setContent(data.text);
-        hasReplacedPlaceholder.current = true;
-        forceUpdate();
-        return;
-      }
-
-      // 正常情况：累加文本内容
-      contentRef.current += data.text;
-      setContent(prev => prev + data.text);
-
-      // 强制重新渲染
-      forceUpdate();
-
-      // 触发滚动到底部事件
-      EventEmitter.emit(EVENT_NAMES.UI_SCROLL_TO_BOTTOM, {
-        timestamp: Date.now()
-      });
-    };
-
-    // 处理首个文本块事件
-    const handleFirstChunk = (data: any) => {
-      // 如果没有文本，忽略
-      if (!data.text) {
-        return;
-      }
-
-      // 直接替换内容
-      contentRef.current = data.text;
-      setContent(data.text);
-      hasReplacedPlaceholder.current = true;
-      forceUpdate();
-    };
-
-    // 处理文本完成事件
-    const handleTextComplete = (data: any) => {
-      // 如果有完整文本，使用完整文本
-      if (data.text) {
-        contentRef.current = data.text;
-        setContent(data.text);
-        forceUpdate();
-      }
-    };
-
-    // 订阅事件
-    const unsubscribeTextDelta = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_DELTA, handleTextDelta);
-    const unsubscribeFirstChunk = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_FIRST_CHUNK, handleFirstChunk);
-    const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, handleTextComplete);
-
-    // 定期检查内容是否需要更新
-    const updateInterval = setInterval(() => {
-      // 如果块内容不是占位符，但当前内容是占位符，替换占位符
-      if (block.content !== '正在生成回复...' && contentRef.current === '正在生成回复...' && !hasReplacedPlaceholder.current) {
-        contentRef.current = block.content || '';
-        setContent(block.content || '');
-        hasReplacedPlaceholder.current = true;
-        forceUpdate();
-      }
-    }, 50);
-
-    // 清理函数
-    return () => {
-      unsubscribeTextDelta();
-      unsubscribeFirstChunk();
-      unsubscribeTextComplete();
-      clearInterval(updateInterval);
-    };
-  }, [block.status]);
+  }, [isStreaming]);
 
   // 如果内容为空，不显示任何内容
   if (!content || content.trim() === '') {
     return null;
   }
 
-  // 如果内容是占位符，且块内容也是占位符，不显示任何内容
-  if (content === '正在生成回复...' && block.content === '正在生成回复...') {
-    console.log('[MainTextBlock] 内容和块内容都是占位符，跳过渲染');
-    return null;
-  }
+  // 容器样式优化
+  const containerStyle = useMemo(() => ({
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box' as const
+  }), []);
 
-  // 添加key属性，强制在内容变化时重新渲染
   return (
-    <Box sx={{ width: '100%' }} key={`${content.length}-${updateCounter}`}>
+    <div style={containerStyle}>
       {isUserMessage ? (
-        <Box sx={{ whiteSpace: 'pre-wrap' }}>
+        // 用户消息始终使用纯文本
+        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {content}
-        </Box>
+        </div>
       ) : (
-        <Markdown content={content} allowHtml={false} />
+        // AI消息使用智能渲染模式
+        <StreamingTextContainer
+          content={content}
+          isStreaming={renderMode === 'streaming'}
+          onComplete={() => {
+            // 高性能容器完成后，强制切换到完整模式
+            setRenderMode('complete');
+          }}
+        />
       )}
-    </Box>
+    </div>
   );
 };
 

@@ -1,12 +1,13 @@
 import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
-import { TopicService } from '../../../shared/services/TopicService';
 import store from '../../../shared/store';
 import { selectMessagesForTopic } from '../../../shared/store/selectors/messageSelectors';
 import { sendMessage, deleteMessage, regenerateMessage } from '../../../shared/store/thunks/messageThunk';
+import { loadTopicMessagesThunk } from '../../../shared/store/slices/newMessagesSlice';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
 import { addManyBlocks, removeManyBlocks } from '../../../shared/store/slices/messageBlocksSlice';
 import { dexieStorage } from '../../../shared/services/DexieStorageService';
+import { getMainTextContent } from '../../../shared/utils/messageUtils';
 import type { SiliconFlowImageFormat } from '../../../shared/types';
 import type { AppDispatch } from '../../../shared/store';
 import type { Message, MessageBlock } from '../../../shared/types/newMessage';
@@ -22,7 +23,7 @@ export const useMessageHandling = (
   const dispatch = useDispatch<AppDispatch>();
 
   // 处理发送消息
-  const handleSendMessage = useCallback(async (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean) => {
+  const handleSendMessage = useCallback(async (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => {
     if (!currentTopic || !content.trim() || !selectedModel) return null;
 
     try {
@@ -31,13 +32,17 @@ export const useMessageHandling = (
         url: img.image_url?.url || ''
       }));
 
+      // 转换文件格式
+      const formattedFiles = files?.map(file => file.fileRecord).filter(Boolean);
+
       // 使用Redux Thunk直接处理整个消息发送流程
       dispatch(sendMessage(
         content.trim(),
         currentTopic.id,
         selectedModel,
         formattedImages,
-        toolsEnabled // 传递工具开关状态
+        toolsEnabled, // 传递工具开关状态
+        formattedFiles // 传递文件
       ));
 
       // 返回成功标识
@@ -54,7 +59,7 @@ export const useMessageHandling = (
 
     try {
       // 使用Redux Thunk删除消息
-      dispatch(deleteMessage(messageId, currentTopic.id));
+      await dispatch(deleteMessage(messageId, currentTopic.id));
     } catch (error) {
       console.error('删除消息失败:', error);
     }
@@ -74,16 +79,17 @@ export const useMessageHandling = (
     }
   }, [dispatch, currentTopic, selectedModel]);
 
-  // 加载主题消息
+  // 加载主题消息 - 使用电脑版的标准方式
   const loadTopicMessages = useCallback(async (topicId: string) => {
     try {
-      await TopicService.loadTopicMessages(topicId);
+      // 使用电脑版的 loadTopicMessagesThunk，确保消息和块正确加载到Redux
+      await dispatch(loadTopicMessagesThunk(topicId)); // 加载消息
       return selectMessagesForTopic(store.getState(), topicId)?.length || 0;
     } catch (error) {
       console.error('加载主题消息失败:', error);
       throw error;
     }
-  }, []);
+  }, [dispatch]);
 
   // 切换消息版本
   const handleSwitchMessageVersion = useCallback(async (versionId: string) => {
@@ -312,11 +318,64 @@ export const useMessageHandling = (
     }
   }, [dispatch]); // 移除对currentTopic的依赖
 
+  // 处理重新发送用户消息
+  const handleResendMessage = useCallback(async (messageId: string) => {
+    if (!currentTopic || !selectedModel) return null;
+
+    try {
+      // 获取要重新发送的用户消息
+      const message = await dexieStorage.getMessage(messageId);
+      if (!message) {
+        console.error('找不到要重新发送的消息');
+        return null;
+      }
+
+      if (message.role !== 'user') {
+        console.error('只能重新发送用户消息');
+        return null;
+      }
+
+      // 获取消息内容
+      const content = getMainTextContent(message);
+      if (!content) {
+        console.error('消息内容为空');
+        return null;
+      }
+
+      // 获取消息中的图片
+      const blocks = await dexieStorage.getMessageBlocksByMessageId(messageId);
+      const imageBlocks = blocks.filter(block => block.type === 'image');
+      const images: SiliconFlowImageFormat[] = imageBlocks.map(block => ({
+        type: 'image_url',
+        image_url: {
+          url: 'url' in block ? (block as any).url : ('content' in block ? (block as any).content : '')
+        }
+      }));
+
+      // 获取消息中的文件
+      const fileBlocks = blocks.filter(block => block.type === 'file');
+      const files = fileBlocks.map(block => ({
+        name: 'fileName' in block ? block.fileName || 'file' : 'file',
+        content: 'content' in block ? block.content : '',
+        type: 'fileType' in block ? block.fileType || 'text/plain' : 'text/plain'
+      }));
+
+      // 重新发送消息
+      await handleSendMessage(content, images, false, files);
+
+      return true;
+    } catch (error) {
+      console.error('重新发送消息失败:', error);
+      return null;
+    }
+  }, [currentTopic, selectedModel, handleSendMessage]);
+
   return {
     handleSendMessage,
     handleDeleteMessage,
     handleRegenerateMessage,
     handleSwitchMessageVersion,
+    handleResendMessage,
     loadTopicMessages
   };
 };

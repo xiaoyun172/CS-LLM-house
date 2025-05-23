@@ -26,7 +26,7 @@ export async function sendChatRequest(
     systemPrompt?: string;
     enableTools?: boolean; // 添加工具开关参数
   }
-): Promise<string> {
+): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
   try {
     const opts = options || {};
     // 确保onUpdate回调类型正确

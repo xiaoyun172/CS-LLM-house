@@ -59,6 +59,25 @@ export interface FileContent {
   url: string; // 文件URL，用于本地或远程访问
   width?: number; // 可选，图片宽度
   height?: number; // 可选，图片高度
+  fileId?: string; // 文件ID，用于引用存储的文件
+  fileRecord?: FileType; // 文件记录，包含完整的文件信息
+}
+
+// 文件类型定义（兼容电脑版）
+export interface FileType {
+  id: string; // 文件唯一标识
+  name: string; // 存储的文件名（通常是UUID + 扩展名）
+  origin_name: string; // 原始文件名
+  path: string; // 文件路径（移动端可能为空）
+  size: number; // 文件大小（字节）
+  ext: string; // 文件扩展名
+  type: string; // 文件类型（image、text、document等）
+  created_at: string; // 创建时间
+  count: number; // 引用计数
+  hash?: string; // 文件哈希值，用于重复检测
+  // 移动端特有字段
+  base64Data?: string; // base64编码的文件内容
+  mimeType?: string; // MIME类型
 }
 
 // 硅基流动API的图片格式
@@ -69,7 +88,7 @@ export interface SiliconFlowImageFormat {
   };
 }
 
-// 图像生成参数
+// 图像生成参数 - 完整支持版本
 export interface ImageGenerationParams {
   prompt: string;
   negativePrompt?: string;
@@ -79,6 +98,9 @@ export interface ImageGenerationParams {
   steps?: number;
   guidanceScale?: number;
   referenceImage?: string;
+  quality?: 'standard' | 'hd';
+  style?: 'natural' | 'vivid';
+  promptEnhancement?: boolean;
 }
 
 // 生成的图像结果
@@ -89,8 +111,22 @@ export interface GeneratedImage {
   modelId: string;
 }
 
-// 网络搜索提供商类型
-export type WebSearchProvider = 'firecrawl' | 'tavily' | 'serpapi' | 'custom';
+// 网络搜索提供商类型 - 包含付费API服务和本地搜索引擎
+export type WebSearchProvider = 'tavily' | 'searxng' | 'exa' | 'bocha' | 'firecrawl' | 'serpapi' | 'local-google' | 'local-bing' | 'custom';
+
+// 网络搜索提供商配置
+export interface WebSearchProviderConfig {
+  id: string;
+  name: string;
+  apiKey?: string;
+  apiHost?: string;
+  engines?: string[];
+  url?: string;
+  basicAuthUsername?: string;
+  basicAuthPassword?: string;
+  contentLimit?: number;
+  usingBrowser?: boolean;
+}
 
 // 网络搜索设置
 export interface WebSearchSettings {
@@ -103,6 +139,10 @@ export interface WebSearchSettings {
   showTimestamp: boolean;     // 是否显示结果时间戳
   filterSafeSearch: boolean;  // 是否过滤不安全内容
   searchMode: 'auto' | 'manual'; // 自动或手动搜索
+  searchWithTime: boolean;    // 是否在搜索查询中添加当前日期
+  excludeDomains: string[];   // 要排除的域名列表
+  contentLimit?: number;      // 内容限制
+  providers: WebSearchProviderConfig[]; // 所有可用的搜索提供商列表
   customProviders?: WebSearchCustomProvider[]; // 自定义搜索提供商
 }
 
@@ -123,6 +163,25 @@ export interface WebSearchResult {
   snippet: string;
   timestamp: string;
   provider: string;
+  content?: string;
+}
+
+// 网络搜索提供商响应
+export interface WebSearchProviderResponse {
+  query?: string;
+  results: WebSearchResult[];
+}
+
+// 引用类型
+export interface Citation {
+  number: number;
+  url: string;
+  title?: string;
+  hostname?: string;
+  content?: string;
+  showFavicon?: boolean;
+  type?: string;
+  metadata?: Record<string, any>;
 }
 
 // 导入新的消息类型
@@ -209,6 +268,7 @@ export interface Model {
     imageGeneration?: boolean; // 是否支持图像生成
     webSearch?: boolean; // 是否支持网页搜索
     reasoning?: boolean; // 是否支持推理优化
+    functionCalling?: boolean; // 是否支持函数调用
   }; // 模型能力
   multimodal?: boolean; // 直接的多模态支持标志，用于兼容预设模型配置
   imageGeneration?: boolean; // 直接的图像生成支持标志
@@ -253,3 +313,70 @@ export interface PresetModel {
 
 // 确保从newMessage导出所有类型
 export * from './newMessage.ts';
+
+// MCP 相关类型定义
+export type MCPServerType = 'sse' | 'streamableHttp' | 'inMemory';
+
+export interface MCPServer {
+  id: string;
+  name: string;
+  type: MCPServerType;
+  description?: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  env?: Record<string, string>;
+  args?: string[];
+  isActive: boolean;
+  disabledTools?: string[];
+  provider?: string;
+  providerUrl?: string;
+  logoUrl?: string;
+  tags?: string[];
+  timeout?: number;
+}
+
+export interface MCPTool {
+  id?: string;
+  name: string;
+  description?: string;
+  inputSchema?: any;
+  serverName: string;
+  serverId: string;
+}
+
+export interface MCPPrompt {
+  name: string;
+  description?: string;
+  arguments?: any[];
+  serverName: string;
+  serverId: string;
+}
+
+export interface MCPResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+  serverName: string;
+  serverId: string;
+}
+
+export interface MCPCallToolResponse {
+  content: Array<{
+    type: 'text' | 'image' | 'resource';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  }>;
+  isError?: boolean;
+}
+
+export interface MCPToolResponse {
+  id: string;
+  tool: MCPTool;
+  arguments: Record<string, unknown>;
+  status: 'pending' | 'invoking' | 'done' | 'error';
+  response?: MCPCallToolResponse;
+  toolCallId?: string; // OpenAI 兼容
+  toolUseId?: string;  // Anthropic 兼容
+}

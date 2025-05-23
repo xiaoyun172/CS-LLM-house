@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useReducer } from 'react';
+import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { Box } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,7 +6,6 @@ import type { RootState } from '../../shared/store';
 import { messageBlocksSelectors } from '../../shared/store/slices/messageBlocksSlice';
 import type { MessageBlock, Message } from '../../shared/types/newMessage';
 import { MessageBlockType, MessageBlockStatus } from '../../shared/types/newMessage';
-import { EventEmitter, EVENT_NAMES } from '../../shared/services/EventEmitter';
 
 
 // 直接导入块组件，与电脑版保持一致
@@ -21,6 +20,9 @@ import TableBlock from './blocks/TableBlock';
 import MathBlock from './blocks/MathBlock';
 import MultiModelBlock from './blocks/MultiModelBlock';
 import ChartBlock from './blocks/ChartBlock';
+import FileBlock from './blocks/FileBlock';
+import ToolBlock from './blocks/ToolBlock';
+import PlaceholderBlock from './blocks/PlaceholderBlock';
 
 // 定义动画变体
 const blockWrapperVariants = {
@@ -68,45 +70,33 @@ const MessageBlockRenderer: React.FC<Props> = ({
   // 从Redux状态中获取块实体
   const blockEntities = useSelector((state: RootState) => messageBlocksSelectors.selectEntities(state));
 
-  // 添加强制更新机制 - 简化版本，参考电脑版
-  const [updateCounter, forceUpdate] = useReducer(state => state + 1, 0);
+  // 简化版本，不依赖事件监听，直接从Redux状态读取
 
-  // 添加流式输出事件监听 - 简化版本，只监听完成事件
-  useEffect(() => {
-    // 检查是否有正在流式输出的消息
-    const isStreaming = message.status === 'streaming';
-
-    if (isStreaming) {
-      // 监听流式输出事件
-      const textDeltaHandler = () => {
-        forceUpdate();
-      };
-
-      // 只订阅完成事件，减少重复更新
-      const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, textDeltaHandler);
-
-      return () => {
-        unsubscribeTextComplete();
-      };
-    }
-  }, [message.status]);
-
-  // 获取所有有效的块
+  // 获取所有有效的块并进行排序
   const renderedBlocks = useMemo(() => {
-    // 记录块ID和实体的映射关系，帮助调试
-    const blockMapping = blocks.map(blockId => ({
-      id: blockId,
-      entity: blockEntities[blockId]
-    }));
-
-    console.log(`[MessageBlockRenderer] 块ID列表: ${blocks.join(', ')}, 更新计数: ${updateCounter}`);
-    console.log(`[MessageBlockRenderer] 找到的块实体数量: ${blockMapping.filter(m => m.entity).length}/${blocks.length}`);
-
     // 只渲染存在于Redux状态中的块
-    return blocks
+    const validBlocks = blocks
       .map((blockId) => blockEntities[blockId])
       .filter(Boolean) as MessageBlock[];
-  }, [blocks, blockEntities, updateCounter]);
+
+    // 对块进行排序：思考块在前，其他块在后
+    const sortedBlocks = [...validBlocks].sort((a, b) => {
+      // 思考块的优先级最高
+      if (a.type === MessageBlockType.THINKING && b.type !== MessageBlockType.THINKING) {
+        return -1;
+      }
+      if (b.type === MessageBlockType.THINKING && a.type !== MessageBlockType.THINKING) {
+        return 1;
+      }
+
+      // 其他块按创建时间排序
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      return timeA - timeB;
+    });
+
+    return sortedBlocks;
+  }, [blocks, blockEntities]);
 
   // 渲染占位符块
   const renderPlaceholder = () => {
@@ -196,6 +186,15 @@ const MessageBlockRenderer: React.FC<Props> = ({
             }
 
             switch (block.type) {
+              case MessageBlockType.UNKNOWN:
+                // 参考电脑版逻辑：PROCESSING状态下渲染占位符块，SUCCESS状态下当作主文本块处理
+                if (block.status === MessageBlockStatus.PROCESSING) {
+                  blockComponent = <PlaceholderBlock key={block.id} block={block} />;
+                } else if (block.status === MessageBlockStatus.SUCCESS) {
+                  // 兼容性处理：将 UNKNOWN 类型的成功状态块当作主文本块处理
+                  blockComponent = <MainTextBlock key={block.id} block={block as any} role={message.role} />;
+                }
+                break;
               case MessageBlockType.MAIN_TEXT:
                 blockComponent = <MainTextBlock key={block.id} block={block} role={message.role} />;
                 break;
@@ -229,8 +228,14 @@ const MessageBlockRenderer: React.FC<Props> = ({
               case MessageBlockType.CHART:
                 blockComponent = <ChartBlock key={block.id} block={block} />;
                 break;
+              case MessageBlockType.FILE:
+                blockComponent = <FileBlock key={block.id} block={block} />;
+                break;
+              case MessageBlockType.TOOL:
+                blockComponent = <ToolBlock key={block.id} block={block} />;
+                break;
               default:
-                console.warn('不支持的块类型:', block.type, block);
+                console.warn('不支持的块类型:', (block as any).type, block);
                 break;
             }
 

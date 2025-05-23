@@ -24,7 +24,7 @@ export {
  * 创建Anthropic API适配器
  * @param model 模型配置
  * @returns Anthropic API适配器对象
- * 
+ *
  * 使用方法:
  * ```
  * const api = createAnthropicAPI(model);
@@ -36,7 +36,7 @@ export {
 export function createAnthropicAPI(model: Model) {
   console.log(`[anthropic/index.ts] 创建Anthropic API适配器 - 模型ID: ${model.id}`);
   const provider = createProvider(model);
-  
+
   return {
     /**
      * 发送消息并获取响应
@@ -50,7 +50,7 @@ export function createAnthropicAPI(model: Model) {
       console.log(`[anthropic/index.ts] 通过API适配器发送消息 - 模型ID: ${model.id}, 消息数量: ${messages.length}`);
       return provider.sendChatMessage(messages, options);
     },
-    
+
     /**
      * 测试API连接
      */
@@ -69,7 +69,14 @@ export const sendChatRequest = async (
 ): Promise<string> => {
   console.log(`[anthropic/index.ts] 发送聊天请求 - 模型ID: ${model.id}, 消息数量: ${messages.length}`);
   const provider = createProvider(model);
-  return provider.sendChatMessage(messages, { onUpdate });
+  const result = await provider.sendChatMessage(messages, { onUpdate });
+
+  // 处理新的返回类型
+  if (typeof result === 'string') {
+    return result;
+  } else {
+    return result.content;
+  }
 };
 
 /**
@@ -85,6 +92,6 @@ export const fetchModels = async (provider: any): Promise<any[]> => {
     baseUrl: provider.baseUrl || 'https://api.anthropic.com',
     provider: 'anthropic'
   });
-  
+
   return anthropicProvider.getModels();
-}; 
+};

@@ -47,7 +47,8 @@ export {
 
 // 导出图像生成模块
 export {
-  generateImage
+  generateImage,
+  generateImageByChat
 } from './image';
 
 // 导出Provider类
@@ -71,7 +72,7 @@ export async function sendChatRequest(
     onUpdate?: (content: string, reasoning?: string) => void;
     systemPrompt?: string;
   }
-): Promise<string> {
+): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
   const onUpdate = options?.onUpdate;
   const systemPrompt = options?.systemPrompt || '';
 

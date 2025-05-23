@@ -10,6 +10,7 @@ import {
 import { EventEmitter, EVENT_NAMES } from '../../services/EventEmitter';
 import { getAppropriateTag } from '../../config/reasoningTags';
 import { extractReasoningMiddleware } from '../../middlewares/extractReasoningMiddleware';
+import { createAbortController, isAbortError } from '../../utils/abortController';
 import type { Model } from '../../types';
 
 /**
@@ -41,6 +42,7 @@ export interface OpenAIStreamProcessorOptions {
   blockId?: string;
   thinkingBlockId?: string;
   topicId?: string;
+  abortSignal?: AbortSignal;
 }
 
 /**
@@ -66,6 +68,11 @@ export class OpenAIStreamProcessor {
   private thinkingBlockId?: string;
   private topicId?: string;
 
+  // AbortController相关属性
+  private abortSignal?: AbortSignal;
+  private abortController?: AbortController;
+  private cleanup?: () => void;
+
   /**
    * 构造函数
    * @param options 选项
@@ -78,11 +85,19 @@ export class OpenAIStreamProcessor {
     this.blockId = options.blockId;
     this.thinkingBlockId = options.thinkingBlockId;
     this.topicId = options.topicId;
+    this.abortSignal = options.abortSignal;
     this.startTime = Date.now();
 
     // 检查是否为DeepSeek提供商
     this.isDeepSeekProvider = this.model.provider === 'deepseek' ||
                            (typeof this.model.id === 'string' && this.model.id.includes('deepseek'));
+
+    // 设置AbortController
+    if (this.messageId) {
+      const { abortController, cleanup } = createAbortController(this.messageId, true);
+      this.abortController = abortController;
+      this.cleanup = cleanup;
+    }
   }
 
   /**
@@ -93,6 +108,11 @@ export class OpenAIStreamProcessor {
   async processStream(stream: AsyncIterable<any>): Promise<{ content: string; reasoning?: string; reasoningTime?: number }> {
     try {
       console.log(`[OpenAIStreamProcessor] 开始处理流式响应，模型: ${this.model.id}`);
+
+      // 检查是否已被中断
+      if (this.abortSignal?.aborted || this.abortController?.signal.aborted) {
+        throw new DOMException('Operation aborted', 'AbortError');
+      }
 
       // 获取适合模型的推理标签
       const reasoningTag = getAppropriateTag(this.model);
@@ -120,6 +140,12 @@ export class OpenAIStreamProcessor {
 
       // 处理处理后的流式响应
       for await (const chunk of readableStreamAsyncIterable(processedStream)) {
+        // 检查是否已被中断
+        if (this.abortSignal?.aborted || this.abortController?.signal.aborted) {
+          console.log('[OpenAIStreamProcessor] 流式响应被中断');
+          break;
+        }
+
         await this.handleProcessedChunk(chunk);
       }
 
@@ -141,8 +167,22 @@ export class OpenAIStreamProcessor {
         reasoningTime: this.reasoningStartTime > 0 ? reasoningTime : undefined
       };
     } catch (error) {
+      if (isAbortError(error)) {
+        console.log('[OpenAIStreamProcessor] 流式响应被用户中断');
+        // 返回当前已处理的内容
+        return {
+          content: this.content,
+          reasoning: this.reasoning || undefined,
+          reasoningTime: this.reasoningStartTime > 0 ? (Date.now() - this.reasoningStartTime) : undefined
+        };
+      }
       console.error('[OpenAIStreamProcessor] 处理流式响应失败:', error);
       throw error;
+    } finally {
+      // 清理AbortController
+      if (this.cleanup) {
+        this.cleanup();
+      }
     }
   }
 

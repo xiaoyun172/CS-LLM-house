@@ -12,42 +12,78 @@ import {
   supportsWebSearch,
   getWebSearchParams
 } from './client';
-import { getMainTextContent, findImageBlocks } from '../../utils/messageUtils';
-import { findFileBlocks, FileTypes, getFileTypeByExtension, readFileContent } from '../../utils/fileUtils';
+
 import {
   isReasoningModel,
   isOpenAIReasoningModel,
   isClaudeReasoningModel,
   isGeminiReasoningModel,
   isQwenReasoningModel,
-  isGrokReasoningModel
-} from '../../config/models';
-import { isDeepSeekReasoningModel } from '../../utils/modelDetection';
+  isGrokReasoningModel,
+  isDeepSeekReasoningModel
+} from '../../utils/modelDetection';
 import {
   EFFORT_RATIO,
   DEFAULT_MAX_TOKENS,
   findTokenLimit
 } from '../../config/constants';
-import {
-  isClaudeModel,
-  isGeminiModel,
-  isGemmaModel
-} from '../../utils/modelUtils';
+import { getDefaultThinkingEffort } from '../../utils/settingsUtils';
+
 // 注释掉工具相关导入，保留结构以便将来添加
 // import { parseAndCallTools } from '../tools/parseAndCallTools';
-import type { BaseProvider } from '../baseProvider';
-import type { Message, Model } from '../../types';
+import { getStreamOutputSetting } from '../../utils/settingsUtils';
+import { AbstractBaseProvider } from '../baseProvider';
+import type { Message, Model, MCPTool } from '../../types';
 
 /**
  * 基础OpenAI Provider
  */
-export abstract class BaseOpenAIProvider implements BaseProvider {
+export abstract class BaseOpenAIProvider extends AbstractBaseProvider {
   protected client: OpenAI;
-  protected model: Model;
 
   constructor(model: Model) {
-    this.model = model;
+    super(model);
     this.client = createClient(model);
+  }
+
+  /**
+   * 将 MCP 工具转换为 OpenAI 工具格式
+   */
+  public convertMcpTools<T>(mcpTools: MCPTool[]): T[] {
+    // 临时同步实现，避免 require 错误
+    return mcpTools.map((tool) => {
+      // 清理工具名称，确保符合各种模型的要求
+      let toolName = tool.id || tool.name;
+
+      // 如果名称以数字开头，添加前缀
+      if (/^\d/.test(toolName)) {
+        toolName = `mcp_${toolName}`;
+      }
+
+      // 移除不允许的字符，只保留字母、数字、下划线、点和短横线
+      toolName = toolName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+
+      // 确保名称不超过64个字符
+      if (toolName.length > 64) {
+        toolName = toolName.substring(0, 64);
+      }
+
+      // 确保名称以字母或下划线开头
+      if (!/^[a-zA-Z_]/.test(toolName)) {
+        toolName = `tool_${toolName}`;
+      }
+
+      console.log(`[OpenAI] 转换工具名称: ${tool.id || tool.name} -> ${toolName}`);
+
+      return {
+        type: 'function',
+        function: {
+          name: toolName,
+          description: tool.description,
+          parameters: tool.inputSchema
+        }
+      };
+    }) as T[];
   }
 
   /**
@@ -90,7 +126,7 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
   }
 
   /**
-   * 获取推理优化参数
+   * 获取推理优化参数 - 完整支持版本
    * 根据模型类型和助手设置返回不同的推理参数
    * @param assistant 助手对象
    * @param model 模型对象
@@ -104,11 +140,13 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
       return {};
     }
 
-    // 获取推理努力程度
-    const reasoningEffort = assistant?.settings?.reasoning_effort;
+    // 获取推理努力程度 - 优先使用助手设置，否则使用全局默认设置
+    const reasoningEffort = assistant?.settings?.reasoning_effort || getDefaultThinkingEffort();
 
-    // 如果未设置推理努力程度，根据模型类型返回禁用推理的参数
-    if (!reasoningEffort) {
+    console.log(`[OpenAI] 模型 ${actualModel.id} 推理努力程度: ${reasoningEffort}`);
+
+    // 如果明确禁用推理或设置为 'off'
+    if (reasoningEffort === 'disabled' || reasoningEffort === 'none' || reasoningEffort === 'off') {
       // Qwen模型
       if (isQwenReasoningModel(actualModel)) {
         return { enable_thinking: false };
@@ -124,6 +162,24 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
         return { reasoning_effort: 'none' };
       }
 
+      // DeepSeek模型：不支持 reasoning_effort: "off"，返回空对象
+      if (isDeepSeekReasoningModel(actualModel)) {
+        console.log(`[OpenAI] DeepSeek模型不支持禁用推理，跳过推理参数`);
+        return {};
+      }
+
+      // OpenAI模型：不支持 reasoning_effort: "off"，返回空对象
+      if (isOpenAIReasoningModel(actualModel)) {
+        console.log(`[OpenAI] OpenAI推理模型不支持禁用推理，跳过推理参数`);
+        return {};
+      }
+
+      // Grok模型：不支持 reasoning_effort: "off"，返回空对象
+      if (isGrokReasoningModel(actualModel)) {
+        console.log(`[OpenAI] Grok模型不支持禁用推理，跳过推理参数`);
+        return {};
+      }
+
       // 默认情况
       return {};
     }
@@ -134,6 +190,17 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
 
     // 如果找不到token限制，使用默认值
     if (!tokenLimit) {
+      // 对于DeepSeek模型，检查是否支持该推理努力程度
+      if (isDeepSeekReasoningModel(actualModel)) {
+        // DeepSeek只支持 'low' 和 'high'
+        const supportedEffort = reasoningEffort === 'medium' ? 'high' : reasoningEffort;
+        if (supportedEffort === 'low' || supportedEffort === 'high') {
+          return { reasoning_effort: supportedEffort };
+        } else {
+          console.log(`[OpenAI] DeepSeek模型不支持推理努力程度 ${reasoningEffort}，跳过推理参数`);
+          return {};
+        }
+      }
       return { reasoning_effort: reasoningEffort };
     }
 
@@ -152,9 +219,14 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
 
     // DeepSeek推理模型
     if (isDeepSeekReasoningModel(actualModel)) {
-      return {
-        reasoning_effort: reasoningEffort
-      };
+      // DeepSeek只支持 'low' 和 'high'
+      const supportedEffort = reasoningEffort === 'medium' ? 'high' : reasoningEffort;
+      if (supportedEffort === 'low' || supportedEffort === 'high') {
+        return { reasoning_effort: supportedEffort };
+      } else {
+        console.log(`[OpenAI] DeepSeek模型不支持推理努力程度 ${reasoningEffort}，跳过推理参数`);
+        return {};
+      }
     }
 
     // Qwen模型
@@ -167,9 +239,14 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
 
     // Grok模型
     if (isGrokReasoningModel(actualModel)) {
-      return {
-        reasoning_effort: reasoningEffort
-      };
+      // Grok只支持 'low' 和 'high'
+      const supportedEffort = reasoningEffort === 'medium' ? 'high' : reasoningEffort;
+      if (supportedEffort === 'low' || supportedEffort === 'high') {
+        return { reasoning_effort: supportedEffort };
+      } else {
+        console.log(`[OpenAI] Grok模型不支持推理努力程度 ${reasoningEffort}，跳过推理参数`);
+        return {};
+      }
     }
 
     // Gemini模型
@@ -194,326 +271,17 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
     return {};
   }
 
-  /**
-   * 获取消息参数
-   * 支持多种类型的消息内容，包括文本、图像、文件等
-   * 支持不同模型特定的消息格式
-   * @param message 消息对象
-   * @param model 模型对象（可选）
-   * @returns 消息参数
-   */
-  protected async getMessageParam(message: Message, model?: Model): Promise<any> {
-    const actualModel = model || this.model;
-    const isVision = this.supportsMultimodal(actualModel);
 
-    // 获取消息内容，使用更健壮的方法
-    let content = '';
-
-    try {
-      // 首先尝试使用getMainTextContent函数
-      content = getMainTextContent(message);
-
-      // 如果内容为空，尝试从其他属性获取
-      if (!content || !content.trim()) {
-        // 尝试从_content属性获取
-        if (typeof (message as any)._content === 'string' && (message as any)._content.trim()) {
-          content = (message as any)._content;
-        }
-        // 尝试从content属性获取
-        else if (typeof (message as any).content === 'string' && (message as any).content.trim()) {
-          content = (message as any).content;
-        }
-        // 尝试从content对象获取
-        else if (typeof (message as any).content === 'object' && (message as any).content) {
-          if ('text' in (message as any).content && (message as any).content.text) {
-            content = (message as any).content.text;
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`[OpenAIProvider.getMessageParam] 获取消息内容失败:`, error);
-      // 如果出错，尝试使用备用方法
-      if (typeof (message as any).content === 'string') {
-        content = (message as any).content;
-      }
-    }
-
-    // 获取图片和文件块
-    const imageBlocks = findImageBlocks(message);
-    const fileBlocks = findFileBlocks(message);
-
-    // 处理系统消息的特殊情况
-    if (message.role === 'system') {
-      // Claude模型的系统消息需要特殊处理
-      if (isClaudeModel(actualModel)) {
-        return {
-          role: 'system',
-          content
-        };
-      }
-
-      // Gemini模型不支持系统消息，需要转换为用户消息
-      if (isGeminiModel(actualModel)) {
-        return {
-          role: 'user',
-          content: `<system>\n${content}\n</system>`
-        };
-      }
-
-      // Gemma模型的系统消息需要特殊处理
-      if (isGemmaModel(actualModel)) {
-        return {
-          role: 'user',
-          content: `<start_of_turn>system\n${content}\n<end_of_turn>`
-        };
-      }
-
-      // 默认处理系统消息
-      return {
-        role: 'system',
-        content
-      };
-    }
-
-    // 如果没有特殊内容，返回简单的文本消息
-    if (imageBlocks.length === 0 && fileBlocks.length === 0) {
-      // 根据不同模型处理消息
-      if (isClaudeModel(actualModel)) {
-        return {
-          role: message.role,
-          content
-        };
-      }
-
-      if (isGeminiModel(actualModel)) {
-        return {
-          role: message.role === 'assistant' ? 'model' : 'user',
-          content
-        };
-      }
-
-      // 默认处理
-      return {
-        role: message.role,
-        content
-      };
-    }
-
-    // 处理多模态内容
-    if (isVision && (imageBlocks.length > 0 || fileBlocks.length > 0)) {
-      // 根据不同模型处理多模态内容
-      if (isClaudeModel(actualModel)) {
-        // Claude模型的多模态格式
-        const parts: any[] = [];
-
-        // 添加文本内容
-        if (content) {
-          parts.push({
-            type: 'text',
-            text: content
-          });
-        }
-
-        // 添加图片内容
-        for (const block of imageBlocks) {
-          if (block.url) {
-            parts.push({
-              type: 'image',
-              source: {
-                type: 'url',
-                url: block.url
-              }
-            });
-          } else if (block.base64Data) {
-            parts.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: block.mimeType || 'image/jpeg',
-                data: block.base64Data
-              }
-            });
-          }
-        }
-
-        return {
-          role: message.role,
-          content: parts
-        };
-      }
-
-      if (isGeminiModel(actualModel)) {
-        // Gemini模型的多模态格式
-        const parts: any[] = [];
-
-        // 添加文本内容
-        if (content) {
-          parts.push({
-            text: content
-          });
-        }
-
-        // 添加图片内容
-        for (const block of imageBlocks) {
-          if (block.url) {
-            parts.push({
-              inline_data: {
-                mime_type: block.mimeType || 'image/jpeg',
-                data: block.url.startsWith('data:') ? block.url.split(',')[1] : '[URL_IMAGE]'
-              }
-            });
-          } else if (block.base64Data) {
-            parts.push({
-              inline_data: {
-                mime_type: block.mimeType || 'image/jpeg',
-                data: block.base64Data
-              }
-            });
-          }
-        }
-
-        return {
-          role: message.role === 'assistant' ? 'model' : 'user',
-          parts
-        };
-      }
-
-      // OpenAI模型的多模态格式（默认）
-      const parts: any[] = [];
-
-      // 添加文本内容
-      if (content) {
-        parts.push({
-          type: 'text',
-          text: content
-        });
-      }
-
-      // 添加图片内容
-      for (const block of imageBlocks) {
-        if (block.url) {
-          parts.push({
-            type: 'image_url',
-            image_url: {
-              url: block.url,
-              detail: 'auto'
-            }
-          });
-        } else if (block.base64Data) {
-          parts.push({
-            type: 'image_url',
-            image_url: {
-              url: `data:${block.mimeType || 'image/jpeg'};base64,${block.base64Data}`,
-              detail: 'auto'
-            }
-          });
-        }
-      }
-
-      // 添加文件内容（如果支持）
-      for (const block of fileBlocks) {
-        if (block.file) {
-          const fileType = getFileTypeByExtension(block.file.name || block.file.origin_name || '');
-
-          // 只处理文本和文档类型的文件
-          if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
-            try {
-              const fileContent = await readFileContent(block.file);
-              if (fileContent) {
-                parts.push({
-                  type: 'text',
-                  text: `文件: ${block.file.name || block.file.origin_name || '未知文件'}\n\n${fileContent}`
-                });
-              }
-            } catch (error) {
-              console.error(`[OpenAIProvider.getMessageParam] 读取文件内容失败:`, error);
-            }
-          }
-        }
-      }
-
-      return {
-        role: message.role,
-        content: parts
-      };
-    }
-
-    // 处理包含文件但不支持多模态的情况
-    if (fileBlocks.length > 0) {
-      let combinedContent = content ? content + '\n\n' : '';
-
-      // 添加文件内容
-      for (const block of fileBlocks) {
-        if (block.file) {
-          const fileType = getFileTypeByExtension(block.file.name || block.file.origin_name || '');
-
-          // 只处理文本和文档类型的文件
-          if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
-            try {
-              const fileContent = await readFileContent(block.file);
-              if (fileContent) {
-                combinedContent += `文件: ${block.file.name || block.file.origin_name || '未知文件'}\n\n${fileContent}\n\n`;
-              }
-            } catch (error) {
-              console.error(`[OpenAIProvider.getMessageParam] 读取文件内容失败:`, error);
-            }
-          }
-        }
-      }
-
-      // 根据不同模型处理
-      if (isGeminiModel(actualModel)) {
-        return {
-          role: message.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: combinedContent.trim() }]
-        };
-      }
-
-      // 默认处理
-      return {
-        role: message.role,
-        content: combinedContent.trim()
-      };
-    }
-
-    // 默认返回文本内容
-    // 根据不同模型处理
-    if (isGeminiModel(actualModel)) {
-      return {
-        role: message.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: content }]
-      };
-    }
-
-    // 默认处理
-    return {
-      role: message.role,
-      content
-    };
-  }
 
   /**
    * 构建系统提示
-   * 简化版本：只返回基本提示
+   * 智能版本：根据模式自动注入 MCP 工具信息
    * @param prompt 系统提示词
+   * @param mcpTools MCP 工具列表
    * @returns 构建后的系统提示
    */
-  protected buildSystemPrompt(prompt: string): string {
-    // 直接返回提示词，如果为空则返回空字符串
-    return prompt || '';
-
-    // 注释掉工具相关代码，保留结构以便将来添加
-    /*
-    // 如果有工具，添加工具说明
-    if (tools && tools.length > 0) {
-      if (systemPrompt) systemPrompt += '\n\n';
-      systemPrompt += '你有以下工具可用:\n';
-      tools.forEach((tool, index) => {
-        systemPrompt += `${index + 1}. ${tool.function.name}: ${tool.function.description}\n`;
-      });
-      systemPrompt += '\n请在适当的时候使用这些工具。';
-    }
-    */
+  protected buildSystemPrompt(prompt: string, mcpTools?: MCPTool[]): string {
+    return this.buildSystemPromptWithTools(prompt, mcpTools);
   }
 
   /**
@@ -543,8 +311,11 @@ export abstract class BaseOpenAIProvider implements BaseProvider {
       enableWebSearch?: boolean;
       systemPrompt?: string;
       enableTools?: boolean; // 添加工具开关参数
+      mcpTools?: import('../../types').MCPTool[]; // 添加 MCP 工具参数
+      mcpMode?: 'prompt' | 'function'; // 添加 MCP 模式参数
+      abortSignal?: AbortSignal;
     }
-  ): Promise<string>;
+  ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }>;
 }
 
 /**
@@ -565,179 +336,116 @@ export class OpenAIProvider extends BaseOpenAIProvider {
     messages: Message[],
     options?: {
       onUpdate?: (content: string, reasoning?: string) => void;
+      onChunk?: (chunk: import('../../types/chunk').Chunk) => void;
       enableWebSearch?: boolean;
       systemPrompt?: string;
       enableTools?: boolean; // 添加工具开关参数
+      mcpTools?: import('../../types').MCPTool[]; // 添加 MCP 工具参数
+      mcpMode?: 'prompt' | 'function'; // 添加 MCP 模式参数
+      abortSignal?: AbortSignal; // 添加中断信号参数
     }
-  ): Promise<string> {
+  ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
     console.log(`[OpenAIProvider.sendChatMessage] 开始处理聊天请求, 模型: ${this.model.id}`);
 
     const {
       onUpdate,
+      onChunk,
       enableWebSearch = false,
       systemPrompt = '',
-      enableTools = true // 默认启用工具
+      enableTools = true, // 默认启用工具
+      mcpTools = [], // MCP 工具列表
+      mcpMode = 'function', // 默认使用函数调用模式
+      abortSignal
     } = options || {};
 
-    // 记录原始消息数量和内容
-    console.log(`[OpenAIProvider.sendChatMessage] 原始消息数量: ${messages.length}`);
-
-    // 记录每条原始消息的基本信息，便于调试
-    messages.forEach((msg, idx) => {
-      console.log(`[OpenAIProvider.sendChatMessage] 原始消息 #${idx+1}: id=${msg.id}, role=${msg.role}, blocks=${msg.blocks?.length || 0}`);
-
-      // 尝试获取消息内容
-      try {
-        const content = this.getMessageContent(msg);
-        console.log(`[OpenAIProvider.sendChatMessage] 原始消息 #${idx+1} 内容: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
-      } catch (error) {
-        console.error(`[OpenAIProvider.sendChatMessage] 获取原始消息 #${idx+1} 内容失败:`, error);
-      }
-    });
+    // 记录原始消息数量
+    console.log(`[OpenAIProvider.sendChatMessage] 处理 ${messages.length} 条消息`);
 
     // 极简版消息处理逻辑
     // 1. 准备消息数组
     let apiMessages = [];
 
-    // 2. 获取系统提示
-    const finalSystemPrompt = this.buildSystemPrompt(systemPrompt);
+    // 2. 智能工具配置设置
+    const { tools } = this.setupToolsConfig({
+      mcpTools,
+      model: this.model,
+      enableToolUse: enableTools,
+      mcpMode: mcpMode // 传递 MCP 模式
+    });
 
-    // 注释掉工具相关代码，保留结构以便将来添加
-    /*
-    // 如果启用工具功能，构建工具参数
-    let toolsParams;
-    if (enableTools && tools && tools.length > 0) {
-      toolsParams = createToolsParams(tools).tools;
-      finalSystemPrompt = this.buildSystemPrompt(systemPrompt, toolsParams);
-    }
-    */
+    // 3. 获取系统提示（包含智能工具注入）
+    const finalSystemPrompt = this.buildSystemPrompt(systemPrompt, mcpTools);
 
-    // 3. 如果系统提示不为空，添加系统消息
+    // 4. 如果系统提示不为空，添加系统消息
     if (finalSystemPrompt.trim()) {
       apiMessages.push({
         role: 'system',
         content: finalSystemPrompt
       });
-      console.log(`[OpenAIProvider.sendChatMessage] 添加系统提示: ${finalSystemPrompt.substring(0, 50)}${finalSystemPrompt.length > 50 ? '...' : ''}`);
-    } else {
-      console.log(`[OpenAIProvider.sendChatMessage] 系统提示为空，不添加系统消息`);
     }
 
-    // 4. 处理用户和助手消息 - 直接使用原始消息的role和content属性
+    // 4. 处理用户和助手消息 - 直接使用传入的消息格式
     for (const message of messages) {
-      // 获取消息内容 - 使用as any绕过类型检查
-      const content = (message as any).content;
+      try {
+        // 检查消息是否已经是API格式（来自prepareMessagesForApi）
+        const content = (message as any).content;
 
-      // 只添加有内容的消息
-      if (content && typeof content === 'string' && content.trim()) {
-        apiMessages.push({
-          role: message.role,
-          content: content
-        });
+        if (content !== undefined) {
+          // 直接使用传入的消息格式，不再进行额外处理
+          apiMessages.push({
+            role: message.role,
+            content: content // 保持原始格式（字符串或数组）
+          });
+        }
+      } catch (error) {
+        console.error(`[OpenAIProvider.sendChatMessage] 处理消息失败:`, error);
 
-        console.log(`[OpenAIProvider.sendChatMessage] 添加消息: role=${message.role}, content=${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
+        // 降级处理：使用原始内容
+        const content = (message as any).content;
+        if (content && typeof content === 'string' && content.trim()) {
+          apiMessages.push({
+            role: message.role,
+            content: content
+          });
+        }
       }
     }
 
-    // 记录处理后的系统消息状态
-    const finalSystemMessage = apiMessages.find(msg => msg.role === 'system');
-    if (finalSystemMessage) {
-      console.log(`[OpenAIProvider.sendChatMessage] 最终系统消息内容: ${
-        typeof finalSystemMessage.content === 'string'
-          ? (finalSystemMessage.content.substring(0, 50) + (finalSystemMessage.content.length > 50 ? '...' : ''))
-          : '[复杂内容]'
-      }`);
-    } else {
-      console.log(`[OpenAIProvider.sendChatMessage] 最终消息数组中没有系统消息`);
-    }
-
-    console.log(`[OpenAIProvider.sendChatMessage] 最终API消息数量: ${apiMessages.length}`);
-
-    // 确保至少有一条用户消息 - 电脑版风格的安全检查
-    // 只有在apiMessages中只有系统消息且没有用户消息时才添加默认消息
+    // 确保至少有一条用户消息
     if (apiMessages.length <= 1 && !apiMessages.some(msg => msg.role === 'user')) {
-      console.warn('[OpenAIProvider.sendChatMessage] 警告: 消息列表中没有用户消息，添加默认用户消息');
-
-      // 添加一个默认的用户消息
       apiMessages.push({
         role: 'user',
         content: '你好'
       });
-
-      console.log('[OpenAIProvider.sendChatMessage] 添加默认用户消息: 你好');
     }
 
     // 强制检查：确保messages数组不为空
     if (apiMessages.length === 0) {
-      console.error('[OpenAIProvider.sendChatMessage] 严重错误: 消息数组为空，添加默认消息');
-
-      // 添加一个默认的用户消息
       apiMessages.push({
         role: 'user',
         content: '你好'
       });
-
-      console.log('[OpenAIProvider.sendChatMessage] 添加默认用户消息: 你好');
     }
 
-    // 记录最终消息数组
-    console.log(`[OpenAIProvider.sendChatMessage] 最终消息数组:`, JSON.stringify(apiMessages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string'
-        ? (m.content.substring(0, 100) + (m.content.length > 100 ? '...' : ''))
-        : '[复杂内容]'
-    }))));
-
-    // 详细记录系统消息和用户消息的内容
-    const systemMsg = apiMessages.find(m => m.role === 'system');
-    const userMsgs = apiMessages.filter(m => m.role === 'user');
-
-    if (systemMsg) {
-      console.log(`[OpenAIProvider.sendChatMessage] 系统消息内容: ${
-        typeof systemMsg.content === 'string'
-          ? (systemMsg.content.substring(0, 200) + (systemMsg.content.length > 200 ? '...' : ''))
-          : '[复杂内容]'
-      }`);
-    }
-
-    if (userMsgs.length > 0) {
-      userMsgs.forEach((msg, idx) => {
-        console.log(`[OpenAIProvider.sendChatMessage] 用户消息 #${idx+1} 内容: ${
-          typeof msg.content === 'string'
-            ? (msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''))
-            : '[复杂内容]'
-        }`);
-      });
-    }
-
-    // 详细记录每条消息的角色和内容前30个字符，便于调试
-    console.log(`[OpenAIProvider.sendChatMessage] 消息详情:`);
-    apiMessages.forEach((msg, index) => {
-      console.log(`  [${index}] ${msg.role}: ${
-        typeof msg.content === 'string'
-          ? (msg.content.substring(0, 30) + (msg.content.length > 30 ? '...' : ''))
-          : '[复杂内容]'
-      }`);
-    });
-
-    // 构建请求参数 - 与电脑版保持一致，始终启用流式输出
+    // 构建请求参数 - 从设置中读取流式输出配置
+    const streamEnabled = getStreamOutputSetting();
     const requestParams: any = {
       model: this.model.id,
       messages: apiMessages,
       temperature: this.getTemperature(),
       top_p: this.getTopP(),
       max_tokens: this.model.maxTokens,
-      stream: true // 始终启用流式输出，与电脑版保持一致
+      stream: streamEnabled // 从设置中读取流式输出配置
     };
 
-    console.log(`[OpenAIProvider.sendChatMessage] 请求参数:`, {
-      model: this.model.id,
-      messagesCount: apiMessages.length,
-      temperature: requestParams.temperature,
-      top_p: requestParams.top_p,
-      max_tokens: requestParams.max_tokens,
-      stream: requestParams.stream // 添加流式输出信息
-    });
+    // 添加 MCP 工具支持（仅在函数调用模式下）
+    if (enableTools && !this.getUseSystemPromptForTools() && tools.length > 0) {
+      requestParams.tools = tools;
+      requestParams.tool_choice = 'auto';
+      console.log(`[OpenAIProvider] 函数调用模式：添加 ${tools.length} 个 MCP 工具`);
+    } else if (enableTools && this.getUseSystemPromptForTools() && mcpTools && mcpTools.length > 0) {
+      console.log(`[OpenAIProvider] 系统提示词模式：${mcpTools.length} 个工具已注入到系统提示词中`);
+    }
 
     // 检查API密钥和基础URL是否设置
     if (!this.model.apiKey) {
@@ -752,31 +460,26 @@ export class OpenAIProvider extends BaseOpenAIProvider {
     // 添加网页搜索参数
     if (enableWebSearch && this.supportsWebSearch()) {
       Object.assign(requestParams, getWebSearchParams(this.model, enableWebSearch));
-      console.log(`[OpenAIProvider.sendChatMessage] 启用网页搜索功能`);
     }
-
-    // 不使用工具功能
-    console.log(`[OpenAIProvider.sendChatMessage] 工具功能已简化，不添加工具参数`);
 
     // 添加推理参数（支持DeepSeek等推理模型）
     if (this.supportsReasoning()) {
       const reasoningParams = this.getReasoningEffort();
       Object.assign(requestParams, reasoningParams);
-      console.log(`[OpenAIProvider.sendChatMessage] 添加推理参数:`, reasoningParams);
-    } else {
-      console.log(`[OpenAIProvider.sendChatMessage] 模型不支持推理，跳过推理参数配置`);
     }
 
     try {
-      // 使用流式响应处理
-      if (onUpdate) {
-        console.log(`[OpenAIProvider.sendChatMessage] 使用流式响应模式（有回调）`);
-        return await this.handleStreamResponse(requestParams, onUpdate, enableTools);
+      // 根据流式输出设置选择响应处理方式
+      if (streamEnabled) {
+        // 使用流式响应处理
+        if (onUpdate) {
+          return await this.handleStreamResponse(requestParams, onUpdate, enableTools, mcpTools, abortSignal);
+        } else {
+          return await this.handleStreamResponseWithoutCallback(requestParams, enableTools, mcpTools, abortSignal);
+        }
       } else {
-        // 即使没有回调，也使用流式响应，但结果会在完成后一次性返回
-        // 这与电脑版的行为一致，电脑版总是使用流式响应
-        console.log(`[OpenAIProvider.sendChatMessage] 使用流式响应模式（无回调）`);
-        return await this.handleStreamResponseWithoutCallback(requestParams, enableTools);
+        // 使用非流式响应处理
+        return await this.handleNonStreamResponse(requestParams, onUpdate, onChunk, enableTools, mcpTools, abortSignal);
       }
     } catch (error) {
       console.error('[OpenAIProvider.sendChatMessage] API请求失败:', error);
@@ -807,40 +510,21 @@ export class OpenAIProvider extends BaseOpenAIProvider {
    * 处理流式响应
    * @param params 请求参数
    * @param onUpdate 更新回调
+   * @param enableTools 是否启用工具
+   * @param abortSignal 中断信号
    * @returns 响应内容
    */
   private async handleStreamResponse(
     params: any,
     onUpdate: (content: string, reasoning?: string) => void,
-    enableTools: boolean = true
-  ): Promise<string> {
+    enableTools: boolean = true,
+    _mcpTools: import('../../types').MCPTool[] = [],
+    abortSignal?: AbortSignal
+  ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
     // 简化的回调函数，直接调用原始回调
     const enhancedCallback = (content: string, reasoning?: string) => {
       // 调用原始回调函数
       onUpdate(content, reasoning);
-
-      // 注释掉工具相关代码，保留结构以便将来添加
-      /*
-      // 创建工具响应数组，用于存储工具调用响应
-      const toolResponses: any[] = [];
-
-      // 如果有通用工具列表，尝试解析工具调用
-      if (params.genericTools && params.genericTools.length > 0) {
-        try {
-          // 解析并调用工具
-          await parseAndCallTools(
-            content,
-            toolResponses,
-            onUpdate,
-            undefined,
-            this.model,
-            params.genericTools
-          );
-        } catch (error) {
-          console.error('[OpenAIProvider.handleStreamResponse] 处理工具调用失败:', error);
-        }
-      }
-      */
     };
 
     // 调用流式完成函数
@@ -853,8 +537,9 @@ export class OpenAIProvider extends BaseOpenAIProvider {
       enhancedCallback,
       {
         ...params,
-        enableReasoning: this.supportsReasoning() && enableTools,
-        enableTools: enableTools
+        enableReasoning: this.supportsReasoning(), // 思考过程独立于工具调用
+        enableTools: enableTools,
+        signal: abortSignal // 传递中断信号
       }
     );
   }
@@ -864,9 +549,16 @@ export class OpenAIProvider extends BaseOpenAIProvider {
    * 使用流式响应但不使用回调，结果会在完成后一次性返回
    * 这与电脑版的行为一致
    * @param params 请求参数
+   * @param enableTools 是否启用工具
+   * @param abortSignal 中断信号
    * @returns 响应内容
    */
-  private async handleStreamResponseWithoutCallback(params: any, enableTools: boolean = true): Promise<string> {
+  private async handleStreamResponseWithoutCallback(
+    params: any,
+    enableTools: boolean = true,
+    _mcpTools: import('../../types').MCPTool[] = [],
+    abortSignal?: AbortSignal
+  ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
     try {
       console.log('[OpenAIProvider.handleStreamResponseWithoutCallback] 开始处理流式响应（无回调）');
 
@@ -887,29 +579,6 @@ export class OpenAIProvider extends BaseOpenAIProvider {
 
           // 这里我们可以添加其他处理逻辑，例如更新UI
           console.log(`[OpenAIProvider.virtualCallback] 更新内容，当前长度: ${content.length}`);
-
-          // 注释掉工具相关代码，保留结构以便将来添加
-          /*
-          // 创建工具响应数组，用于存储工具调用响应
-          const toolResponses: any[] = [];
-
-          // 如果有通用工具列表，尝试解析工具调用
-          if (params.genericTools && params.genericTools.length > 0) {
-            try {
-              // 解析并调用工具
-              await parseAndCallTools(
-                content,
-                toolResponses,
-                undefined,
-                undefined,
-                this.model,
-                params.genericTools
-              );
-            } catch (error) {
-              console.error('[OpenAIProvider.virtualCallback] 处理工具调用失败:', error);
-            }
-          }
-          */
         }
       };
 
@@ -923,14 +592,108 @@ export class OpenAIProvider extends BaseOpenAIProvider {
         virtualCallback,
         {
           ...params,
-          enableReasoning: this.supportsReasoning() && enableTools,
-          enableTools: enableTools
+          enableReasoning: this.supportsReasoning(), // 思考过程独立于工具调用
+          enableTools: enableTools,
+          signal: abortSignal // 传递中断信号
         }
       );
     } catch (error) {
       console.error('OpenAI API流式请求失败:', error);
       // 不使用logApiError，直接记录错误
       console.error('错误详情:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 处理非流式响应
+   * @param params 请求参数
+   * @param onUpdate 更新回调（可选）
+   * @param onChunk Chunk事件回调（可选）
+   * @param enableTools 是否启用工具
+   * @param abortSignal 中断信号
+   * @returns 响应内容
+   */
+  private async handleNonStreamResponse(
+    params: any,
+    onUpdate?: (content: string, reasoning?: string) => void,
+    onChunk?: (chunk: import('../../types/chunk').Chunk) => void,
+    _enableTools: boolean = true,
+    _mcpTools: import('../../types').MCPTool[] = [],
+    abortSignal?: AbortSignal
+  ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
+    try {
+      console.log('[OpenAIProvider.handleNonStreamResponse] 开始处理非流式响应');
+
+      // 调用非流式API
+      const response = await this.client.chat.completions.create({
+        ...params,
+        stream: false, // 确保是非流式
+        enableReasoning: this.supportsReasoning(), // 添加思考过程支持
+        signal: abortSignal // 传递中断信号
+      });
+
+      console.log('[OpenAIProvider.handleNonStreamResponse] 收到非流式响应');
+
+      // 提取响应内容
+      const choice = response.choices?.[0];
+      if (!choice) {
+        throw new Error('API响应中没有选择项');
+      }
+
+      const content = choice.message?.content || '';
+      // 对于推理模型，尝试从多个可能的字段中获取推理内容
+      const reasoning = (choice.message as any)?.reasoning ||
+                       (choice.message as any)?.reasoning_content ||
+                       undefined;
+
+      // 参考电脑版实现：优先使用 onChunk 回调，避免重复处理
+      if (onChunk) {
+        console.log(`[OpenAIProvider] 非流式：使用 onChunk 回调处理响应`);
+        // 先发送完整的思考过程（如果有）
+        if (reasoning && reasoning.trim()) {
+          console.log(`[OpenAIProvider] 非流式：发送思考内容，长度: ${reasoning.length}`);
+          // 发送思考完成事件（非流式时直接发送完整内容）
+          onChunk({
+            type: 'thinking.complete',
+            text: reasoning,
+            thinking_millsec: 0
+          });
+        }
+        // 再发送完整的普通文本（如果有）
+        if (content && content.trim()) {
+          console.log(`[OpenAIProvider] 非流式：发送普通文本，长度: ${content.length}`);
+          // 发送文本完成事件（非流式时直接发送完整内容）
+          onChunk({
+            type: 'text.complete',
+            text: content
+          });
+        }
+      } else if (onUpdate) {
+        console.log(`[OpenAIProvider] 非流式：使用 onUpdate 回调处理响应（兼容模式）`);
+        // 兼容旧的 onUpdate 回调
+        if (reasoning && reasoning.trim()) {
+          console.log(`[OpenAIProvider] 非流式：发送思考内容（兼容模式），长度: ${reasoning.length}`);
+          onUpdate('', reasoning);
+        }
+        if (content && content.trim()) {
+          console.log(`[OpenAIProvider] 非流式：发送普通文本（兼容模式），长度: ${content.length}`);
+          onUpdate(content);
+        }
+      }
+
+      // 返回结果
+      if (reasoning) {
+        return {
+          content,
+          reasoning,
+          reasoningTime: 0 // 非流式响应没有推理时间
+        };
+      } else {
+        return content;
+      }
+    } catch (error) {
+      console.error('[OpenAIProvider.handleNonStreamResponse] 非流式API请求失败:', error);
       throw error;
     }
   }

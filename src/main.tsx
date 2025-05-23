@@ -7,11 +7,20 @@ import { initializeServices } from './shared/services';
 import store from './shared/store';
 import { loadSystemPrompts } from './shared/store/slices/systemPromptsSlice';
 
+// 导入 EventSource polyfill 以支持移动端 SSE
+import { EventSourcePolyfill } from 'event-source-polyfill';
+
+// 全局替换 EventSource
+if (typeof window !== 'undefined') {
+  (window as any).EventSource = EventSourcePolyfill;
+  console.log('[SSE Polyfill] EventSource polyfill 已加载');
+}
+
 // 初始化系统服务
 async function initializeApp() {
   try {
     console.log('[INFO] 应用初始化');
-    
+
     // 首先，确保Dexie数据库已经打开并准备就绪
     try {
       const isOpen = await dexieStorage.isOpen();
@@ -20,11 +29,11 @@ async function initializeApp() {
       }
       console.log('数据库连接已就绪');
     } catch (dbError) {
-      console.error('数据库连接初始化失败:', 
+      console.error('数据库连接初始化失败:',
         dbError instanceof Error ? dbError.message : String(dbError));
       throw new Error('数据库连接失败，无法初始化应用');
     }
-    
+
     // 初始化存储服务，包括数据迁移
     await initStorageService();
     console.log('Dexie存储服务初始化成功');
@@ -39,7 +48,7 @@ async function initializeApp() {
 
     // 记录应用启动信息
     console.log('[App] 应用已启动');
-    
+
     // 渲染应用
     createRoot(document.getElementById('root')!).render(
       <StrictMode>
@@ -47,9 +56,9 @@ async function initializeApp() {
       </StrictMode>,
     );
   } catch (error) {
-    console.error('应用初始化失败:', 
+    console.error('应用初始化失败:',
       error instanceof Error ? `${error.name}: ${error.message}` : String(error));
-    
+
     // 显示用户友好的错误信息
     const errorContainer = document.createElement('div');
     errorContainer.style.padding = '20px';
@@ -63,7 +72,7 @@ async function initializeApp() {
       <button id="retry-btn" style="padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 16px;">重试</button>
     `;
     document.body.appendChild(errorContainer);
-    
+
     // 添加重试按钮功能
     document.getElementById('retry-btn')?.addEventListener('click', () => {
       window.location.reload();

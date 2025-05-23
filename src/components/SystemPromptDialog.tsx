@@ -16,6 +16,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import type { ChatTopic, Assistant } from '../shared/types/Assistant';
 import { TopicService } from '../shared/services/TopicService';
 import { updateTopic } from '../shared/store/slices/assistantsSlice';
+import store from '../shared/store';
 
 interface SystemPromptDialogProps {
   open: boolean;
@@ -100,15 +101,13 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
         console.log('[SystemPromptDialog] 已保存话题提示词到数据库');
 
         // 强制刷新Redux状态
-        import('../shared/store').then(({ default: store }) => {
-          if (assistant) {
-            store.dispatch(updateTopic({
-              assistantId: assistant.id,
-              topic: updatedTopic
-            }));
-            console.log('[SystemPromptDialog] 已通过Redux更新话题状态');
-          }
-        });
+        if (assistant) {
+          store.dispatch(updateTopic({
+            assistantId: assistant.id,
+            topic: updatedTopic
+          }));
+          console.log('[SystemPromptDialog] 已通过Redux更新话题状态');
+        }
 
         // 不再同步更新助手的系统提示词，简化同步机制
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { IconButton, CircularProgress, Badge, Tooltip, Box } from '@mui/material';
+import { IconButton, CircularProgress, Badge, Tooltip, Box, useMediaQuery } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import KeyboardVoiceIcon from '@mui/icons-material/KeyboardVoice';
@@ -23,7 +23,7 @@ import { useTheme } from '@mui/material/styles';
 import { alpha } from '@mui/material/styles';
 
 interface ChatInputProps {
-  onSendMessage: (message: string, images?: SiliconFlowImageFormat[]) => void;
+  onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
   isLoading?: boolean;
   allowConsecutiveMessages?: boolean; // 允许连续发送消息，即使AI尚未回复
   imageGenerationMode?: boolean; // 是否处于图像生成模式
@@ -32,6 +32,7 @@ interface ChatInputProps {
   onDetectUrl?: (url: string) => Promise<string>; // 用于检测并解析URL的回调
   onStopResponse?: () => void; // 停止AI回复的回调
   isStreaming?: boolean; // 是否正在流式响应中
+  toolsEnabled?: boolean; // 工具开关状态
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -43,7 +44,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
   webSearchActive = false, // 默认不是网络搜索模式
   onDetectUrl,
   onStopResponse,
-  isStreaming = false
+  isStreaming = false,
+  toolsEnabled = true // 默认启用工具
 }) => {
   const [message, setMessage] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -81,9 +83,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
     loadTopic();
   }, [currentTopicId]);
 
-  // 获取主题相关颜色
+  // 获取主题相关颜色和响应式断点
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // 小于600px
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md')); // 600px-900px
+
   const inputBgColor = isDarkMode ? alpha(theme.palette.background.paper, 0.5) : alpha(theme.palette.background.paper, 0.8);
   const iconColor = theme.palette.mode === 'dark' ? theme.palette.primary.light : theme.palette.primary.main;
   const textColor = isDarkMode ? '#E0E0E0' : '#000000';
@@ -102,7 +107,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
     e?.preventDefault();
 
     if ((!message.trim() && images.length === 0 && files.length === 0 && !parsedContent) || isLoading) {
-      console.log('无内容或正在加载，不发送消息');
       return;
     }
 
@@ -134,25 +138,17 @@ const ChatInput: React.FC<ChatInputProps> = ({
       }
     }));
 
-    // 如果有非图片文件，添加到消息中
-    const nonImageFiles = files.filter(f => !f.mimeType.startsWith('image/'));
-    if (nonImageFiles.length > 0) {
-      // 为每个文件添加描述
-      const fileDescriptions = nonImageFiles.map(file =>
-        `[文件: ${file.name} (${FileUploadService.formatFileSize(file.size)})]`
-      ).join('\n');
-
-      // 将文件描述添加到消息中
-      if (processedMessage) {
-        processedMessage += '\n\n' + fileDescriptions;
-      } else {
-        processedMessage = fileDescriptions;
-      }
-    }
+    // 不在这里处理文件描述，让API处理文件内容
 
     // 调用父组件的回调
-    console.log('发送消息:', processedMessage, formattedImages.length > 0 ? '包含图片' : '不包含图片');
-    onSendMessage(processedMessage, formattedImages.length > 0 ? formattedImages : undefined);
+    console.log('发送消息:', {
+      message: processedMessage,
+      images: formattedImages.length,
+      files: files.length,
+      allFiles: files,
+      toolsEnabled: toolsEnabled
+    });
+    onSendMessage(processedMessage, formattedImages.length > 0 ? formattedImages : undefined, toolsEnabled, files);
 
     // 重置状态
     setMessage('');
@@ -382,10 +378,35 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // 显示正在加载的指示器，但不禁用输入框
   const showLoadingIndicator = isLoading && !allowConsecutiveMessages;
 
+  // 根据屏幕尺寸调整样式
+  const getResponsiveStyles = () => {
+    if (isMobile) {
+      return {
+        padding: '0px 8px 8px 8px',
+        maxWidth: '100%',
+        margin: '0'
+      };
+    } else if (isTablet) {
+      return {
+        padding: '0px 16px 12px 16px',
+        maxWidth: '700px',
+        margin: '0 auto'
+      };
+    } else {
+      return {
+        padding: '0px 10px 10px 10px',
+        maxWidth: '800px',
+        margin: '0 auto'
+      };
+    }
+  };
+
+  const responsiveStyles = getResponsiveStyles();
+
   return (
     <div style={{
       backgroundColor: 'transparent',
-      padding: '0px 10px 10px 10px',
+      ...responsiveStyles,
       width: '100%',
       display: 'flex',
       flexDirection: 'column',
@@ -394,9 +415,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       zIndex: 1000,
       boxShadow: 'none',
       transition: 'all 0.3s ease',
-      marginBottom: isKeyboardVisible ? '0' : '0',
-      maxWidth: '800px', // 设置最大宽度，与消息气泡一致
-      margin: '0 auto' // 居中显示
+      marginBottom: isKeyboardVisible ? '0' : '0'
     }}>
       {/* URL解析状态显示 */}
       {urlScraperStatus !== 'idle' && (
@@ -493,22 +512,22 @@ const ChatInput: React.FC<ChatInputProps> = ({
       <div style={{
           display: 'flex',
           alignItems: 'center',
-        padding: '5px 8px',
+        padding: isTablet ? '6px 12px' : isMobile ? '5px 8px' : '5px 8px',
         borderRadius: '20px',
         backgroundColor: inputBgColor,
           border: 'none',
-        minHeight: '40px',
+        minHeight: isTablet ? '48px' : '40px',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         width: '100%',
         maxWidth: '100%' // 使用100%宽度，与外部容器一致
       }}>
         {/* 语音图标 */}
           <IconButton
-          size="medium"
+          size={isTablet ? "large" : "medium"}
           style={{
             color: iconColor,
-            padding: '8px',
-            marginRight: '4px'
+            padding: isTablet ? '10px' : '8px',
+            marginRight: isTablet ? '6px' : '4px'
           }}
           >
           <KeyboardVoiceIcon />
@@ -517,14 +536,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
         {/* 文本输入区域 */}
         <div style={{
           flexGrow: 1,
-          margin: '0 8px',
+          margin: isTablet ? '0 12px' : '0 8px',
           position: 'relative'
         }}>
           <textarea
             ref={textareaRef}
             style={{
-              fontSize: '16px',
-              padding: '12px 0',
+              fontSize: isTablet ? '17px' : '16px',
+              padding: isTablet ? '14px 0' : '12px 0',
               border: 'none',
               outline: 'none',
               width: '100%',
@@ -533,8 +552,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
               fontFamily: 'inherit',
               resize: 'none',
               overflow: 'hidden',
-              minHeight: '24px',
-              maxHeight: '80px',
+              minHeight: isTablet ? '28px' : '24px',
+              maxHeight: isTablet ? '100px' : '80px',
               color: textColor
             }}
             placeholder={imageGenerationMode ? "输入图像生成提示词..." : webSearchActive ? "输入网络搜索内容..." : "和ai助手说点什么"}
@@ -549,17 +568,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
         {/* 添加按钮，打开上传菜单 */}
         <Tooltip title="添加图片或文件">
           <IconButton
-            size="medium"
+            size={isTablet ? "large" : "medium"}
             onClick={handleOpenUploadMenu}
             disabled={uploadingMedia || (isLoading && !allowConsecutiveMessages)}
             style={{
               color: uploadingMedia ? disabledColor : iconColor,
-              padding: '8px',
-              position: 'relative'
+              padding: isTablet ? '10px' : '8px',
+              position: 'relative',
+              marginRight: isTablet ? '4px' : '0'
             }}
           >
             {uploadingMedia ? (
-              <CircularProgress size={24} />
+              <CircularProgress size={isTablet ? 28 : 24} />
             ) : (
               <Badge badgeContent={images.length + files.length} color="primary" max={9} invisible={images.length + files.length === 0}>
                 <AddCircleIcon />
@@ -572,32 +592,32 @@ const ChatInput: React.FC<ChatInputProps> = ({
         <IconButton
           onClick={isStreaming && onStopResponse ? onStopResponse : handleSubmit}
           disabled={!isStreaming && (!canSendMessage() || (isLoading && !allowConsecutiveMessages))}
-          size="medium"
+          size={isTablet ? "large" : "medium"}
           style={{
             color: isStreaming ? '#ff4d4f' : !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? disabledColor : imageGenerationMode ? '#9C27B0' : webSearchActive ? '#3b82f6' : urlScraperStatus === 'success' ? '#26C6DA' : isDarkMode ? '#4CAF50' : '#09bb07',
-            padding: '8px'
+            padding: isTablet ? '10px' : '8px'
           }}
         >
           {isStreaming ? (
             <Tooltip title="停止生成">
-              <StopIcon />
+              <StopIcon fontSize={isTablet ? "medium" : "small"} />
             </Tooltip>
           ) : showLoadingIndicator ? (
-            <CircularProgress size={24} color="inherit" />
+            <CircularProgress size={isTablet ? 28 : 24} color="inherit" />
           ) : imageGenerationMode ? (
             <Tooltip title="生成图像">
-              <ImageIcon />
+              <ImageIcon fontSize={isTablet ? "medium" : "small"} />
             </Tooltip>
           ) : webSearchActive ? (
             <Tooltip title="搜索网络">
-              <SearchIcon />
+              <SearchIcon fontSize={isTablet ? "medium" : "small"} />
             </Tooltip>
           ) : urlScraperStatus === 'success' ? (
             <Tooltip title="发送解析的网页内容">
-              <LinkIcon />
+              <LinkIcon fontSize={isTablet ? "medium" : "small"} />
             </Tooltip>
           ) : (
-            <SendIcon />
+            <SendIcon fontSize={isTablet ? "medium" : "small"} />
           )}
         </IconButton>
       </div>

@@ -5,11 +5,11 @@ import { getStorageItem } from '../shared/utils/storage';
 const ChatPage = lazy(() => import('../pages/ChatPage'));
 const WelcomePage = lazy(() => import('../pages/WelcomePage'));
 const SettingsPage = lazy(() => import('../pages/Settings'));
-const AppearanceSettings = lazy(() => import('../pages/Settings/AppearanceSettings'));
+const AppearanceSettings = lazy(() => import('../pages/Settings/AppearanceSettings.tsx'));
 const BehaviorSettings = lazy(() => import('../pages/Settings/BehaviorSettings'));
 const ChatInterfaceSettings = lazy(() => import('../pages/Settings/ChatInterfaceSettings'));
 const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSettings'));
-const SpecialFeaturesSettings = lazy(() => import('../pages/Settings/SpecialFeaturesSettings'));
+
 const DefaultModelSettingsPage = lazy(() => import('../pages/Settings/DefaultModelSettings/index'));
 const ModelProviderSettings = lazy(() => import('../pages/Settings/ModelProviderSettings'));
 const AddProviderPage = lazy(() => import('../pages/Settings/AddProviderPage'));
@@ -22,6 +22,9 @@ const VueDemoPage = lazy(() => import('../pages/VueDemo'));
 import DataSettingsPage from '../pages/Settings/DataSettings';
 // 导入高级备份页面
 const AdvancedBackupPage = lazy(() => import('../pages/Settings/DataSettings/AdvancedBackupPage'));
+// 导入 MCP 相关页面
+const MCPServerSettings = lazy(() => import('../pages/Settings/MCPServerSettings'));
+const MCPServerDetail = lazy(() => import('../pages/Settings/MCPServerDetail'));
 
 // 加载中组件
 const LoadingFallback = () => (
@@ -79,7 +82,8 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/data" element={<DataSettingsPage />} />
         <Route path="/settings/data/advanced-backup" element={<AdvancedBackupPage />} />
         <Route path="/settings/web-search" element={<WebSearchSettings />} />
-        <Route path="/settings/special-features" element={<SpecialFeaturesSettings />} />
+        <Route path="/settings/mcp-server" element={<MCPServerSettings />} />
+        <Route path="/settings/mcp-server/:serverId" element={<MCPServerDetail />} />
         <Route path="/devtools" element={<DevToolsPage />} />
         <Route path="/vue-demo" element={<VueDemoPage />} />
       </Routes>

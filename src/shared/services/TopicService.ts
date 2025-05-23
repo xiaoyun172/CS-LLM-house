@@ -466,7 +466,6 @@ export class TopicService {
    */
   static async loadTopicMessages(topicId: string): Promise<Message[]> {
     try {
-      console.log(`[TopicService] 开始加载话题 ${topicId} 的消息`);
 
       // 获取话题
       const topic = await dexieStorage.topics.get(topicId);
@@ -480,7 +479,6 @@ export class TopicService {
 
       // 优先使用messages数组
       if (topic.messages && Array.isArray(topic.messages) && topic.messages.length > 0) {
-        console.log(`[TopicService] 从话题对象直接获取 ${topic.messages.length} 条消息`);
         messages = topic.messages;
       }
       // 如果没有messages数组，但有messageIds，则从messages表加载
@@ -517,56 +515,32 @@ export class TopicService {
       console.log(`[TopicService] 从数据库加载了 ${messages.length} 条消息`);
 
       // 检查每条消息的状态并修复
-      const blocksToLoad: string[] = [];
-
       for (const msg of messages) {
-        // 收集所有块ID
-        if (msg.blocks && msg.blocks.length > 0) {
-          blocksToLoad.push(...msg.blocks);
-        }
-
         // 确保消息状态正确
         if (msg.role === 'assistant' && msg.status !== 'success' && msg.status !== 'error') {
           console.log(`[TopicService] 修正助手消息状态: ${msg.id}`);
           msg.status = 'success';
         }
 
-        // 确保消息有块
-        if (!msg.blocks || msg.blocks.length === 0) {
-          console.log(`[TopicService] 消息没有块，创建默认块: ${msg.id}`);
+        // 调试：打印每条消息的详细信息
+        console.log(`[TopicService] 消息详情:`, {
+          id: msg.id,
+          role: msg.role,
+          hasBlocks: !!(msg.blocks && msg.blocks.length > 0),
+          blocksCount: msg.blocks ? msg.blocks.length : 0,
+          blocks: msg.blocks
+        });
+      }
 
-          // 尝试从原始消息中获取内容，或使用空字符串
-          let content = '';
-          if (typeof (msg as any).content === 'string') {
-            content = (msg as any).content;
-          } else if (typeof (msg as any).text === 'string') {
-            content = (msg as any).text;
-          }
-
-          const defaultBlock: MessageBlock = {
-            id: uuid(),
-            messageId: msg.id,
-            type: 'main_text',
-            content: content,
-            createdAt: new Date().toISOString(),
-            status: 'success'
-          };
-
-          msg.blocks = [defaultBlock.id];
-
-          // 保存块和更新消息
-          await dexieStorage.saveMessageBlock(defaultBlock);
-
-          // 更新topic.messages中的消息
-          if (topic.messages && Array.isArray(topic.messages)) {
-            const msgIndex = topic.messages.findIndex(m => m.id === msg.id);
-            if (msgIndex >= 0) {
-              topic.messages[msgIndex] = msg;
-              await dexieStorage.topics.put(topic);
-            }
-          }
+      // 收集所有块ID
+      const blocksToLoad: string[] = [];
+      for (const msg of messages) {
+        if (msg.blocks && msg.blocks.length > 0) {
+          blocksToLoad.push(...msg.blocks);
         }
       }
+
+      console.log(`[TopicService] 需要加载 ${blocksToLoad.length} 个块:`, blocksToLoad);
 
       // 加载所有消息块
       const blocks: MessageBlock[] = [];
@@ -574,56 +548,24 @@ export class TopicService {
       for (const blockId of blocksToLoad) {
         const block = await dexieStorage.getMessageBlock(blockId);
         if (block) {
+          console.log(`[TopicService] 加载块:`, {
+            id: block.id,
+            messageId: block.messageId,
+            type: block.type,
+            hasContent: !!(block as any).content,
+            contentLength: (block as any).content ? (block as any).content.length : 0,
+            status: block.status
+          });
+
           // 确保块状态正确
           if (block.status !== 'success' && block.status !== 'error') {
             block.status = 'success';
             await dexieStorage.updateMessageBlock(block.id, { status: 'success' });
           }
 
-          // 主文本块内容为空时，不立即设置错误状态，而是保持原状态
-          // 这样可以避免在应用重启或进入设置页面时错误地将消息标记为失败
-          if (block.type === 'main_text' && (!block.content || block.content.trim() === '')) {
-            console.log(`[TopicService] 检测到空主文本块: ${block.id}，但不立即设置错误状态`);
-
-            // 获取关联的消息，检查是否有版本历史
-            const message = await dexieStorage.getMessage(block.messageId);
-
-            // 如果消息有版本历史，尝试从中恢复内容
-            if (message && message.versions && message.versions.length > 0) {
-              console.log(`[TopicService] 消息 ${message.id} 有 ${message.versions.length} 个版本，尝试恢复内容`);
-              let contentRestored = false;
-
-              // 首先尝试从活跃版本恢复
-              const activeVersion = message.versions.find(v => v.isActive);
-              if (activeVersion && activeVersion.metadata && activeVersion.metadata.content) {
-                console.log(`[TopicService] 从活跃版本 ${activeVersion.id} 恢复内容`);
-                block.content = activeVersion.metadata.content;
-                block.status = 'success';
-                contentRestored = true;
-              }
-              // 如果没有活跃版本或活跃版本没有内容，尝试从最新版本恢复
-              else if (message.versions[0] && message.versions[0].metadata && message.versions[0].metadata.content) {
-                console.log(`[TopicService] 从最新版本 ${message.versions[0].id} 恢复内容`);
-                block.content = message.versions[0].metadata.content;
-                block.status = 'success';
-                contentRestored = true;
-              }
-
-              if (contentRestored) {
-                await dexieStorage.updateMessageBlock(block.id, {
-                  content: block.content,
-                  status: block.status
-                });
-                console.log(`[TopicService] 成功从版本历史恢复内容: ${block.id}`);
-              }
-            }
-
-            // 即使无法从版本历史恢复内容，也不立即设置错误状态
-            // 这样可以避免在应用重启或进入设置页面时错误地将消息标记为失败
-            // 只有在用户尝试查看消息内容时，才会显示错误提示
-          }
-
           blocks.push(block);
+        } else {
+          console.warn(`[TopicService] 找不到块: ${blockId}`);
         }
       }
 

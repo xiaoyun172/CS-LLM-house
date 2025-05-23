@@ -7,7 +7,7 @@ import type { Model } from '../../types';
 import { logApiRequest } from '../../services/LoggerService';
 
 /**
- * 创建Gemini客户端
+ * 创建Gemini客户端 - 简化版本，参考旧版本实现
  * @param model 模型配置
  * @returns Gemini客户端实例
  */
@@ -19,21 +19,13 @@ export function createClient(model: Model): GoogleGenerativeAI {
       throw new Error('未提供Gemini API密钥，请在设置中配置');
     }
 
-    // 处理基础URL
-    let baseUrl = model.baseUrl || 'https://generativelanguage.googleapis.com';
-    
-    // 确保baseURL格式正确
-    if (baseUrl.endsWith('/')) {
-      baseUrl = baseUrl.slice(0, -1);
-    }
-    
-    console.log(`[Gemini createClient] 创建客户端, 模型ID: ${model.id}, baseURL: ${baseUrl.substring(0, 20)}...`);
+    console.log(`[Gemini createClient] 创建客户端, 模型ID: ${model.id}, baseURL: ${model.baseUrl || 'https://generativelanguage.googleapis.com'}`);
 
-    // 创建客户端
+    // 直接创建客户端，就像旧版本一样
     const client = new GoogleGenerativeAI(apiKey);
     console.log(`[Gemini createClient] 客户端创建成功`);
     return client;
-    
+
   } catch (error) {
     console.error('[Gemini createClient] 创建客户端失败:', error);
     throw error;
@@ -68,7 +60,7 @@ export async function testConnection(model: Model): Promise<boolean> {
     // 发送简单的测试请求
     const geminiModel = genAI.getGenerativeModel({ model: modelId });
     const result = await geminiModel.generateContent('Hello');
-    
+
     return result.response !== undefined;
   } catch (error) {
     console.error('Gemini API连接测试失败:', error);
@@ -102,4 +94,4 @@ export function supportsWebSearch(model: Model): boolean {
  */
 export function supportsReasoning(model: Model): boolean {
   return model.capabilities?.reasoning === true;
-} 
+}

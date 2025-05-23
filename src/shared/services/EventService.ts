@@ -7,7 +7,7 @@ export const EventEmitter = EmitteryInstance;
 export const EVENT_NAMES = {
   ...COMMON_EVENT_NAMES,
 
-  // 服务特定事件
+  // 服务特定事件（覆盖通用事件名称以保持兼容性）
   SEND_MESSAGE: 'SEND_MESSAGE',
   CLEAR_MESSAGES: 'CLEAR_MESSAGES',
   ADD_NEW_TOPIC: 'ADD_NEW_TOPIC',
@@ -17,6 +17,7 @@ export const EVENT_NAMES = {
   SERVICE_ERROR: 'SERVICE_ERROR',
   IMAGE_PROCESSING_DEPRECATED: 'IMAGE_PROCESSING_DEPRECATED',
   TOPICS_CLEARED: 'TOPICS_CLEARED',
+  TOPIC_MOVED: 'TOPIC_MOVED',
   MESSAGE_ERROR: 'message:error',
   STREAMING_STARTED: 'streaming:started',
   STREAMING_ENDED: 'streaming:ended'

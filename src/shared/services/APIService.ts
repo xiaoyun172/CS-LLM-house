@@ -27,16 +27,27 @@ export async function generateImage(
     log('INFO', `开始生成图像，使用模型: ${model.name}`);
 
     // 检查模型是否支持图像生成
+    // 优先检查模型编辑界面中的"输出能力"标签（modelTypes）
     const isImageGenerationModel =
+      // 1. 优先检查 modelTypes 中是否包含图像生成类型（对应编辑界面的"输出能力"）
+      (model.modelTypes && model.modelTypes.includes(ModelType.ImageGen)) ||
+      // 2. 检查模型的图像生成标志
       model.imageGeneration ||
       model.capabilities?.imageGeneration ||
-      (model.modelTypes && model.modelTypes.includes(ModelType.ImageGen)) ||
+      // 3. 基于模型ID的后备检测（用于未正确配置的模型）
       model.id.toLowerCase().includes('flux') ||
       model.id.toLowerCase().includes('black-forest') ||
       model.id.toLowerCase().includes('stable-diffusion') ||
       model.id.toLowerCase().includes('sd') ||
       model.id.toLowerCase().includes('dalle') ||
-      model.id.toLowerCase().includes('midjourney');
+      model.id.toLowerCase().includes('midjourney') ||
+      model.id.toLowerCase().includes('grok-2-image') ||
+      model.id === 'grok-2-image-1212' ||
+      model.id === 'grok-2-image' ||
+      model.id === 'grok-2-image-latest' ||
+      model.id === 'gemini-2.0-flash-exp-image-generation' ||
+      model.id === 'gemini-2.0-flash-preview-image-generation' ||
+      (model.id === 'gemini-2.0-flash-exp' && model.imageGeneration);
 
     if (!isImageGenerationModel) {
       throw new Error(`模型 ${model.name} 不支持图像生成`);

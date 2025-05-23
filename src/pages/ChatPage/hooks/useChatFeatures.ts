@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
-import { generateBlockId } from '../../../shared/utils';
+
 import {
   createUserMessage,
   createAssistantMessage
@@ -11,10 +11,10 @@ import {
   MessageBlockStatus,
   AssistantMessageStatus
 } from '../../../shared/types/newMessage.ts';
-import type { MessageBlock } from '../../../shared/types/newMessage.ts';
-import { dexieStorage } from '../../../shared/services/DexieStorageService';
-import WebSearchService from '../../../shared/services/WebSearchService';
-import FirecrawlService from '../../../shared/services/FirecrawlService';
+
+
+import EnhancedWebSearchService from '../../../shared/services/EnhancedWebSearchService';
+import { abortCompletion } from '../../../shared/utils/abortController';
 import store from '../../../shared/store';
 import { TopicService } from '../../../shared/services/TopicService';
 import type { SiliconFlowImageFormat } from '../../../shared/types';
@@ -27,12 +27,21 @@ export const useChatFeatures = (
   currentTopic: any,
   currentMessages: any[],
   selectedModel: any,
-  handleSendMessage: (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean) => void
+  handleSendMessage: (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void
 ) => {
   const dispatch = useDispatch();
   const [webSearchActive, setWebSearchActive] = useState(false); // 控制是否处于网络搜索模式
   const [imageGenerationMode, setImageGenerationMode] = useState(false); // 控制是否处于图像生成模式
-  const [toolsEnabled, setToolsEnabled] = useState(true); // 控制是否启用工具调用
+  // MCP 工具开关状态 - 从 localStorage 读取并持久化
+  const [toolsEnabled, setToolsEnabled] = useState(() => {
+    const saved = localStorage.getItem('mcp-tools-enabled');
+    return saved !== null ? JSON.parse(saved) : true; // 默认启用
+  });
+  // MCP 工具调用模式 - 从 localStorage 读取
+  const [mcpMode, setMcpMode] = useState<'prompt' | 'function'>(() => {
+    const saved = localStorage.getItem('mcp-mode');
+    return (saved as 'prompt' | 'function') || 'function';
+  });
 
   // 切换图像生成模式
   const toggleImageGenerationMode = () => {
@@ -54,161 +63,13 @@ export const useChatFeatures = (
 
   // 处理图像生成提示词
   const handleImagePrompt = (prompt: string) => {
-    if (!currentTopic || !prompt.trim()) return;
+    if (!currentTopic || !prompt.trim() || !selectedModel) return;
 
-    // 使用新的块系统创建用户消息
-    const { message: userMessage, blocks: userBlocks } = createUserMessage({
-      content: prompt,
-      assistantId: currentTopic.assistantId,
-      topicId: currentTopic.id,
-      modelId: selectedModel?.id,
-      model: selectedModel || undefined
-    });
+    console.log(`[useChatFeatures] 处理图像生成提示词: ${prompt}`);
+    console.log(`[useChatFeatures] 使用模型: ${selectedModel.id}`);
 
-    // 保存用户消息和块
-    TopicService.saveMessageAndBlocks(userMessage, userBlocks)
-      .catch(error => console.error('保存消息和块失败:', error));
-
-    // 进行图像生成处理
-    generateImageWithPrompt();
-  };
-
-  // 生成图像
-  const generateImageWithPrompt = async () => {
-    try {
-      if (!currentTopic || !selectedModel) return;
-
-      // 获取用户最后一条消息作为提示词
-      const lastUserMessage = currentMessages.filter(m => m.role === 'user').pop();
-      if (!lastUserMessage) return;
-
-      // 获取提示词
-      const userBlocks = lastUserMessage.blocks || [];
-      const textBlocks = [];
-      for (const blockId of userBlocks) {
-        if (blockId.startsWith('mb_') && !blockId.includes('image')) {
-          const block = await dexieStorage.getMessageBlock(blockId);
-          if (block && block.type === MessageBlockType.MAIN_TEXT && 'content' in block) {
-            textBlocks.push(block);
-          }
-        }
-      }
-      const prompt = textBlocks.length > 0 ? textBlocks[0].content : '';
-
-      // 获取选中的模型
-      const modelId = selectedModel.id;
-      if (!modelId) {
-        throw new Error("未选择模型");
-      }
-
-      // 调用图像生成服务
-      const imageGenerationService = await import('../../../shared/services/APIService');
-      const result = await imageGenerationService.generateImage(selectedModel, {
-        prompt: prompt,
-        negativePrompt: "",
-        imageSize: "1024x1024",
-        steps: 20,
-        guidanceScale: 7.5
-      });
-
-      // 处理生成的图像
-      if (result && result.url) {
-        const imageUrl = result.url;
-
-        try {
-          // 获取图片数据并转换为Base64
-          const response = await fetch(imageUrl);
-          const blob = await response.blob();
-
-          // 将Blob转换为Base64
-          const reader = new FileReader();
-          reader.readAsDataURL(blob);
-          reader.onloadend = async () => {
-            const base64data = reader.result as string;
-
-            // 创建助手消息和块
-            const { message: assistantMessage, blocks: assistantBlocks } = createAssistantMessage({
-              assistantId: currentTopic.assistantId,
-              topicId: currentTopic.id,
-              askId: lastUserMessage.id,
-              modelId: selectedModel.id,
-              model: selectedModel
-            });
-
-            // 创建图像块
-            const imageBlock = {
-              id: generateBlockId('image'),
-              messageId: assistantMessage.id,
-              type: MessageBlockType.IMAGE,
-              createdAt: new Date().toISOString(),
-              status: MessageBlockStatus.SUCCESS,
-              url: base64data,
-              base64Data: base64data,
-              mimeType: 'image/jpeg',
-              width: 0,
-              height: 0
-            };
-
-            // 添加图像块到消息
-            assistantBlocks.push(imageBlock as MessageBlock);
-            assistantMessage.blocks.push(imageBlock.id);
-
-            // 保存助手消息和块
-            await TopicService.saveMessageAndBlocks(assistantMessage, assistantBlocks);
-          };
-        } catch (error) {
-          console.error("图像转换失败:", error);
-          // 如果转换失败，创建错误消息
-          const { message: errorMessage, blocks: errorBlocks } = createAssistantMessage({
-            assistantId: currentTopic.assistantId,
-            topicId: currentTopic.id,
-            askId: lastUserMessage.id,
-            modelId: selectedModel.id,
-            model: selectedModel
-          });
-
-          // 更新主文本块内容
-          const mainTextBlock = errorBlocks.find((block: any) => block.type === MessageBlockType.MAIN_TEXT);
-          if (mainTextBlock && 'content' in mainTextBlock) {
-            mainTextBlock.content = `图像转换失败: ${error instanceof Error ? error.message : String(error)}`;
-            mainTextBlock.status = MessageBlockStatus.ERROR;
-          }
-
-          // 保存错误消息和块
-          await TopicService.saveMessageAndBlocks(errorMessage, errorBlocks);
-        }
-      }
-    } catch (error) {
-      console.error("图像生成失败:", error);
-
-      if (!currentTopic || !selectedModel) return;
-
-      // 获取用户最后一条消息
-      const lastUserMessage = currentMessages.filter(m => m.role === 'user').pop();
-      if (!lastUserMessage) return;
-
-      // 创建错误消息
-      const { message: errorMessage, blocks: errorBlocks } = createAssistantMessage({
-        assistantId: currentTopic.assistantId,
-        topicId: currentTopic.id,
-        askId: lastUserMessage.id,
-        modelId: selectedModel.id,
-        model: selectedModel
-      });
-
-      // 更新主文本块内容
-      const mainTextBlock = errorBlocks.find((block: any) => block.type === MessageBlockType.MAIN_TEXT);
-      if (mainTextBlock && 'content' in mainTextBlock) {
-        mainTextBlock.content = `图像生成失败: ${error instanceof Error ? error.message : String(error)}`;
-        mainTextBlock.status = MessageBlockStatus.ERROR;
-      }
-
-      // 保存错误消息和块
-      await TopicService.saveMessageAndBlocks(errorMessage, errorBlocks);
-    } finally {
-      // 关闭图像生成模式
-      setImageGenerationMode(false);
-    }
+    // 使用正常的消息发送流程，让messageThunk处理图像生成
+    handleSendMessage(prompt, undefined, false); // 禁用工具，因为图像生成不需要工具
   };
 
   // 处理网络搜索请求
@@ -248,15 +109,16 @@ export const useChatFeatures = (
       // 保存助手消息和块
       await TopicService.saveMessageAndBlocks(searchingMessage, searchingBlocks);
 
-      // 使用带状态管理的搜索方法 - 已适配新的状态管理方式
-      const searchResults = await WebSearchService.searchWithStatus(
+      // 使用增强版搜索服务 - 支持电脑版所有提供商
+      const searchResults = await EnhancedWebSearchService.searchWithStatus(
         query,
         currentTopic.id,
         searchingMessage.id
       );
 
-      // 准备搜索结果内容
+      // 准备搜索结果内容和引用
       let resultsContent = `### 网络搜索结果\n\n`;
+      const citations: any[] = [];
 
       if (searchResults.length === 0) {
         resultsContent += "没有找到相关结果。";
@@ -264,6 +126,21 @@ export const useChatFeatures = (
         searchResults.forEach((result, index) => {
           resultsContent += `**${index + 1}. [${result.title}](${result.url})**\n`;
           resultsContent += `${result.snippet}\n\n`;
+
+          // 创建引用
+          citations.push({
+            number: index + 1,
+            url: result.url,
+            title: result.title,
+            hostname: new URL(result.url).hostname,
+            content: result.content || result.snippet,
+            showFavicon: true,
+            type: 'websearch',
+            metadata: {
+              provider: result.provider,
+              timestamp: result.timestamp
+            }
+          });
         });
       }
 
@@ -273,6 +150,29 @@ export const useChatFeatures = (
           content: resultsContent,
           status: MessageBlockStatus.SUCCESS
         });
+      }
+
+      // 如果有引用，创建引用块
+      if (citations.length > 0) {
+        const citationBlock = {
+          id: `citation-${Date.now()}`,
+          type: MessageBlockType.CITATION,
+          messageId: searchingMessage.id,
+          content: '',
+          status: MessageBlockStatus.SUCCESS,
+          citations: citations,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        // 保存引用块到消息中
+        const { dexieStorage } = await import('../../../shared/services/DexieStorageService');
+        const updatedMessage = await dexieStorage.getMessage(searchingMessage.id);
+        if (updatedMessage) {
+          const updatedBlocks = [...(updatedMessage.blocks || []), citationBlock.id];
+          await dexieStorage.updateMessage(searchingMessage.id, { blocks: updatedBlocks });
+          await dexieStorage.saveMessageBlock(citationBlock);
+        }
       }
 
       // 更新消息状态 - 使用新的Redux action
@@ -324,45 +224,24 @@ export const useChatFeatures = (
     }
   };
 
-  // 处理URL解析，使用FirecrawlService来抓取内容
-  const handleUrlScraping = async (url: string): Promise<string> => {
-    try {
-      // 使用新的scrapeUrlWithOptions方法，请求多种格式
-      const result = await FirecrawlService.scrapeUrlWithOptions(url, {
-        formats: ['markdown', 'html'],
-        onlyMainContent: true
-      });
-
-      // 检查抓取是否成功
-      if (!result.success) {
-        throw new Error(result.error || '网页解析失败');
-      }
-
-      // 优先使用markdown格式，如果没有则使用html或文本
-      let content = '';
-      if (result.markdown) {
-        content = result.markdown;
-      } else if (result.html) {
-        content = `<div class="web-content">${result.html}</div>`;
-      } else if (result.rawText) {
-        content = result.rawText;
-      } else {
-        throw new Error('无法获取网页内容');
-      }
-
-      // 格式化返回的内容，添加来源信息
-      const formattedContent = `### 网页内容: ${url}\n\n${content}`;
-
-      return formattedContent;
-    } catch (error) {
-      console.error('URL解析失败:', error);
-      throw error;
-    }
-  };
-
   // 处理停止响应点击事件
   const handleStopResponseClick = () => {
     if (!currentTopic) return;
+
+    // 找到所有正在处理的助手消息
+    const streamingMessages = currentMessages.filter(
+      m => m.role === 'assistant' &&
+      (m.status === AssistantMessageStatus.PROCESSING ||
+       m.status === AssistantMessageStatus.PENDING ||
+       m.status === AssistantMessageStatus.SEARCHING)
+    );
+
+    // 中断所有正在进行的请求
+    const askIds = [...new Set(streamingMessages?.map((m) => m.askId).filter((id) => !!id) as string[])];
+
+    for (const askId of askIds) {
+      abortCompletion(askId);
+    }
 
     // 停止流式响应
     store.dispatch({
@@ -370,24 +249,24 @@ export const useChatFeatures = (
       payload: { topicId: currentTopic.id, streaming: false }
     });
 
-    // 找到最后一条待处理的助手消息
-    const lastAssistantMessage = currentMessages.filter(m => m.role === 'assistant').slice(-1)[0];
-    if (!lastAssistantMessage) return;
-
-    // 更新消息状态为成功
-    dispatch(newMessagesActions.updateMessage({
-      id: lastAssistantMessage.id,
-      changes: {
-        status: AssistantMessageStatus.SUCCESS
-      }
-    }));
+    // 更新所有正在处理的消息状态为成功
+    streamingMessages.forEach(message => {
+      dispatch(newMessagesActions.updateMessage({
+        id: message.id,
+        changes: {
+          status: AssistantMessageStatus.SUCCESS
+        }
+      }));
+    });
   };
 
   // 处理消息发送
-  const handleMessageSend = async (content: string, images?: SiliconFlowImageFormat[]) => {
+  const handleMessageSend = async (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => {
     // 如果处于图像生成模式，则调用图像生成处理函数
     if (imageGenerationMode) {
       handleImagePrompt(content);
+      // 关闭图像生成模式
+      setImageGenerationMode(false);
       return;
     }
 
@@ -397,25 +276,34 @@ export const useChatFeatures = (
       return;
     }
 
-    // 正常的消息发送处理，传递工具开关状态
-    handleSendMessage(content, images, toolsEnabled);
+    // 正常的消息发送处理，传递工具开关状态和文件
+    handleSendMessage(content, images, toolsEnabled, files);
   };
 
   // 切换工具调用开关
   const toggleToolsEnabled = () => {
-    setToolsEnabled(!toolsEnabled);
+    const newValue = !toolsEnabled;
+    setToolsEnabled(newValue);
+    localStorage.setItem('mcp-tools-enabled', JSON.stringify(newValue));
+  };
+
+  // 切换 MCP 模式
+  const handleMCPModeChange = (mode: 'prompt' | 'function') => {
+    setMcpMode(mode);
+    localStorage.setItem('mcp-mode', mode);
   };
 
   return {
     webSearchActive,
     imageGenerationMode,
     toolsEnabled,
+    mcpMode,
     toggleWebSearch,
     toggleImageGenerationMode,
     toggleToolsEnabled,
+    handleMCPModeChange,
     handleWebSearch,
     handleImagePrompt,
-    handleUrlScraping,
     handleStopResponseClick,
     handleMessageSend
   };

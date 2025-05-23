@@ -131,7 +131,7 @@ export class MessageService {
   }: {
     messages: Message[];
     model: Model;
-    onChunk?: (chunk: string) => void;
+    onChunk?: (chunk: string, reasoning?: string) => void;
   }): Promise<any> {
     try {
       // 获取上下文设置
@@ -150,7 +150,14 @@ export class MessageService {
       }
 
       // 发送API请求
-      const response = await apiProvider.sendChatRequest(limitedMessages, model, onChunk);
+      const response = await apiProvider.sendChatMessage(limitedMessages, {
+        onUpdate: (content: string, reasoning?: string) => {
+          // 如果有回调函数，调用它
+          if (onChunk) {
+            onChunk(content, reasoning);
+          }
+        }
+      });
       console.log(`[handleChatRequest] API请求成功返回`);
       return response;
     } catch (error) {

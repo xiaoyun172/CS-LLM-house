@@ -67,12 +67,19 @@ export async function streamCompletion(
       ...streamParams
     });
 
-    // 创建流式响应
-    const stream = await openai.chat.completions.create(streamParams) as unknown as AsyncIterable<any>;
+    // 获取中断信号
+    const signal = additionalParams?.signal;
+
+    // 创建流式响应，支持中断
+    const stream = await openai.chat.completions.create({
+      ...streamParams,
+      signal // 添加中断信号支持
+    }) as unknown as AsyncIterable<any>;
 
     // 初始化变量
     let fullContent = '';
     let fullReasoning = '';
+    let previousReasoningLength = 0; // 记录上次推理内容的长度，用于计算增量
     let hasReasoningContent = false;
     let reasoningStartTime = 0;
     let reasoningEndTime = 0;
@@ -87,19 +94,32 @@ export async function streamCompletion(
         // 提取delta内容
         const delta = chunk.choices[0]?.delta;
         const content = delta?.content || '';
-        const reasoning = delta?.reasoning || '';
+        // 支持多种推理内容字段：reasoning（OpenAI）、reasoning_content（Grok、DeepSeek）
+        const reasoning = delta?.reasoning || delta?.reasoning_content || '';
 
         // 处理推理内容
-        if (reasoning && enableReasoning) {
+        if (reasoning && reasoning.trim() && enableReasoning) {
           if (!hasReasoningContent) {
             hasReasoningContent = true;
             reasoningStartTime = Date.now();
+            console.log('[streamCompletion] 开始接收推理内容');
           }
           fullReasoning += reasoning;
+
+          // 计算推理内容的增量
+          const reasoningDelta = fullReasoning.slice(previousReasoningLength);
+          previousReasoningLength = fullReasoning.length;
+
+          console.log(`[streamCompletion] 推理增量: "${reasoningDelta}", 总长度: ${fullReasoning.length}`);
+
+          // 如果有推理增量，单独调用回调传递推理内容
+          if (reasoningDelta && onUpdate) {
+            onUpdate('', reasoningDelta); // 只传递推理增量，内容为空
+          }
         }
 
-        // 只处理有内容的delta
-        if (content) {
+        // 处理普通内容
+        if (content && content.trim()) {
           // 如果有推理内容且刚结束，记录结束时间
           if (hasReasoningContent && !reasoning && reasoningEndTime === 0) {
             reasoningEndTime = Date.now();
@@ -108,9 +128,9 @@ export async function streamCompletion(
           // 累加内容 - 这是关键步骤
           fullContent += content;
 
-          // 调用回调函数 - 使用完整内容和推理内容
+          // 调用回调函数 - 只传递内容增量，不传递推理内容（推理内容已经单独处理）
           if (onUpdate) {
-            onUpdate(fullContent, fullReasoning || undefined);
+            onUpdate(content); // 只传递当前内容增量
           }
 
           // 发送事件通知 - 只包含当前文本块，这样UI层可以自行累加
@@ -180,30 +200,7 @@ export async function streamCompletion(
     console.error('[streamCompletion] 流式响应处理失败:', error);
     console.error('[streamCompletion] 错误详情:', error.message);
 
-    // 如果是网络错误或API错误，尝试使用非流式响应
-    if (error.message.includes('network') || error.message.includes('API')) {
-      console.log('[streamCompletion] 流式响应失败，尝试使用非流式响应...');
-      try {
-        const completion = await openai.chat.completions.create({
-          model: modelId,
-          messages: messages,
-          temperature: temperature,
-          max_tokens: maxTokens,
-          stream: false,
-        });
-
-        const content = completion.choices[0].message.content || '';
-        if (onUpdate) {
-          onUpdate(content);
-        }
-
-        return content;
-      } catch (fallbackError) {
-        console.error('[streamCompletion] 非流式响应也失败:', fallbackError);
-        throw fallbackError;
-      }
-    }
-
+    // 直接抛出错误，不进行重试 - 与电脑版保持一致
     throw error;
   }
 }

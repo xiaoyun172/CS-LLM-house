@@ -60,20 +60,20 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
   const [pendingModels, setPendingModels] = useState<Map<string, boolean>>(new Map());
   // 使用ref存储初始provider，避免重新加载
   const initialProviderRef = useRef<any>(null);
-  
+
   // 检查模型是否已经在提供商的模型列表中
   const isModelInProvider = useCallback((modelId: string): boolean => {
     return existingModels.some(m => m.id === modelId) || pendingModels.get(modelId) === true;
   }, [existingModels, pendingModels]);
-  
+
   // 按group对模型进行分组
   const getGroupedModels = useCallback((): GroupedModels => {
     // 过滤搜索结果
-    const filteredModels = models.filter(model => 
-      model.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const filteredModels = models.filter(model =>
+      model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       model.id.toLowerCase().includes(searchTerm.toLowerCase())
     );
-    
+
     // 按group分组
     return filteredModels.reduce((groups: GroupedModels, model) => {
       const group = model.group || '其他模型';
@@ -84,10 +84,10 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
       return groups;
     }, {});
   }, [models, searchTerm]);
-  
+
   // 分组后的模型
   const groupedModels = getGroupedModels();
-  
+
   // 加载模型列表
   const loadModels = async () => {
     try {
@@ -98,7 +98,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
       // 合并现有模型和从API获取的模型
       const allModels = [...fetchedModels];
       setModels(allModels);
-      
+
       // 默认展开所有组
       const groups = new Set<string>();
       allModels.forEach(model => {
@@ -113,7 +113,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
       setLoading(false);
     }
   };
-  
+
   // 处理组展开/折叠
   const handleGroupToggle = (group: string) => {
     const newExpandedGroups = new Set(expandedGroups);
@@ -124,7 +124,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
     }
     setExpandedGroups(newExpandedGroups);
   };
-  
+
   // 添加模型，更新pending状态
   const handleAddSingleModel = (model: Model) => {
     if (!isModelInProvider(model.id)) {
@@ -142,27 +142,27 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
     setPendingModels(newPendingModels);
     onRemoveModel(modelId);
   };
-  
+
   // 添加整个组
   const handleAddGroup = (group: string) => {
     // 创建新模型集合，一次性添加整个组
     const modelsToAdd = groupedModels[group].filter(model => !isModelInProvider(model.id));
-    
+
     if (modelsToAdd.length > 0) {
       // 批量更新pendingModels状态
       const newPendingModels = new Map(pendingModels);
-      
+
       // 使用批量添加API（如果可用）
       if (onAddModels) {
         // 为每个模型创建副本
         const modelsCopy = modelsToAdd.map(model => ({...model}));
-        
+
         // 更新本地状态
         modelsCopy.forEach(model => {
           newPendingModels.set(model.id, true);
         });
         setPendingModels(newPendingModels);
-        
+
         // 批量添加
         onAddModels(modelsCopy);
       } else {
@@ -175,18 +175,18 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
       }
     }
   };
-  
+
   // 移除整个组
   const handleRemoveGroup = (group: string) => {
     // 找出要移除的模型ID列表
     const modelIdsToRemove = groupedModels[group]
       .filter(model => isModelInProvider(model.id))
       .map(model => model.id);
-    
+
     if (modelIdsToRemove.length > 0) {
       // 批量更新pendingModels状态
       const newPendingModels = new Map(pendingModels);
-      
+
       // 使用批量删除API（如果可用）
       if (onRemoveModels) {
         // 更新本地状态
@@ -194,7 +194,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
           newPendingModels.delete(modelId);
         });
         setPendingModels(newPendingModels);
-        
+
         // 批量删除
         onRemoveModels(modelIdsToRemove);
       } else {
@@ -207,7 +207,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
       }
     }
   };
-  
+
   // 加载模型，只在对话框打开时加载一次
   useEffect(() => {
     if (open) {
@@ -225,8 +225,8 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
   }, [open]); // 只依赖open状态，不依赖provider
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={onClose}
       fullWidth
       maxWidth="md"
@@ -252,7 +252,7 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
         {provider.name}模型管理
         {loading && <CircularProgress size={24} sx={{ ml: 2 }} />}
       </DialogTitle>
-      
+
       <Box sx={{ px: 3, pb: 2 }}>
         <TextField
           fullWidth
@@ -266,12 +266,12 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
           }}
         />
       </Box>
-      
+
       <Divider />
-      
-      <DialogContent 
-        sx={{ 
-          p: 2, 
+
+      <DialogContent
+        sx={{
+          p: 2,
           '&::-webkit-scrollbar': {
             width: '6px',
           },
@@ -294,9 +294,9 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
             ) : (
               Object.entries(groupedModels).map(([group, groupModels]) => {
                 const isAllInProvider = groupModels.every(model => isModelInProvider(model.id));
-                
+
                 return (
-                  <Accordion 
+                  <Accordion
                     key={group}
                     expanded={expandedGroups.has(group)}
                     onChange={() => handleGroupToggle(group)}
@@ -311,49 +311,58 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
                       boxShadow: 'none'
                     }}
                   >
-                    <AccordionSummary
-                      expandIcon={<ExpandMoreIcon />}
-                      sx={{ borderRadius: '8px' }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 2 }}>
+                    <Box sx={{ position: 'relative' }}>
+                      <AccordionSummary
+                        expandIcon={<ExpandMoreIcon />}
+                        sx={{ borderRadius: '8px', pr: 6 }}
+                      >
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           <Typography variant="subtitle1" fontWeight={600}>
                             {group}
                           </Typography>
-                          <Chip 
-                            label={groupModels.length} 
-                            size="small" 
-                            sx={{ 
-                              ml: 1, 
+                          <Chip
+                            label={groupModels.length}
+                            size="small"
+                            sx={{
+                              ml: 1,
                               height: 20,
                               bgcolor: (theme) => alpha(theme.palette.success.main, 0.1),
                               color: 'success.main',
                               fontWeight: 600,
                               fontSize: '0.7rem'
-                            }} 
+                            }}
                           />
                         </Box>
-                        
-                        <IconButton
-                          size="small"
-                          color={isAllInProvider ? "error" : "primary"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            isAllInProvider ? handleRemoveGroup(group) : handleAddGroup(group);
-                          }}
-                          sx={{
+                      </AccordionSummary>
+
+                      <IconButton
+                        size="small"
+                        color={isAllInProvider ? "error" : "primary"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          isAllInProvider ? handleRemoveGroup(group) : handleAddGroup(group);
+                        }}
+                        sx={{
+                          position: 'absolute',
+                          right: 48,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          bgcolor: (theme) => alpha(
+                            isAllInProvider ? theme.palette.error.main : theme.palette.primary.main,
+                            0.1
+                          ),
+                          '&:hover': {
                             bgcolor: (theme) => alpha(
-                              isAllInProvider ? theme.palette.error.main : theme.palette.primary.main, 
-                              0.1
+                              isAllInProvider ? theme.palette.error.main : theme.palette.primary.main,
+                              0.2
                             ),
-                            ml: 'auto',
-                          }}
-                        >
-                          {isAllInProvider ? <RemoveIcon /> : <AddIcon />}
-                        </IconButton>
-                      </Box>
-                    </AccordionSummary>
-                    
+                          }
+                        }}
+                      >
+                        {isAllInProvider ? <RemoveIcon /> : <AddIcon />}
+                      </IconButton>
+                    </Box>
+
                     <AccordionDetails sx={{ p: 1 }}>
                       <List disablePadding>
                         {groupModels.map((model) => (
@@ -424,9 +433,9 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
           </>
         )}
       </DialogContent>
-      
+
       <Divider />
-      
+
       <DialogActions sx={{ p: 2 }}>
         <Button
           onClick={onClose}
@@ -444,4 +453,4 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
   );
 };
 
-export default ModelManagementDialog; 
+export default ModelManagementDialog;

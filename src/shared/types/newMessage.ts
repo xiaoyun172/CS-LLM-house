@@ -47,6 +47,12 @@ export interface BaseMessageBlock {
   error?: Record<string, any>
 }
 
+// 占位符消息块（参考电脑版）
+export interface PlaceholderMessageBlock extends BaseMessageBlock {
+  type: typeof MessageBlockType.UNKNOWN
+  content?: string
+}
+
 // 主文本消息块
 export interface MainTextMessageBlock extends BaseMessageBlock {
   type: typeof MessageBlockType.MAIN_TEXT
@@ -69,6 +75,15 @@ export interface ImageMessageBlock extends BaseMessageBlock {
   width?: number
   height?: number
   size?: number
+  file?: {
+    id: string
+    name: string
+    origin_name: string
+    size: number
+    mimeType: string
+    base64Data?: string
+    type?: string
+  }
 }
 
 // 代码消息块
@@ -81,9 +96,17 @@ export interface CodeMessageBlock extends BaseMessageBlock {
 // 工具消息块
 export interface ToolMessageBlock extends BaseMessageBlock {
   type: typeof MessageBlockType.TOOL
-  name: string
-  input: Record<string, any>
+  toolId?: string
+  toolName?: string
+  name?: string
+  arguments?: Record<string, any>
+  input?: Record<string, any>
   output?: Record<string, any>
+  content?: string | object
+  toolResponses?: import('../types').MCPToolResponse[]
+  metadata?: BaseMessageBlock['metadata'] & {
+    rawMcpToolResponse?: import('../types').MCPToolResponse
+  }
 }
 
 // 文件消息块
@@ -93,6 +116,15 @@ export interface FileMessageBlock extends BaseMessageBlock {
   url: string
   mimeType: string
   size?: number
+  file?: {
+    id: string
+    name: string
+    origin_name: string
+    size: number
+    mimeType: string
+    base64Data?: string
+    type?: string
+  }
 }
 
 // 错误消息块
@@ -166,6 +198,7 @@ export interface MathMessageBlock extends BaseMessageBlock {
 
 // 消息块联合类型
 export type MessageBlock =
+  | PlaceholderMessageBlock
   | MainTextMessageBlock
   | ThinkingMessageBlock
   | ImageMessageBlock

@@ -23,7 +23,7 @@ const initialState: GroupsState = {
  */
 const saveGroupsToStorage = async (groups: Group[]): Promise<void> => {
   try {
-    console.log('开始保存分组数据，数量:', groups.length);
+
 
     // 先诊断数据是否存在序列化问题
     const { hasCircularRefs, nonSerializableProps } = diagnoseSerializationIssues(groups);
@@ -44,7 +44,7 @@ const saveGroupsToStorage = async (groups: Group[]): Promise<void> => {
     // 同时使用setStorageItem作为备份方式
     await setStorageItem('groups', serializableGroups);
 
-    console.log('分组数据保存成功');
+
   } catch (error) {
     console.error('保存分组失败:', error);
     // 记录更详细的错误信息，帮助诊断问题
@@ -61,7 +61,7 @@ const saveGroupsToStorage = async (groups: Group[]): Promise<void> => {
  */
 const saveMapToStorage = async (key: string, map: Record<string, string>): Promise<void> => {
   try {
-    console.log(`开始保存${key}数据，键数量:`, Object.keys(map).length);
+
 
     // 先诊断数据是否存在序列化问题
     const { hasCircularRefs, nonSerializableProps } = diagnoseSerializationIssues(map);
@@ -97,7 +97,7 @@ const saveMapToStorage = async (key: string, map: Record<string, string>): Promi
 // 初始化函数，从IndexedDB加载数据
 const initializeGroups = async (dispatch: any) => {
   try {
-    console.log('开始从数据库加载分组数据...');
+
 
     // 尝试直接从dexieStorage加载
     let savedGroups: Group[] | null = null;
@@ -110,7 +110,7 @@ const initializeGroups = async (dispatch: any) => {
       savedAssistantGroupMap = await dexieStorage.getSetting('assistantGroupMap');
       savedTopicGroupMap = await dexieStorage.getSetting('topicGroupMap');
 
-      console.log('从dexieStorage直接加载分组数据成功');
+
     } catch (dexieError) {
       console.warn('从dexieStorage直接加载分组数据失败，尝试使用getStorageItem:', dexieError);
 
@@ -120,11 +120,7 @@ const initializeGroups = async (dispatch: any) => {
       savedTopicGroupMap = await getStorageItem<Record<string, string>>('topicGroupMap');
     }
 
-    console.log('加载到的分组数据:', {
-      groups: savedGroups ? savedGroups.length : 0,
-      assistantGroupMap: savedAssistantGroupMap ? Object.keys(savedAssistantGroupMap).length : 0,
-      topicGroupMap: savedTopicGroupMap ? Object.keys(savedTopicGroupMap).length : 0
-    });
+
 
     const payload = {
       groups: savedGroups || [],
@@ -133,7 +129,6 @@ const initializeGroups = async (dispatch: any) => {
     };
 
     dispatch(loadGroupsSuccess(payload));
-    console.log('分组数据加载成功并分发到Redux');
   } catch (error) {
     console.error('加载分组数据失败:', error);
     if (error instanceof Error) {

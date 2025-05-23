@@ -14,11 +14,15 @@ export {
   EVENT_NAMES
 };
 
+// 版本检查状态缓存
+let versionCheckPromise: Promise<any> | null = null;
+
 // 导出数据管理工具函数
 export const DataManager = {
   /**
    * 检查并修复数据库版本
    * 确保数据库版本与应用版本一致
+   * 使用缓存避免重复执行
    */
   async ensureDatabaseVersion(): Promise<{
     success: boolean;
@@ -26,8 +30,35 @@ export const DataManager = {
     oldVersion?: number;
     newVersion?: number;
   }> {
+    // 如果已经有正在进行的版本检查，直接返回该Promise
+    if (versionCheckPromise) {
+      console.log('DataManager: 版本检查已在进行中，等待结果...');
+      return versionCheckPromise;
+    }
+
+    // 创建新的版本检查Promise
+    versionCheckPromise = this._performVersionCheck();
+
     try {
-      console.log('DataManager: 检查数据库版本');
+      const result = await versionCheckPromise;
+      return result;
+    } finally {
+      // 检查完成后清除缓存，允许下次检查
+      versionCheckPromise = null;
+    }
+  },
+
+  /**
+   * 实际执行版本检查的内部方法
+   */
+  async _performVersionCheck(): Promise<{
+    success: boolean;
+    message: string;
+    oldVersion?: number;
+    newVersion?: number;
+  }> {
+    try {
+      console.log('DataManager: 开始检查数据库版本');
 
       // 使用Dexie获取所有数据库
       const databases = await Dexie.getDatabaseNames();

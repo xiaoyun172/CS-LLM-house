@@ -44,16 +44,21 @@ function VirtualScroller<T>({
 
   // 计算可见项目
   const visibleItems = items.slice(startIndex, endIndex + 1);
-  
+
   // 计算内容总高度
   const totalHeight = items.length * itemHeight;
-  
+
   // 计算可见内容的偏移量
   const offsetY = startIndex * itemHeight;
 
   // 处理滚动事件
   const handleScroll = useCallback(
     throttle((e: React.UIEvent<HTMLDivElement>) => {
+      // 检查事件对象和目标元素是否存在
+      if (!e || !e.currentTarget) {
+        return;
+      }
+
       const scrollTop = e.currentTarget.scrollTop;
       setScrollTop(scrollTop);
       onScroll?.(e);

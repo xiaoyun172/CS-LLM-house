@@ -22,21 +22,23 @@ interface ChatPageUIProps {
   selectedModel: any;
   availableModels: any[];
   handleModelSelect: (model: any) => void;
-  handleModelMenuClick: (event: React.MouseEvent<HTMLElement>) => void;
+  handleModelMenuClick: () => void;
   handleModelMenuClose: () => void;
   menuOpen: boolean;
   handleClearTopic: () => void;
   handleDeleteMessage: (messageId: string) => void;
   handleRegenerateMessage: (messageId: string) => void;
   handleSwitchMessageVersion: (versionId: string) => void;
+  handleResendMessage: (messageId: string) => void;
   webSearchActive: boolean;
   imageGenerationMode: boolean;
   toolsEnabled: boolean;
+  mcpMode: 'prompt' | 'function';
   toggleWebSearch: () => void;
   toggleImageGenerationMode: () => void;
   toggleToolsEnabled: () => void;
-  handleMessageSend: (content: string, images?: SiliconFlowImageFormat[]) => void;
-  handleUrlScraping: (url: string) => Promise<string>;
+  handleMCPModeChange: (mode: 'prompt' | 'function') => void;
+  handleMessageSend: (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
   handleStopResponseClick: () => void;
 }
 
@@ -59,14 +61,16 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
   handleDeleteMessage,
   handleRegenerateMessage,
   handleSwitchMessageVersion,
+  handleResendMessage,
   webSearchActive,
   imageGenerationMode,
   toolsEnabled,
+  mcpMode,
   toggleWebSearch,
   toggleImageGenerationMode,
   toggleToolsEnabled,
+  handleMCPModeChange,
   handleMessageSend,
-  handleUrlScraping,
   handleStopResponseClick
 }) => {
   return (
@@ -77,7 +81,14 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
       bgcolor: 'transparent'
     }}>
       {/* 桌面端固定显示侧边栏，移动端可隐藏 */}
-      {!isMobile && <Sidebar />}
+      {!isMobile && (
+        <Sidebar
+          mcpMode={mcpMode}
+          toolsEnabled={toolsEnabled}
+          onMCPModeChange={handleMCPModeChange}
+          onToolsToggle={toggleToolsEnabled}
+        />
+      )}
 
       {/* 主内容区域 */}
       <Box sx={{
@@ -140,6 +151,10 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
           <Sidebar
             mobileOpen={drawerOpen}
             onMobileToggle={() => setDrawerOpen(!drawerOpen)}
+            mcpMode={mcpMode}
+            toolsEnabled={toolsEnabled}
+            onMCPModeChange={handleMCPModeChange}
+            onToolsToggle={toggleToolsEnabled}
           />
         )}
 
@@ -173,6 +188,7 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                 onRegenerate={handleRegenerateMessage}
                 onDelete={handleDeleteMessage}
                 onSwitchVersion={handleSwitchMessageVersion}
+                onResend={handleResendMessage}
               />
               </Box>
 
@@ -218,10 +234,10 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
 
                 {/* 聊天输入框 */}
                 <ChatInput
-                  onSendMessage={(content, images) => {
+                  onSendMessage={(content, images, toolsEnabled, files) => {
                     // 只有在有当前话题时才发送消息
                     if (currentTopic) {
-                      handleMessageSend(content, images);
+                      handleMessageSend(content, images, toolsEnabled, files);
                     } else {
                       console.log('没有当前话题，无法发送消息');
                     }
@@ -231,9 +247,9 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   imageGenerationMode={imageGenerationMode}
                   onSendImagePrompt={(prompt) => handleMessageSend(prompt)}
                   webSearchActive={webSearchActive}
-                  onDetectUrl={handleUrlScraping}
                   onStopResponse={handleStopResponseClick}
                   isStreaming={isStreaming}
+                  toolsEnabled={toolsEnabled}
                 />
               </Box>
             </>
@@ -316,10 +332,10 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
 
                 {/* 聊天输入框 */}
                 <ChatInput
-                  onSendMessage={(content, images) => {
+                  onSendMessage={(content, images, toolsEnabled, files) => {
                     // 只有在有当前话题时才发送消息
                     if (currentTopic) {
-                      handleMessageSend(content, images);
+                      handleMessageSend(content, images, toolsEnabled, files);
                     } else {
                       console.log('没有当前话题，无法发送消息');
                     }
@@ -329,9 +345,9 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                   imageGenerationMode={imageGenerationMode}
                   onSendImagePrompt={(prompt) => handleMessageSend(prompt)}
                   webSearchActive={webSearchActive}
-                  onDetectUrl={handleUrlScraping}
                   onStopResponse={handleStopResponseClick}
                   isStreaming={isStreaming}
+                  toolsEnabled={toolsEnabled}
                 />
               </Box>
             </>

@@ -8,10 +8,21 @@ import {
   isClaudeReasoningModel,
   isGeminiReasoningModel,
   isQwenReasoningModel,
-  isGrokReasoningModel,
-  isDeepSeekReasoningModel
-} from '../utils/modelDetection';
+  isGrokReasoningModel
+} from './models';
 import { EFFORT_RATIO } from './constants';
+
+/**
+ * 检查模型是否支持DeepSeek风格的推理参数
+ * @param model 模型对象
+ * @returns 是否支持DeepSeek风格的推理参数
+ */
+export function isDeepSeekReasoningModel(model: Model): boolean {
+  const modelId = model.id;
+  return Boolean(
+    modelId.includes('deepseek')
+  );
+}
 
 /**
  * 思考选项类型
@@ -51,27 +62,27 @@ export function getSupportedOptions(model: Model): ThinkingOption[] {
   if (isGrokReasoningModel(model)) {
     return MODEL_SUPPORTED_OPTIONS.grok;
   }
-  
+
   if (isGeminiReasoningModel(model)) {
     return MODEL_SUPPORTED_OPTIONS.gemini;
   }
-  
+
   if (isQwenReasoningModel(model)) {
     return MODEL_SUPPORTED_OPTIONS.qwen;
   }
-  
+
   if (isClaudeReasoningModel(model)) {
     return MODEL_SUPPORTED_OPTIONS.claude;
   }
-  
+
   if (isOpenAIReasoningModel(model)) {
     return MODEL_SUPPORTED_OPTIONS.openai;
   }
-  
+
   if (isDeepSeekReasoningModel(model)) {
     return MODEL_SUPPORTED_OPTIONS.deepseek;
   }
-  
+
   return MODEL_SUPPORTED_OPTIONS.default;
 }
 
@@ -86,16 +97,16 @@ export function getThinkingBudget(model: Model, effort: ThinkingOption, maxToken
   if (effort === 'off') {
     return 0;
   }
-  
+
   // 获取努力程度比率
   const effortRatio = EFFORT_RATIO[effort === 'auto' ? 'high' : effort];
-  
+
   // 计算预算令牌数
   const tokenLimit = getModelTokenLimit(model);
   const budgetTokens = Math.floor(
     (tokenLimit.max - tokenLimit.min) * effortRatio + tokenLimit.min
   );
-  
+
   // 确保预算不超过最大令牌数
   return Math.min(budgetTokens, maxTokens * effortRatio);
 }
@@ -111,19 +122,19 @@ export function getModelTokenLimit(model: Model): { min: number; max: number } {
   if (model.id.includes('gpt-4')) {
     return { min: 1024, max: 8192 };
   }
-  
+
   if (model.id.includes('claude-3')) {
     return { min: 1024, max: 16384 };
   }
-  
+
   if (model.id.includes('gemini')) {
     return { min: 1024, max: 8192 };
   }
-  
+
   if (model.id.includes('grok')) {
     return { min: 1024, max: 4096 };
   }
-  
+
   // 默认值
   return { min: 1024, max: 4096 };
 }

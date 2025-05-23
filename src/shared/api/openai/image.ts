@@ -27,25 +27,33 @@ export async function generateImage(
     // 创建OpenAI兼容客户端
     const client = createClient(model);
 
-    // 准备请求参数 - 完整支持版本
-    // 确保size参数符合OpenAI API的要求
-    let imageSize = params.imageSize || '1024x1024';
-    // 检查是否是有效的尺寸
-    if (!['256x256', '512x512', '1024x1024', '1024x1536', '1536x1024'].includes(imageSize)) {
-      // 默认使用1024x1024
-      imageSize = '1024x1024';
-    }
+    // 检查是否为 Grok 模型
+    const isGrokModel = model.id.includes('grok') || model.provider === 'grok';
 
-    // 构建完整的请求参数
-    const requestParams: any = {
+    // 准备请求参数 - 根据模型类型使用不同参数
+    let requestParams: any = {
       model: model.id,
       prompt: params.prompt,
-      size: imageSize,
-      n: params.batchSize || 1,
-      quality: params.quality || 'standard',
-      style: params.style || 'natural',
-      response_format: 'url'
+      response_format: isGrokModel ? 'b64_json' : 'url'
     };
+
+    if (isGrokModel) {
+      // Grok 模型只支持基础参数
+    } else {
+      // 其他模型使用完整参数
+      // 确保size参数符合OpenAI API的要求
+      let imageSize = params.imageSize || '1024x1024';
+      // 检查是否是有效的尺寸
+      if (!['256x256', '512x512', '1024x1024', '1024x1536', '1536x1024'].includes(imageSize)) {
+        // 默认使用1024x1024
+        imageSize = '1024x1024';
+      }
+
+      requestParams.size = imageSize;
+      requestParams.n = params.batchSize || 1;
+      requestParams.quality = params.quality || 'standard';
+      requestParams.style = params.style || 'natural';
+    }
 
     // 添加高级参数（如果支持）
     if (params.negativePrompt) {
@@ -68,31 +76,6 @@ export async function generateImage(
       requestParams.prompt_enhancement = params.promptEnhancement;
     }
 
-    const requestParams: any = {
-      model: model.id,
-      prompt: params.prompt,
-      n: params.batchSize || 1,
-      size: imageSize as '1024x1024', // 使用类型断言
-      response_format: 'url' as 'url', // 使用URL格式返回图像，指定字面量类型
-    };
-
-    // 添加可选参数
-    if (params.negativePrompt) {
-      (requestParams as any).negative_prompt = params.negativePrompt;
-    }
-
-    if (params.seed !== undefined) {
-      (requestParams as any).seed = params.seed;
-    }
-
-    if (params.steps) {
-      (requestParams as any).steps = params.steps;
-    }
-
-    if (params.guidanceScale) {
-      (requestParams as any).guidance_scale = params.guidanceScale;
-    }
-
     // 记录API请求
     logApiRequest('Image Generation', 'INFO', {
       method: 'POST',
@@ -108,8 +91,21 @@ export async function generateImage(
     // 发送请求
     const response = await client.images.generate(requestParams);
 
-    // 提取图像URL，添加空值检查
-    const imageUrls = response.data?.map(item => item.url || '') || [];
+    // 处理响应 - 根据模型类型处理不同格式
+    let imageUrls: string[] = [];
+
+    if (isGrokModel) {
+      // Grok 模型返回 base64 格式，需要转换为 data URL
+      imageUrls = response.data?.map(item => {
+        if (item.b64_json) {
+          return `data:image/png;base64,${item.b64_json}`;
+        }
+        return '';
+      }).filter(Boolean) || [];
+    } else {
+      // 其他模型返回 URL 格式
+      imageUrls = response.data?.map(item => item.url || '') || [];
+    }
 
     // 如果没有返回图像URL，抛出错误
     if (imageUrls.length === 0) {
@@ -132,6 +128,72 @@ export async function generateImage(
       provider: model.provider,
       error
     });
+
+    throw error;
+  }
+}
+
+/**
+ * 在聊天中生成图像 - 完整支持版本
+ * @param model 模型配置
+ * @param messages 消息数组
+ * @param onUpdate 更新回调
+ * @returns 生成的图像URL数组
+ */
+export async function generateImageByChat(
+  model: Model,
+  messages: any[],
+  onUpdate?: (content: string) => void
+): Promise<string[]> {
+  try {
+    // 获取最后一条用户消息作为提示词
+    const lastUserMessage = messages.slice().reverse().find((msg: any) => msg.role === 'user');
+    if (!lastUserMessage) {
+      throw new Error('没有找到用户消息作为图像生成提示');
+    }
+
+    // 提取文本内容作为提示词
+    let prompt = '';
+    if (typeof lastUserMessage.content === 'string') {
+      prompt = lastUserMessage.content;
+    } else if (Array.isArray(lastUserMessage.content)) {
+      // 处理多模态内容，提取文本部分
+      const textParts = lastUserMessage.content.filter((part: any) => part.type === 'text');
+      prompt = textParts.map((part: any) => part.text).join(' ');
+    }
+
+    if (!prompt.trim()) {
+      throw new Error('没有找到有效的图像生成提示词');
+    }
+
+    // 通知开始生成
+    if (onUpdate) {
+      onUpdate('正在生成图像...');
+    }
+
+    // 使用基础图像生成功能
+    const imageUrls = await generateImage(model, {
+      prompt: prompt.trim(),
+      imageSize: '1024x1024',
+      batchSize: 1
+    });
+
+    // 通知生成完成
+    if (onUpdate) {
+      onUpdate(`图像生成完成！生成了 ${imageUrls.length} 张图像。`);
+    }
+
+    return imageUrls;
+  } catch (error: any) {
+    log('ERROR', `聊天中图像生成失败: ${error.message || '未知错误'}`, {
+      model: model.id,
+      provider: model.provider,
+      error
+    });
+
+    if (onUpdate) {
+      onUpdate(`图像生成失败: ${error.message || '未知错误'}`);
+    }
 
     throw error;
   }

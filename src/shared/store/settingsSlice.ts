@@ -28,8 +28,9 @@ interface SettingsState {
   defaultModelId?: string;
   currentModelId?: string;
   generatedImages?: GeneratedImage[];
-  autoNameTopic: boolean;
+  enableTopicNaming: boolean; // 统一字段名称，与电脑版保持一致
   topicNamingModelId?: string;
+  topicNamingPrompt: string; // 添加自定义提示词配置
   modelSelectorStyle: 'dialog' | 'dropdown';
   thinkingDisplayStyle: string;
   toolbarDisplayStyle: 'icon' | 'text' | 'both'; // 工具栏显示样式：仅图标、仅文字、图标+文字
@@ -148,7 +149,8 @@ const getInitialState = (): SettingsState => {
     enableNotifications: true,
     models: [],
     providers: initialProviders,
-    autoNameTopic: true,
+    enableTopicNaming: true, // 统一字段名称，与电脑版保持一致
+    topicNamingPrompt: '', // 添加默认空提示词
     modelSelectorStyle: 'dialog' as 'dialog' | 'dropdown',
     thinkingDisplayStyle: ThinkingDisplayStyle.COMPACT,
     toolbarDisplayStyle: 'both' as 'icon' | 'text' | 'both',
@@ -190,6 +192,11 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
       // 如果没有系统提示词气泡显示设置，使用默认值
       if (savedSettings.showSystemPromptBubble === undefined) {
         savedSettings.showSystemPromptBubble = true;
+      }
+
+      // 如果没有模型选择器样式设置，使用默认值
+      if (!savedSettings.modelSelectorStyle) {
+        savedSettings.modelSelectorStyle = 'dialog';
       }
 
       return {
@@ -404,6 +411,16 @@ const settingsSlice = createSlice({
     setModelSelectorStyle: (state, action: PayloadAction<'dialog' | 'dropdown'>) => {
       state.modelSelectorStyle = action.payload;
     },
+    // 话题命名相关的action creators
+    setEnableTopicNaming: (state, action: PayloadAction<boolean>) => {
+      state.enableTopicNaming = action.payload;
+    },
+    setTopicNamingPrompt: (state, action: PayloadAction<string>) => {
+      state.topicNamingPrompt = action.payload;
+    },
+    setTopicNamingModelId: (state, action: PayloadAction<string>) => {
+      state.topicNamingModelId = action.payload;
+    },
   },
   extraReducers: (builder) => {
     // 处理加载设置
@@ -461,6 +478,10 @@ export const {
   clearGeneratedImages,
   updateSettings,
   setModelSelectorStyle,
+  // 话题命名相关的actions
+  setEnableTopicNaming,
+  setTopicNamingPrompt,
+  setTopicNamingModelId,
 } = settingsSlice.actions;
 
 // 重用现有的action creators，但添加异步保存

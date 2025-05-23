@@ -19,15 +19,10 @@ const SystemPromptBubble: React.FC<SystemPromptBubbleProps> = ({ topic, assistan
 
   // 获取系统提示词 - 优先使用话题的提示词
   // 如果没有话题或助手，或者没有提示词，使用默认文本
-  const systemPrompt = 
+  const systemPrompt =
     (topic?.prompt || assistant?.systemPrompt || '点击此处编辑系统提示词');
 
-  // 检测组件是否会被渲染
-  console.log('[SystemPromptBubble] 渲染系统提示词气泡:', { 
-    hasTopic: !!topic, 
-    hasAssistant: !!assistant,
-    promptText: systemPrompt.substring(0, 30) + (systemPrompt.length > 30 ? '...' : '')
-  });
+
 
   return (
     <Paper
@@ -41,17 +36,17 @@ const SystemPromptBubble: React.FC<SystemPromptBubbleProps> = ({ topic, assistan
         margin: '4px 8px 16px 8px',
         borderRadius: '8px',
         cursor: 'pointer',
-        backgroundColor: theme.palette.mode === 'dark' 
-          ? 'rgba(25, 118, 210, 0.08)' 
+        backgroundColor: theme.palette.mode === 'dark'
+          ? 'rgba(25, 118, 210, 0.08)'
           : 'rgba(25, 118, 210, 0.04)',
         border: `1px solid ${theme.palette.primary.main}`,
-        borderColor: theme.palette.mode === 'dark' 
-          ? 'rgba(25, 118, 210, 0.5)' 
+        borderColor: theme.palette.mode === 'dark'
+          ? 'rgba(25, 118, 210, 0.5)'
           : 'rgba(25, 118, 210, 0.25)',
         transition: 'all 0.2s ease',
         '&:hover': {
-          backgroundColor: theme.palette.mode === 'dark' 
-            ? 'rgba(25, 118, 210, 0.15)' 
+          backgroundColor: theme.palette.mode === 'dark'
+            ? 'rgba(25, 118, 210, 0.15)'
             : 'rgba(25, 118, 210, 0.08)',
           borderColor: theme.palette.primary.main,
         },
@@ -59,22 +54,22 @@ const SystemPromptBubble: React.FC<SystemPromptBubbleProps> = ({ topic, assistan
         zIndex: 10
       }}
     >
-      <PsychologyIcon 
-        fontSize="small" 
-        sx={{ 
-          mr: 1.5, 
+      <PsychologyIcon
+        fontSize="small"
+        sx={{
+          mr: 1.5,
           color: theme.palette.primary.main,
           fontSize: '20px'
-        }} 
+        }}
       />
-      
+
       <Box sx={{ flex: 1, overflow: 'hidden' }}>
-        <Typography 
-          variant="caption" 
+        <Typography
+          variant="caption"
           component="div"
           sx={{
-            color: theme.palette.mode === 'dark' 
-              ? theme.palette.primary.light 
+            color: theme.palette.mode === 'dark'
+              ? theme.palette.primary.light
               : theme.palette.primary.main,
             fontSize: '12px',
             lineHeight: 1.3,
@@ -88,17 +83,17 @@ const SystemPromptBubble: React.FC<SystemPromptBubbleProps> = ({ topic, assistan
           {systemPrompt}
         </Typography>
       </Box>
-      
-      <EditNoteIcon 
-        fontSize="small" 
-        sx={{ 
-          ml: 1, 
+
+      <EditNoteIcon
+        fontSize="small"
+        sx={{
+          ml: 1,
           color: theme.palette.primary.main,
           fontSize: '18px'
-        }} 
+        }}
       />
     </Paper>
   );
 };
 
-export default SystemPromptBubble; 
+export default SystemPromptBubble;

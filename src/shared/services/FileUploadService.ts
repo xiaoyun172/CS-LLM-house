@@ -2,6 +2,7 @@ import type { FileContent } from '../types';
 import { Capacitor } from '@capacitor/core';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { Toast } from '@capacitor/toast';
+import { mobileFileStorage } from './MobileFileStorageService';
 
 // 最大文件大小限制（50MB）
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -19,7 +20,7 @@ export const FileUploadService = {
     try {
       // 检查当前是否在移动设备上
       const isNative = Capacitor.isNativePlatform();
-      
+
       if (isNative) {
         // 在移动设备上使用Capacitor FilePicker
         const result = await FilePicker.pickFiles({
@@ -28,14 +29,14 @@ export const FileUploadService = {
           // 允许所有类型的文件
           readData: true,
         });
-        
+
         if (!result || !result.files || result.files.length === 0) {
           return [];
         }
-        
+
         // 处理文件
         const fileContents: FileContent[] = [];
-        
+
         for (const file of result.files) {
           // 检查文件大小
           if (file.size > MAX_FILE_SIZE) {
@@ -45,18 +46,36 @@ export const FileUploadService = {
             });
             continue;
           }
-          
-          fileContents.push({
-            name: file.name,
-            mimeType: file.mimeType,
-            extension: file.name.split('.').pop() || '', // 从文件名中提取扩展名
-            size: file.size,
-            base64Data: file.data ? `data:${file.mimeType};base64,${file.data}` : undefined,
-            // 在移动端，我们没有URL，所以将其设为空字符串
-            url: '',
-          });
+
+          // 使用新的文件存储服务处理文件
+          try {
+            const uploadedFile = await mobileFileStorage.uploadFile({
+              name: file.name,
+              mimeType: file.mimeType,
+              size: file.size,
+              base64Data: file.data ? `data:${file.mimeType};base64,${file.data}` : ''
+            });
+
+            fileContents.push({
+              name: file.name,
+              mimeType: file.mimeType,
+              extension: file.name.split('.').pop() || '',
+              size: file.size,
+              base64Data: file.data ? `data:${file.mimeType};base64,${file.data}` : undefined,
+              url: '',
+              // 添加文件ID用于后续引用
+              fileId: uploadedFile.id,
+              fileRecord: uploadedFile
+            });
+          } catch (uploadError) {
+            console.error('文件上传失败:', uploadError);
+            await Toast.show({
+              text: `文件 ${file.name} 上传失败: ${uploadError instanceof Error ? uploadError.message : '未知错误'}`,
+              duration: 'long'
+            });
+          }
         }
-        
+
         return fileContents;
       } else {
         // 在Web环境中使用文件选择器
@@ -64,14 +83,14 @@ export const FileUploadService = {
           const input = document.createElement('input');
           input.type = 'file';
           input.multiple = true;
-          
+
           input.onchange = async (event) => {
             const files = (event.target as HTMLInputElement).files;
             if (!files || files.length === 0) {
               resolve([]);
               return;
             }
-            
+
             try {
               const validFiles = Array.from(files).filter(file => {
                 if (file.size > MAX_FILE_SIZE) {
@@ -80,21 +99,41 @@ export const FileUploadService = {
                 }
                 return true;
               });
-              
+
               if (validFiles.length === 0) {
                 resolve([]);
                 return;
               }
-              
-              const fileContents = await Promise.all(
-                validFiles.map(file => this.processFile(file))
-              );
+
+              const fileContents = [];
+              for (const file of validFiles) {
+                try {
+                  const processedFile = await this.processFile(file);
+
+                  // 使用文件存储服务处理文件
+                  const uploadedFile = await mobileFileStorage.uploadFile({
+                    name: file.name,
+                    mimeType: file.type,
+                    size: file.size,
+                    base64Data: processedFile.base64Data || ''
+                  });
+
+                  // 添加文件ID到处理结果
+                  processedFile.fileId = uploadedFile.id;
+                  processedFile.fileRecord = uploadedFile;
+
+                  fileContents.push(processedFile);
+                } catch (uploadError) {
+                  console.error('文件上传失败:', uploadError);
+                  alert(`文件 ${file.name} 上传失败: ${uploadError instanceof Error ? uploadError.message : '未知错误'}`);
+                }
+              }
               resolve(fileContents);
             } catch (error) {
               reject(error);
             }
           };
-          
+
           input.click();
         });
       }
@@ -107,7 +146,7 @@ export const FileUploadService = {
       throw error;
     }
   },
-  
+
   /**
    * 处理文件，转换为FileContent对象
    * @param file 文件对象
@@ -121,7 +160,7 @@ export const FileUploadService = {
           reject(new Error(`文件太大，最大允许50MB`));
           return;
         }
-        
+
         // 处理不同类型的文件
         if (file.type.startsWith('image/')) {
           // 图片文件特殊处理，读取宽高信息
@@ -136,7 +175,7 @@ export const FileUploadService = {
               reject(new Error('读取文件失败'));
               return;
             }
-            
+
             const base64Data = event.target.result as string;
             const fileContent: FileContent = {
               name: file.name,
@@ -158,7 +197,7 @@ export const FileUploadService = {
       }
     });
   },
-  
+
   /**
    * 处理图片文件，获取宽高信息
    * @param file 图片文件
@@ -173,7 +212,7 @@ export const FileUploadService = {
             reject(new Error('读取文件失败'));
             return;
           }
-          
+
           const base64Data = event.target.result as string;
           const img = new Image();
           img.onload = () => {
@@ -211,7 +250,7 @@ export const FileUploadService = {
       }
     });
   },
-  
+
   /**
    * 根据MIME类型获取文件图标
    * @param mimeType 文件MIME类型
@@ -238,7 +277,7 @@ export const FileUploadService = {
       return 'insert_drive_file';
     }
   },
-  
+
   /**
    * 格式化文件大小
    * @param bytes 文件大小（字节）
@@ -246,10 +285,10 @@ export const FileUploadService = {
    */
   formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 B';
-    
+
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    
+
     return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
   }
-}; 
+};

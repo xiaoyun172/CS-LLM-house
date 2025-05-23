@@ -47,7 +47,7 @@ const DefaultModelSettings: React.FC = () => {
   const handleProviderClick = (providerId: string) => {
     navigate(`/settings/model-provider/${providerId}`);
   };
-  
+
   const toggleModelSelectorStyle = () => {
     // 切换选择器样式
     const newStyle = modelSelectorStyle === 'dialog' ? 'dropdown' : 'dialog';
@@ -55,16 +55,16 @@ const DefaultModelSettings: React.FC = () => {
   };
 
   return (
-    <Box sx={{ 
-      flexGrow: 1, 
-      display: 'flex', 
-      flexDirection: 'column', 
+    <Box sx={{
+      flexGrow: 1,
+      display: 'flex',
+      flexDirection: 'column',
       height: '100vh',
       bgcolor: (theme) => theme.palette.mode === 'light'
         ? alpha(theme.palette.primary.main, 0.02)
         : alpha(theme.palette.background.default, 0.9),
     }}>
-      <AppBar 
+      <AppBar
         position="fixed"
         elevation={0}
         sx={{
@@ -88,11 +88,11 @@ const DefaultModelSettings: React.FC = () => {
           >
             <ArrowBackIcon />
           </IconButton>
-          <Typography 
-            variant="h6" 
-            component="div" 
-            sx={{ 
-              flexGrow: 1, 
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              flexGrow: 1,
               fontWeight: 600,
               backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
               backgroundClip: 'text',
@@ -101,7 +101,7 @@ const DefaultModelSettings: React.FC = () => {
           >
             模型设置
           </Typography>
-          <Button 
+          <Button
             startIcon={<AddIcon />}
             onClick={handleAddProvider}
             sx={{
@@ -118,9 +118,9 @@ const DefaultModelSettings: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
+      <Box
+        sx={{
+          flexGrow: 1,
           overflowY: 'auto',
           p: 2,
           mt: 8,
@@ -153,9 +153,9 @@ const DefaultModelSettings: React.FC = () => {
               您可以配置多个模型服务商，点击对应的服务商进行设置和管理
             </Typography>
           </Box>
-          
+
           <Divider />
-          
+
           <List disablePadding>
             {providers.map((provider) => (
               <ListItemButton
@@ -178,7 +178,7 @@ const DefaultModelSettings: React.FC = () => {
                     {provider.avatar || provider.name.charAt(0).toUpperCase()}
                   </Avatar>
                 </ListItemAvatar>
-                <ListItemText 
+                <ListItemText
                   primary={
                     <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>
                       {provider.name}
@@ -186,10 +186,10 @@ const DefaultModelSettings: React.FC = () => {
                   }
                   secondary={
                     <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Typography 
+                      <Typography
                         component="span"
-                        variant="body2" 
-                        sx={{ 
+                        variant="body2"
+                        sx={{
                           mr: 1,
                           color: provider.isEnabled ? 'success.main' : 'text.disabled',
                           fontWeight: 500
@@ -210,7 +210,7 @@ const DefaultModelSettings: React.FC = () => {
             ))}
           </List>
         </Paper>
-        
+
         <Paper
           elevation={0}
           sx={{
@@ -239,8 +239,8 @@ const DefaultModelSettings: React.FC = () => {
             }
           >
             <ListItem disablePadding>
-              <ListItemButton 
-                onClick={() => navigate('/settings/default-model-settings')} 
+              <ListItemButton
+                onClick={() => navigate('/settings/default-model-settings')}
                 sx={{
                   transition: 'all 0.2s',
                   '&:hover': {
@@ -249,7 +249,7 @@ const DefaultModelSettings: React.FC = () => {
                 }}
               >
                 <ListItemAvatar>
-                  <Avatar sx={{ 
+                  <Avatar sx={{
                     bgcolor: alpha('#4f46e5', 0.12),
                     color: '#4f46e5',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
@@ -264,12 +264,12 @@ const DefaultModelSettings: React.FC = () => {
                 <ChevronRightIcon sx={{ color: 'text.secondary' }} />
               </ListItemButton>
             </ListItem>
-            
+
             <Divider variant="inset" component="li" sx={{ ml: 0 }} />
-            
+
             <ListItem disablePadding>
-              <ListItemButton 
-                onClick={toggleModelSelectorStyle} 
+              <ListItemButton
+                onClick={toggleModelSelectorStyle}
                 sx={{
                   transition: 'all 0.2s',
                   '&:hover': {
@@ -278,7 +278,7 @@ const DefaultModelSettings: React.FC = () => {
                 }}
               >
                 <ListItemAvatar>
-                  <Avatar sx={{ 
+                  <Avatar sx={{
                     bgcolor: alpha('#06b6d4', 0.12),
                     color: '#06b6d4',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
@@ -292,12 +292,12 @@ const DefaultModelSettings: React.FC = () => {
                 />
               </ListItemButton>
             </ListItem>
-            
+
             <Divider variant="inset" component="li" sx={{ ml: 0 }} />
-            
+
             <ListItem disablePadding>
-              <ListItemButton 
-                onClick={() => navigate('/settings/add-provider')} 
+              <ListItemButton
+                onClick={() => navigate('/settings/add-provider')}
                 sx={{
                   transition: 'all 0.2s',
                   '&:hover': {
@@ -306,7 +306,7 @@ const DefaultModelSettings: React.FC = () => {
                 }}
               >
                 <ListItemAvatar>
-                  <Avatar sx={{ 
+                  <Avatar sx={{
                     bgcolor: alpha('#9333ea', 0.12),
                     color: '#9333ea',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
@@ -328,4 +328,4 @@ const DefaultModelSettings: React.FC = () => {
   );
 };
 
-export default DefaultModelSettings; 
+export default DefaultModelSettings;

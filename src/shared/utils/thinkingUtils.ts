@@ -40,8 +40,8 @@ export function cleanReasoningContent(reasoning: string): string {
  * @returns 格式化后的时间（秒，保留一位小数）
  */
 export function formatThinkingTimeSeconds(timeMs?: number): number {
-  if (!timeMs) {
-    return Math.floor(Math.random() * 3) + 1; // 如果未提供，则使用1-3秒的随机值
+  if (!timeMs || timeMs <= 0) {
+    return 0; // 修复：如果未提供或为0，返回0而不是随机值
   }
   return Math.round(timeMs / 100) / 10;
 }

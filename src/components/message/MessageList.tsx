@@ -1,10 +1,10 @@
-import React, { useRef, useEffect, useMemo, useCallback, useState, useReducer } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react';
 import { Box, useTheme } from '@mui/material';
 import type { Message } from '../../shared/types/newMessage.ts';
 import MessageGroup from './MessageGroup';
 import SystemPromptBubble from '../SystemPromptBubble';
 import SystemPromptDialog from '../SystemPromptDialog';
-import VirtualScroller from '../common/VirtualScroller';
+// 移除 VirtualScroller 导入，使用简单的DOM渲染
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../../shared/store';
 import { throttle } from 'lodash';
@@ -23,16 +23,26 @@ interface MessageListProps {
   onRegenerate?: (messageId: string) => void;
   onDelete?: (messageId: string) => void;
   onSwitchVersion?: (versionId: string) => void;
+  onResend?: (messageId: string) => void;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDelete, onSwitchVersion, onResend }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
   const dispatch = useDispatch();
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
 
-  // 添加强制更新机制
-  const forceUpdate = useReducer(state => !state, false)[1];
+  // 添加强制更新机制 - 使用更稳定的实现
+  const [, setUpdateCounter] = useState(0);
+  const forceUpdate = useCallback(() => {
+    setUpdateCounter(prev => prev + 1);
+  }, []);
+
+  // 使用 ref 存储 forceUpdate，避免依赖项变化
+  const forceUpdateRef = useRef(forceUpdate);
+  useEffect(() => {
+    forceUpdateRef.current = forceUpdate;
+  }, [forceUpdate]);
 
   // 获取所有消息块的状态
   const messageBlocks = useSelector((state: RootState) => state.messageBlocks.entities);
@@ -76,14 +86,14 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     state.settings.showSystemPromptBubble !== false
   );
 
-  // 使用优化的滚动位置钩子
+  // 使用简化的滚动位置钩子
   const {
     containerRef,
     handleScroll,
     scrollToBottom,
   } = useScrollPosition('messageList', {
     throttleTime: 100,
-    autoRestore: true,
+    autoRestore: false, // 禁用自动恢复，避免滚动冲突
     onScroll: (_scrollPos) => {
       // 可以在这里添加滚动位置相关的逻辑
     }
@@ -95,41 +105,74 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     [scrollToBottom]
   );
 
-  // 监听消息块状态变化，实现流式输出过程中的自动滚动
+  // 使用 ref 存储 throttledScrollToBottom，避免闭包问题
+  const throttledScrollToBottomRef = useRef(throttledScrollToBottom);
   useEffect(() => {
-    // 检查是否有正在流式输出的块
-    const hasStreamingBlock = Object.values(messageBlocks || {}).some(
-      block => block?.status === 'streaming'
-    );
+    throttledScrollToBottomRef.current = throttledScrollToBottom;
+  }, [throttledScrollToBottom]);
 
-    // 检查是否有正在流式输出的消息
-    const hasStreamingMessage = messages.some(
-      message => message.status === 'streaming'
-    );
+  // 使用节流的状态检查，避免过度渲染
+  const throttledStreamingCheck = useMemo(
+    () => throttle(() => {
+      // 检查是否有正在流式输出的块
+      const hasStreamingBlock = Object.values(messageBlocks || {}).some(
+        block => block?.status === 'streaming'
+      );
 
-    // 如果有正在流式输出的块或消息，滚动到底部
-    if (hasStreamingBlock || hasStreamingMessage) {
-      // 使用 setTimeout 确保在DOM更新后滚动
-      setTimeout(() => {
-        throttledScrollToBottom();
-      }, 10);
+      // 检查是否有正在流式输出的消息
+      const hasStreamingMessage = messages.some(
+        message => message.status === 'streaming'
+      );
 
-      // 强制更新UI以确保最新状态显示
-      forceUpdate();
-    }
-  }, [messageBlocks, messages, forceUpdate, throttledScrollToBottom]);
+      // 如果有正在流式输出的块或消息，滚动到底部
+      if (hasStreamingBlock || hasStreamingMessage) {
+        // 使用 setTimeout 确保在DOM更新后滚动
+        setTimeout(() => {
+          throttledScrollToBottom();
+        }, 10);
+      }
+    }, 100), // 100ms节流
+    [messageBlocks, messages, throttledScrollToBottom]
+  );
 
-  // 添加流式输出事件监听
+  // 监听消息块状态变化，但使用节流避免过度更新
   useEffect(() => {
-    // 监听流式输出事件
-    const textDeltaHandler = () => {
-      forceUpdate();
+    throttledStreamingCheck();
+  }, [throttledStreamingCheck]);
 
-      // 使用 setTimeout 确保在DOM更新后滚动
-      setTimeout(() => {
-        throttledScrollToBottom();
-      }, 10);
+  // 添加流式输出事件监听 - 使用节流优化性能
+  useEffect(() => {
+    // 检查是否启用高性能模式，动态调整节流时间
+    const getScrollThrottleTime = () => {
+      // 检查是否有正在流式输出的块
+      const hasStreamingBlock = Object.values(messageBlocks || {}).some(
+        block => block?.status === 'streaming'
+      );
+
+      if (hasStreamingBlock) {
+        // 导入性能设置（动态导入避免循环依赖）
+        try {
+          const { getHighPerformanceScrollThrottle, shouldUseHighPerformanceMode } = require('../../shared/utils/performanceSettings');
+          if (shouldUseHighPerformanceMode(true)) {
+            return getHighPerformanceScrollThrottle(); // 高性能模式：300ms
+          }
+        } catch (error) {
+          console.warn('无法加载性能设置，使用默认值');
+        }
+      }
+
+      return 50; // 默认：50ms节流，约20fps
     };
+
+    // 使用动态节流时间的事件处理器
+    const throttledTextDeltaHandler = throttle(() => {
+      // 使用 setTimeout 确保在DOM更新后滚动
+      setTimeout(() => {
+        if (throttledScrollToBottomRef.current) {
+          throttledScrollToBottomRef.current();
+        }
+      }, 10);
+    }, getScrollThrottleTime());
 
     // 监听滚动到底部事件
     const scrollToBottomHandler = () => {
@@ -138,49 +181,48 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
       } else {
         // 如果 messagesEndRef 不可用，使用 throttledScrollToBottom
-        throttledScrollToBottom();
+        if (throttledScrollToBottomRef.current) {
+          throttledScrollToBottomRef.current();
+        }
       }
     };
 
     // 订阅事件
-    const unsubscribeTextDelta = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_DELTA, textDeltaHandler);
-    const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, textDeltaHandler);
-    const unsubscribeThinkingDelta = EventEmitter.on(EVENT_NAMES.STREAM_THINKING_DELTA, textDeltaHandler);
+    const unsubscribeTextDelta = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_DELTA, throttledTextDeltaHandler);
+    const unsubscribeTextComplete = EventEmitter.on(EVENT_NAMES.STREAM_TEXT_COMPLETE, throttledTextDeltaHandler);
+    const unsubscribeThinkingDelta = EventEmitter.on(EVENT_NAMES.STREAM_THINKING_DELTA, throttledTextDeltaHandler);
     const unsubscribeScrollToBottom = EventEmitter.on(EVENT_NAMES.UI_SCROLL_TO_BOTTOM, scrollToBottomHandler);
-
-    // 定期强制更新UI，确保流式输出显示
-    const updateInterval = setInterval(() => {
-      const hasStreamingMessage = messages.some(message => message.status === 'streaming');
-      if (hasStreamingMessage) {
-        forceUpdate();
-
-        // 定期滚动到底部，确保在长时间流式输出时保持滚动
-        throttledScrollToBottom();
-      }
-    }, 100); // 每100ms更新一次
 
     return () => {
       unsubscribeTextDelta();
       unsubscribeTextComplete();
       unsubscribeThinkingDelta();
       unsubscribeScrollToBottom();
-      clearInterval(updateInterval);
+      // 取消节流函数
+      throttledTextDeltaHandler.cancel();
     };
-  }, [forceUpdate, messages, throttledScrollToBottom]);
+  }, []); // 移除所有依赖，避免无限循环
 
-  // 当消息列表更新时滚动到底部
+  // 当消息数量变化时滚动到底部 - 使用节流避免过度滚动
+  const throttledMessageLengthScroll = useMemo(
+    () => throttle(() => {
+      // 使用 setTimeout 确保在DOM更新后滚动
+      setTimeout(() => {
+        // 尝试使用 messagesEndRef 滚动到底部
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+        } else {
+          // 如果 messagesEndRef 不可用，使用 throttledScrollToBottom
+          throttledScrollToBottom();
+        }
+      }, 10);
+    }, 200), // 200ms节流，避免频繁滚动
+    [throttledScrollToBottom]
+  );
+
   useEffect(() => {
-    // 使用 setTimeout 确保在DOM更新后滚动
-    setTimeout(() => {
-      // 尝试使用 messagesEndRef 滚动到底部
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
-      } else {
-        // 如果 messagesEndRef 不可用，使用 throttledScrollToBottom
-        throttledScrollToBottom();
-      }
-    }, 10);
-  }, [messages.length, throttledScrollToBottom]);
+    throttledMessageLengthScroll();
+  }, [messages.length, throttledMessageLengthScroll]);
 
   // 处理系统提示词气泡点击
   const handlePromptBubbleClick = useCallback(() => {
@@ -194,28 +236,22 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
 
   // 处理系统提示词保存
   const handlePromptSave = useCallback((updatedTopic: any) => {
-    console.log('[MessageList] 系统提示词已保存，更新当前话题:', updatedTopic);
     // 直接更新当前话题状态，强制重新渲染
     setCurrentTopic(updatedTopic);
   }, []);
 
-  // 确保所有消息的块都已加载到Redux中
-  useEffect(() => {
-    const loadAllBlocks = async () => {
-      console.log(`[MessageList] 开始加载所有消息块，消息数量: ${messages.length}`);
-
+  // 确保所有消息的块都已加载到Redux中 - 使用节流避免频繁加载
+  const throttledLoadBlocks = useMemo(
+    () => throttle(async () => {
       // 创建一个集合来跟踪已加载的块ID，避免重复加载
       const loadedBlockIds = new Set();
       const blocksToLoad = [];
 
       for (const message of messages) {
-        console.log(`[MessageList] 处理消息: ID=${message.id}, 角色=${message.role}, 状态=${message.status}, 块数量=${message.blocks?.length || 0}`);
-
         if (message.blocks && message.blocks.length > 0) {
           for (const blockId of message.blocks) {
             // 如果这个块已经在Redux中，跳过
             if (messageBlocks[blockId]) {
-              console.log(`[MessageList] 块已在Redux中: ${blockId}`);
               loadedBlockIds.add(blockId);
               continue;
             }
@@ -228,16 +264,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
             try {
               const block = await dexieStorage.getMessageBlock(blockId);
               if (block) {
-                // 安全地获取内容长度
-                let contentLength = 0;
-                if (block.type === 'main_text' ||
-                    block.type === 'code' ||
-                    block.type === 'thinking' ||
-                    block.type === 'citation' ||
-                    block.type === 'translation') {
-                  contentLength = (block as any).content?.length || 0;
-                }
-                console.log(`[MessageList] 从数据库加载块: ID=${blockId}, 类型=${block.type}, 内容长度=${contentLength}`);
                 blocksToLoad.push(block);
                 loadedBlockIds.add(blockId);
               } else {
@@ -245,7 +271,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
 
                 // 如果找不到块，创建一个临时块
                 if (message.role === 'assistant' && message.status === 'success') {
-                  console.log(`[MessageList] 为消息 ${message.id} 创建临时块`);
                   const tempBlock = {
                     id: blockId,
                     messageId: message.id,
@@ -265,7 +290,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         } else if (message.role === 'assistant' && message.status === 'success' && (!message.blocks || message.blocks.length === 0)) {
           try {
             // 如果助手消息没有块但有内容，创建一个新块
-            console.log(`[MessageList] 为没有块的助手消息 ${message.id} 创建新块`);
             const newBlockId = generateBlockId('block');
             const newBlock = {
               id: newBlockId,
@@ -280,7 +304,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
             loadedBlockIds.add(newBlockId);
 
             // 不直接修改消息对象，而是通过Redux action更新
-            console.log(`[MessageList] 更新消息 ${message.id} 的块引用为 ${newBlockId}`);
             dispatch(newMessagesActions.updateMessage({
               id: message.id,
               changes: {
@@ -299,17 +322,16 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
       }
 
       if (blocksToLoad.length > 0) {
-        console.log(`[MessageList] 更新Redux状态: 加载了${blocksToLoad.length}个块`);
         // 使用类型断言解决类型不匹配问题
         dispatch(upsertManyBlocks(blocksToLoad as any));
-
-        // 强制更新UI
-        forceUpdate();
       }
-    };
+    }, 300), // 300ms节流，避免频繁加载
+    [messages, messageBlocks, dispatch]
+  );
 
-    loadAllBlocks();
-  }, [messages, messageBlocks, dispatch, forceUpdate]);
+  useEffect(() => {
+    throttledLoadBlocks();
+  }, [throttledLoadBlocks]);
 
   // 过滤消息，去除重复消息 - 使用统一的去重逻辑
   const filteredMessages = useMemo(() => {
@@ -329,23 +351,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     return Object.entries(getGroupedMessages(filteredMessages, messageGroupingType as MessageGroupingType));
   }, [filteredMessages, messageGroupingType]);
 
-  // 这个函数在当前实现中未使用，但保留以便将来可能需要
-  // 计算消息项的高度（用于虚拟滚动）
-
-  // 渲染消息组
-  const renderMessageGroup = useCallback((item: any, _index: number) => {
-    const [date, messages] = item as [string, Message[]];
-    return (
-      <MessageGroup
-        key={date}
-        date={date}
-        messages={messages}
-        expanded={true}
-        // 传递forceUpdate函数给MessageGroup
-        forceUpdate={forceUpdate}
-      />
-    );
-  }, [forceUpdate]);
+  // 移除虚拟滚动相关的函数，使用简单的DOM渲染
 
   return (
     <Box
@@ -414,14 +420,30 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
           新的对话开始了，请输入您的问题
         </Box>
       ) : (
-        // 使用虚拟滚动优化大量消息的渲染
-        <VirtualScroller
-          items={groupedMessages}
-          itemHeight={200} // 估算的每个消息组的平均高度
-          renderItem={renderMessageGroup}
-          overscanCount={2}
-          itemKey={(item: any, _index: number) => (item as [string, Message[]])[0]} // 使用日期作为key
-        />
+        // 使用简单的DOM渲染，避免虚拟滚动的高度计算问题
+        <Box sx={{ width: '100%' }}>
+          {groupedMessages.map(([date, messages], groupIndex) => {
+            // 计算当前组之前的所有消息数量，用于计算全局索引
+            const previousMessagesCount = groupedMessages
+              .slice(0, groupIndex)
+              .reduce((total, [, msgs]) => total + msgs.length, 0);
+
+            return (
+              <MessageGroup
+                key={date}
+                date={date}
+                messages={messages}
+                expanded={true}
+                forceUpdate={forceUpdateRef.current}
+                startIndex={previousMessagesCount} // 传递起始索引
+                onRegenerate={onRegenerate}
+                onDelete={onDelete}
+                onSwitchVersion={onSwitchVersion}
+                onResend={onResend}
+              />
+            );
+          })}
+        </Box>
       )}
       <div ref={messagesEndRef} />
     </Box>

@@ -7,15 +7,18 @@
  * 文件类型接口
  */
 export interface FileType {
+  id: string;
   name?: string;
   origin_name?: string;
   ext?: string;
   mimeType?: string;
   size?: number;
+  type?: string;
   path?: string;
   url?: string;
   content?: string;
   base64?: string;
+  base64Data?: string;
 }
 
 /**
@@ -24,6 +27,7 @@ export interface FileType {
 export const FileTypes = {
   IMAGE: 'image',
   TEXT: 'text',
+  CODE: 'code',
   DOCUMENT: 'document',
   AUDIO: 'audio',
   VIDEO: 'video',
@@ -47,8 +51,13 @@ export function getFileTypeByExtension(filename: string): string {
     return FileTypes.IMAGE;
   }
 
+  // 代码文件
+  if (['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'scala', 'sh', 'bat', 'ps1', 'sql', 'r', 'matlab', 'm', 'pl', 'lua', 'dart', 'vue', 'svelte'].includes(ext)) {
+    return FileTypes.CODE;
+  }
+
   // 文本文件
-  if (['txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'htm', 'css', 'js', 'ts', 'jsx', 'tsx'].includes(ext)) {
+  if (['txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'htm', 'css'].includes(ext)) {
     return FileTypes.TEXT;
   }
 
@@ -178,11 +187,18 @@ export function getFileMimeType(file: FileType): string {
  * @returns 文件内容
  */
 export async function readFileContent(file: FileType): Promise<string> {
-  // 这里应该实现实际的文件读取逻辑
-  // 在移动端环境中，可能需要使用特定的API
+  try {
+    // 动态导入文件存储服务以避免循环依赖
+    const { mobileFileStorage } = await import('../services/MobileFileStorageService');
 
-  // 模拟实现，实际应用中需要替换为真实的文件读取逻辑
-  return `文件内容: ${file.name || file.origin_name || '未知文件'}`;
+    // 使用文件存储服务读取文件内容
+    return await mobileFileStorage.readFile(file.id);
+  } catch (error) {
+    console.error('[fileUtils.readFileContent] 读取文件内容失败:', error);
+
+    // 降级处理：返回文件基本信息
+    return `文件: ${file.origin_name || file.name || '未知文件'}\n类型: ${file.type || '未知'}\n大小: ${file.size || 0} bytes`;
+  }
 }
 
 /**
@@ -191,30 +207,19 @@ export async function readFileContent(file: FileType): Promise<string> {
  * @returns Base64编码的文件内容
  */
 export async function fileToBase64(file: FileType): Promise<string> {
-  // 这里应该实现实际的文件转Base64逻辑
-  // 在移动端环境中，可能需要使用特定的API
+  try {
+    // 动态导入文件存储服务以避免循环依赖
+    const { mobileFileStorage } = await import('../services/MobileFileStorageService');
 
-  // 模拟实现，实际应用中需要替换为真实的转换逻辑
-  return `data:${getFileMimeType(file)};base64,mockBase64Content`;
-}
+    // 使用文件存储服务获取base64数据
+    const result = await mobileFileStorage.getFileBase64(file.id);
+    return result.data;
+  } catch (error) {
+    console.error('[fileUtils.fileToBase64] 转换文件为Base64失败:', error);
 
-/**
- * 查找消息中的文件块
- * @param message 消息对象
- * @returns 文件块数组
- */
-export function findFileBlocks(message: any): any[] {
-  if (!message || !message.blocks || message.blocks.length === 0) {
-    return [];
+    // 降级处理：返回占位符
+    return `data:${getFileMimeType(file)};base64,`;
   }
-
-  // 在移动端环境中，可能需要使用不同的方式获取文件块
-  // 这里使用简化的实现
-
-  return message.blocks
-    .filter((blockId: string) => {
-      const block = message.blockMap?.[blockId];
-      return block && block.type === 'file';
-    })
-    .map((blockId: string) => message.blockMap?.[blockId]) || [];
 }
+
+

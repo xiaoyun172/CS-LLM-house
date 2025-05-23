@@ -19,7 +19,8 @@ import {
   AssistantMessageStatus,
   UserMessageStatus
 } from '../types/newMessage.ts';
-import type { Model } from '../types';
+import type { Model, FileType, MCPToolResponse } from '../types';
+import { FileTypes } from '../utils/fileUtils';
 import store from '../store';
 import { messageBlocksSelectors } from '../store/slices/messageBlocksSlice';
 
@@ -33,8 +34,9 @@ export function createUserMessage(options: {
   modelId?: string;
   model?: Model;
   images?: Array<{ url: string }>;
+  files?: FileType[];
 }): { message: Message; blocks: MessageBlock[] } {
-  const { content, assistantId, topicId, modelId, model, images } = options;
+  const { content, assistantId, topicId, modelId, model, images, files } = options;
   const messageId = uuid();
   const now = new Date().toISOString();
 
@@ -73,6 +75,27 @@ export function createUserMessage(options: {
         });
         blocks.push(imageBlock);
         message.blocks.push(imageBlock.id);
+      }
+    }
+  }
+
+  // 处理文件
+  if (files && Array.isArray(files) && files.length > 0) {
+    for (const file of files) {
+      if (file.type === FileTypes.IMAGE) {
+        // 图片文件创建图片块
+        const imageBlock = createImageBlock(messageId, {
+          file,
+          url: file.base64Data ? `data:${file.mimeType};base64,${file.base64Data}` : '',
+          mimeType: file.mimeType || 'image/jpeg'
+        });
+        blocks.push(imageBlock);
+        message.blocks.push(imageBlock.id);
+      } else {
+        // 其他文件创建文件块
+        const fileBlock = createFileBlock(messageId, file);
+        blocks.push(fileBlock);
+        message.blocks.push(fileBlock.id);
       }
     }
   }
@@ -195,12 +218,53 @@ export function createImageBlock(messageId: string, imageData: {
   width?: number;
   height?: number;
   size?: number;
+  file?: FileType;
 }): MessageBlock {
   return {
     id: uuid(),
     messageId,
     type: MessageBlockType.IMAGE,
-    ...imageData,
+    url: imageData.url,
+    base64Data: imageData.base64Data,
+    mimeType: imageData.mimeType,
+    width: imageData.width,
+    height: imageData.height,
+    size: imageData.size,
+    file: imageData.file ? {
+      id: imageData.file.id,
+      name: imageData.file.name,
+      origin_name: imageData.file.origin_name,
+      size: imageData.file.size,
+      mimeType: imageData.file.mimeType || imageData.mimeType,
+      base64Data: imageData.file.base64Data,
+      type: imageData.file.type
+    } : undefined,
+    createdAt: new Date().toISOString(),
+    status: MessageBlockStatus.SUCCESS
+  };
+}
+
+/**
+ * 创建文件块
+ */
+export function createFileBlock(messageId: string, file: FileType): MessageBlock {
+  return {
+    id: uuid(),
+    messageId,
+    type: MessageBlockType.FILE,
+    name: file.origin_name || file.name || '未知文件',
+    url: file.path || '',
+    mimeType: file.mimeType || 'application/octet-stream',
+    size: file.size,
+    file: {
+      id: file.id,
+      name: file.name,
+      origin_name: file.origin_name,
+      size: file.size,
+      mimeType: file.mimeType || 'application/octet-stream',
+      base64Data: file.base64Data,
+      type: file.type
+    },
     createdAt: new Date().toISOString(),
     status: MessageBlockStatus.SUCCESS
   };
@@ -218,6 +282,49 @@ export function createCodeBlock(messageId: string, content: string, language?: s
     language,
     createdAt: new Date().toISOString(),
     status: MessageBlockStatus.SUCCESS
+  };
+}
+
+/**
+ * 创建工具块
+ * 兼容电脑版的工具块结构
+ */
+export function createToolBlock(messageId: string, toolData: {
+  toolResponses?: MCPToolResponse[];
+  toolId?: string;
+  toolName?: string;
+  arguments?: Record<string, any>;
+  content?: string | object;
+  status?: MessageBlockStatus;
+  metadata?: any;
+}): MessageBlock {
+  const now = new Date().toISOString();
+
+  // 如果有 toolResponses，使用移动端格式
+  if (toolData.toolResponses && toolData.toolResponses.length > 0) {
+    return {
+      id: uuid(),
+      messageId,
+      type: MessageBlockType.TOOL,
+      toolResponses: toolData.toolResponses,
+      createdAt: now,
+      status: toolData.status || MessageBlockStatus.PENDING,
+      metadata: toolData.metadata
+    };
+  }
+
+  // 否则使用电脑版兼容格式
+  return {
+    id: uuid(),
+    messageId,
+    type: MessageBlockType.TOOL,
+    toolId: toolData.toolId,
+    toolName: toolData.toolName,
+    arguments: toolData.arguments,
+    content: toolData.content,
+    createdAt: now,
+    status: toolData.status || MessageBlockStatus.PENDING,
+    metadata: toolData.metadata
   };
 }
 
@@ -244,8 +351,23 @@ export function findMainTextBlocks(message: Message): MainTextMessageBlock[] {
       }
     }
 
-    // 如果没有找到任何主文本块，创建一个默认的
+    // 如果没有找到任何主文本块，检查是否应该创建默认块
     if (textBlocks.length === 0) {
+      // 检查消息状态，如果是流式输出状态，不创建默认块
+      if (message.status === 'streaming' || message.status === 'processing') {
+        console.log(`[findMainTextBlocks] 消息 ${message.id} 正在流式输出中，跳过创建默认块`);
+        return [];
+      }
+
+      // 检查是否是助手消息且刚创建（可能还没有块）
+      if (message.role === 'assistant') {
+        const messageAge = Date.now() - new Date(message.createdAt).getTime();
+        if (messageAge < 5000) { // 5秒内的新消息
+          console.log(`[findMainTextBlocks] 消息 ${message.id} 是新创建的助手消息，跳过创建默认块`);
+          return [];
+        }
+      }
+
       console.warn(`[findMainTextBlocks] 消息 ${message.id} 没有主文本块，创建默认块`);
 
       // 尝试从旧版本的content属性获取内容
@@ -378,7 +500,7 @@ export function findCitationBlocks(message: Message): CitationMessageBlock[] {
 
 /**
  * 获取消息的主要文本内容
- * 简化版本：直接从消息块中获取内容，与电脑版保持一致
+ * 简化版本：直接从消息块中获取内容，不创建默认块
  */
 export function getMainTextContent(message: Message): string {
   // 安全检查
@@ -387,8 +509,30 @@ export function getMainTextContent(message: Message): string {
   }
 
   try {
-    // 从消息块中获取内容
-    const textBlocks = findMainTextBlocks(message);
+    // 直接从Redux状态获取块，避免调用findMainTextBlocks的默认块创建逻辑
+    if (!message.blocks || message.blocks.length === 0) {
+      // 如果没有块，尝试从content属性获取
+      if (typeof (message as any).content === 'string' && (message as any).content.trim()) {
+        return (message as any).content;
+      }
+      return '';
+    }
+
+    const state = store.getState();
+    const textBlocks: MainTextMessageBlock[] = [];
+
+    for (const blockId of message.blocks) {
+      try {
+        const block = messageBlocksSelectors.selectById(state, blockId);
+        // 兼容性处理：同时支持 MAIN_TEXT 和 UNKNOWN 类型的块
+        if (block && (block.type === MessageBlockType.MAIN_TEXT || block.type === MessageBlockType.UNKNOWN)) {
+          // 对于 UNKNOWN 类型的块，也当作主文本块处理
+          textBlocks.push(block as MainTextMessageBlock);
+        }
+      } catch (error) {
+        console.error(`[getMainTextContent] 获取块 ${blockId} 失败:`, error);
+      }
+    }
 
     // 过滤掉空内容的块
     const nonEmptyBlocks = textBlocks.filter(block => block.content && block.content.trim());

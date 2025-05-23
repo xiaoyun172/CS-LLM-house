@@ -1,6 +1,6 @@
 import store from '../store';
 import { messageBlocksSelectors } from '../store/slices/messageBlocksSlice';
-import type { 
+import type {
   MessageBlock,
   MainTextMessageBlock,
   ThinkingMessageBlock,
@@ -19,17 +19,17 @@ export function findMainTextBlocks(message: Message): MainTextMessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const textBlocks: MainTextMessageBlock[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === MessageBlockType.MAIN_TEXT) {
       textBlocks.push(block as MainTextMessageBlock);
     }
   }
-  
+
   return textBlocks;
 }
 
@@ -40,17 +40,17 @@ export function findThinkingBlocks(message: Message): ThinkingMessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const thinkingBlocks: ThinkingMessageBlock[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === MessageBlockType.THINKING) {
       thinkingBlocks.push(block as unknown as ThinkingMessageBlock);
     }
   }
-  
+
   return thinkingBlocks;
 }
 
@@ -61,17 +61,17 @@ export function findImageBlocks(message: Message): ImageMessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const imageBlocks: ImageMessageBlock[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === MessageBlockType.IMAGE) {
       imageBlocks.push(block as ImageMessageBlock);
     }
   }
-  
+
   return imageBlocks;
 }
 
@@ -82,17 +82,17 @@ export function findCodeBlocks(message: Message): CodeMessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const codeBlocks: CodeMessageBlock[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === MessageBlockType.CODE) {
       codeBlocks.push(block as CodeMessageBlock);
     }
   }
-  
+
   return codeBlocks;
 }
 
@@ -103,17 +103,17 @@ export function findToolBlocks(message: Message): MessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const toolBlocks: MessageBlock[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === MessageBlockType.TOOL) {
       toolBlocks.push(block as MessageBlock);
     }
   }
-  
+
   return toolBlocks;
 }
 
@@ -124,17 +124,17 @@ export function findFileBlocks(message: Message): FileMessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const fileBlocks: FileMessageBlock[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === MessageBlockType.FILE) {
       fileBlocks.push(block as FileMessageBlock);
     }
   }
-  
+
   return fileBlocks;
 }
 
@@ -145,17 +145,17 @@ export function findCitationBlocks(message: Message): CitationMessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const citationBlocks: CitationMessageBlock[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === MessageBlockType.CITATION) {
       citationBlocks.push(block as CitationMessageBlock);
     }
   }
-  
+
   return citationBlocks;
 }
 
@@ -168,22 +168,29 @@ export function getMainTextContent(message: Message): string {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return '';
   }
-  
-  // 从Redux状态获取所有块
-  const state = store.getState();
-  const blocks = message.blocks
-    .map(blockId => messageBlocksSelectors.selectById(state, blockId))
-    .filter(Boolean) as MessageBlock[];
-  
-  // 查找主文本块
-  const mainTextBlock = blocks.find(block => block.type === MessageBlockType.MAIN_TEXT);
-  
-  // 如果找到主文本块，返回其内容
-  if (mainTextBlock && 'content' in mainTextBlock) {
-    return mainTextBlock.content;
+
+  try {
+    // 从Redux状态获取所有块
+    const state = store.getState();
+    const blocks = message.blocks
+      .map(blockId => messageBlocksSelectors.selectById(state, blockId))
+      .filter(Boolean) as MessageBlock[];
+
+    // 查找主文本块（兼容 UNKNOWN 类型）
+    const mainTextBlock = blocks.find(block =>
+      block.type === MessageBlockType.MAIN_TEXT || block.type === MessageBlockType.UNKNOWN
+    );
+
+    // 如果找到主文本块，返回其内容
+    if (mainTextBlock && 'content' in mainTextBlock) {
+      return mainTextBlock.content || '';
+    }
+
+    return '';
+  } catch (error) {
+    console.error('[getMainTextContent] 获取消息内容失败:', error);
+    return '';
   }
-  
-  return '';
 }
 
 /**
@@ -195,19 +202,19 @@ export function getAllTextContent(message: Message): string {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return '';
   }
-  
+
   // 从Redux状态获取所有块
   const state = store.getState();
   const blocks = message.blocks
     .map(blockId => messageBlocksSelectors.selectById(state, blockId))
     .filter(Boolean) as MessageBlock[];
-  
+
   // 收集所有文本内容
   const textContents = blocks
     .filter(block => block.type === MessageBlockType.MAIN_TEXT || block.type === MessageBlockType.CODE)
     .map(block => 'content' in block ? block.content : '')
     .filter(Boolean);
-  
+
   return textContents.join('\n\n');
 }
 
@@ -220,13 +227,13 @@ export function getImageBlocks(message: Message): MessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   // 从Redux状态获取所有块
   const state = store.getState();
   const blocks = message.blocks
     .map(blockId => messageBlocksSelectors.selectById(state, blockId))
     .filter(Boolean) as MessageBlock[];
-  
+
   // 过滤出图片块
   return blocks.filter(block => block.type === MessageBlockType.IMAGE);
 }
@@ -240,13 +247,13 @@ export function getThinkingBlocks(message: Message): MessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   // 从Redux状态获取所有块
   const state = store.getState();
   const blocks = message.blocks
     .map(blockId => messageBlocksSelectors.selectById(state, blockId))
     .filter(Boolean) as MessageBlock[];
-  
+
   // 过滤出思考块
   return blocks.filter(block => block.type === MessageBlockType.THINKING);
 }
@@ -260,13 +267,13 @@ export function getCodeBlocks(message: Message): MessageBlock[] {
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   // 从Redux状态获取所有块
   const state = store.getState();
   const blocks = message.blocks
     .map(blockId => messageBlocksSelectors.selectById(state, blockId))
     .filter(Boolean) as MessageBlock[];
-  
+
   // 过滤出代码块
   return blocks.filter(block => block.type === MessageBlockType.CODE);
 }
@@ -287,16 +294,16 @@ export function getBlocksByType<T extends MessageBlock>(message: Message, type: 
   if (!message || !message.blocks || message.blocks.length === 0) {
     return [];
   }
-  
+
   const state = store.getState();
   const blocks: T[] = [];
-  
+
   for (const blockId of message.blocks) {
     const block = messageBlocksSelectors.selectById(state, blockId);
     if (block && block.type === type) {
       blocks.push(block as T);
     }
   }
-  
+
   return blocks;
-} 
+}

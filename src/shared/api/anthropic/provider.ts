@@ -3,21 +3,58 @@
  * 提供类似电脑版的Provider类实现
  */
 import Anthropic from '@anthropic-ai/sdk';
-import type { Message, Model } from '../../types';
+import type { Message, Model, MCPTool } from '../../types';
 import { logApiRequest, logApiResponse } from '../../services/LoggerService';
 import { createClient } from './client';
 import { getMainTextContent } from '../../utils/messageUtils';
+import { AbstractBaseProvider } from '../baseProvider';
 
 /**
  * 基础Provider抽象类
  */
-export abstract class BaseProvider {
-  protected model: Model;
+export abstract class BaseProvider extends AbstractBaseProvider {
   protected client: Anthropic;
 
   constructor(model: Model) {
-    this.model = model;
+    super(model);
     this.client = createClient(model);
+  }
+
+  /**
+   * 将 MCP 工具转换为 Anthropic 工具格式
+   */
+  public convertMcpTools<T>(mcpTools: MCPTool[]): T[] {
+    // 临时同步实现，避免 require 错误
+    return mcpTools.map((tool) => {
+      // 清理工具名称，确保符合 Anthropic 的要求
+      let toolName = tool.id || tool.name;
+
+      // 如果名称以数字开头，添加前缀
+      if (/^\d/.test(toolName)) {
+        toolName = `mcp_${toolName}`;
+      }
+
+      // 移除不允许的字符，只保留字母、数字、下划线
+      toolName = toolName.replace(/[^a-zA-Z0-9_]/g, '_');
+
+      // 确保名称不超过64个字符
+      if (toolName.length > 64) {
+        toolName = toolName.substring(0, 64);
+      }
+
+      // 确保名称以字母或下划线开头
+      if (!/^[a-zA-Z_]/.test(toolName)) {
+        toolName = `tool_${toolName}`;
+      }
+
+      console.log(`[Anthropic] 转换工具名称: ${tool.id || tool.name} -> ${toolName}`);
+
+      return {
+        name: toolName,
+        description: tool.description,
+        input_schema: tool.inputSchema
+      };
+    }) as T[];
   }
 
   /**
@@ -26,9 +63,16 @@ export abstract class BaseProvider {
   abstract sendChatMessage(
     messages: Message[],
     options?: {
-      onUpdate?: (content: string) => void;
+      onUpdate?: (content: string, reasoning?: string) => void;
+      enableWebSearch?: boolean;
+      enableThinking?: boolean;
+      enableTools?: boolean;
+      mcpTools?: import('../../types').MCPTool[];
+      mcpMode?: 'prompt' | 'function'; // 添加 MCP 模式参数
+      systemPrompt?: string;
+      abortSignal?: AbortSignal;
     }
-  ): Promise<string>;
+  ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }>;
 
   /**
    * 测试API连接
@@ -99,11 +143,42 @@ export class AnthropicProvider extends BaseProvider {
   async sendChatMessage(
     messages: Message[],
     options?: {
-      onUpdate?: (content: string) => void;
+      onUpdate?: (content: string, reasoning?: string) => void;
+      enableWebSearch?: boolean;
+      enableThinking?: boolean;
+      enableTools?: boolean;
+      mcpTools?: MCPTool[];
+      mcpMode?: 'prompt' | 'function'; // 添加 MCP 模式参数
+      systemPrompt?: string;
+      abortSignal?: AbortSignal;
     }
-  ): Promise<string> {
+  ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
     try {
       console.log(`[AnthropicProvider.sendChatMessage] 开始处理聊天请求, 模型: ${this.model.id}, 消息数量: ${messages.length}`);
+
+      const {
+        onUpdate,
+        enableWebSearch = false,
+        enableThinking = false,
+        enableTools = true,
+        mcpTools = [],
+        mcpMode = 'function', // 默认使用函数调用模式
+        systemPrompt = '',
+        abortSignal
+      } = options || {};
+
+      // 使用变量避免未使用警告
+      void enableWebSearch;
+      void enableThinking;
+      void abortSignal;
+
+      // 智能工具配置设置
+      const { tools } = this.setupToolsConfig({
+        mcpTools,
+        model: this.model,
+        enableToolUse: enableTools,
+        mcpMode: mcpMode // 传递 MCP 模式
+      });
 
       // 准备消息数组 - 电脑版风格的消息处理
       const anthropicMessages = [];
@@ -180,19 +255,31 @@ export class AnthropicProvider extends BaseProvider {
         temperature: this.getTemperature()
       };
 
-      // 如果有系统消息，添加到请求中
-      if (systemMessage) {
-        if (typeof systemMessage.content === 'string') {
-          requestParams.system = systemMessage.content;
-        } else if (systemMessage.content && typeof systemMessage.content === 'object') {
-          // 安全地访问text属性
-          const content = systemMessage.content as any;
-          requestParams.system = content.text || '';
-        }
+      // 构建系统提示词（包含智能工具注入）
+      let finalSystemPrompt = systemPrompt;
+      if (systemMessage && typeof systemMessage.content === 'string') {
+        finalSystemPrompt = systemMessage.content;
+      } else if (systemMessage && systemMessage.content && typeof systemMessage.content === 'object') {
+        const content = systemMessage.content as any;
+        finalSystemPrompt = content.text || '';
+      }
+
+      // 使用智能工具注入机制
+      const systemPromptWithTools = this.buildSystemPromptWithTools(finalSystemPrompt, mcpTools);
+      if (systemPromptWithTools.trim()) {
+        requestParams.system = systemPromptWithTools;
+      }
+
+      // 添加 MCP 工具支持（仅在函数调用模式下）
+      if (enableTools && !this.getUseSystemPromptForTools() && tools.length > 0) {
+        requestParams.tools = tools;
+        console.log(`[AnthropicProvider] 函数调用模式：添加 ${tools.length} 个 MCP 工具`);
+      } else if (enableTools && this.getUseSystemPromptForTools() && mcpTools && mcpTools.length > 0) {
+        console.log(`[AnthropicProvider] 系统提示词模式：${mcpTools.length} 个工具已注入到系统提示词中`);
       }
 
       // 如果有onUpdate回调，使用流式响应
-      if (options?.onUpdate) {
+      if (onUpdate) {
         requestParams.stream = true;
 
         // 创建流式响应
@@ -207,7 +294,7 @@ export class AnthropicProvider extends BaseProvider {
           if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
             const chunkText = chunk.delta.text;
             fullResponse += chunkText;
-            options.onUpdate(fullResponse);
+            onUpdate(fullResponse);
           }
         }
 

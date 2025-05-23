@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import 'katex/dist/katex.min.css';
 import remarkGfm from 'remark-gfm';
+import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
@@ -17,12 +18,12 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   const isDarkMode = theme.palette.mode === 'dark';
   const renderRef = useRef<number>(0);
   const [renderKey, setRenderKey] = useState<number>(0);
-  
+
   // 预处理内容
   const processedContent = useMemo(() => {
     return content.trim();
   }, [content]);
-  
+
   // 渲染次数有限
   useEffect(() => {
     if (renderRef.current < 3) {
@@ -31,7 +32,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         setRenderKey(prev => prev + 1);
         renderRef.current += 1;
       }, 500);
-      
+
       return () => clearTimeout(timer);
     }
   }, [processedContent]);
@@ -104,12 +105,12 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
       padding: '8px'
     },
     a: {
-      color: theme.palette.mode === 'dark' 
+      color: theme.palette.mode === 'dark'
         ? theme.palette.primary.light
         : theme.palette.primary.main,
       textDecoration: 'none',
-      borderBottom: `1px solid ${theme.palette.mode === 'dark' 
-        ? 'rgba(144, 202, 249, 0.5)' 
+      borderBottom: `1px solid ${theme.palette.mode === 'dark'
+        ? 'rgba(144, 202, 249, 0.5)'
         : 'rgba(25, 118, 210, 0.5)'}`,
       paddingBottom: '1px',
       transition: 'color 0.2s, border-color 0.2s',
@@ -122,6 +123,22 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
       fontSize: 'inherit',
       lineHeight: 1.6,
       width: '100%',
+      userSelect: 'text',
+      wordBreak: 'break-word',
+
+      // 段落样式 - 关键的 white-space: pre-wrap
+      '& p': {
+        whiteSpace: 'pre-wrap',
+        margin: '1em 0',
+        '&:first-of-type': { marginTop: 0 },
+        '&:last-child': { marginBottom: 0.5 }
+      },
+
+      // span 元素保持预格式化
+      '& span': {
+        whiteSpace: 'pre'
+      },
+
       // Markdown样式
       '& .katex-display': {
         overflow: 'auto hidden',
@@ -146,6 +163,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         color: isDarkMode ? '#e0e0e0' : 'inherit',
         padding: '2px 4px',
         borderRadius: '4px',
+        whiteSpace: 'pre',
+        wordBreak: 'keep-all'
       },
       // 确保代码块内的代码没有背景色
       '& pre code': {
@@ -155,7 +174,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
     }}>
       <ReactMarkdown
         key={renderKey}
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]}
         rehypePlugins={[
           [rehypeKatex, {
             // KaTeX配置，增强对各种公式格式的支持
@@ -173,27 +192,55 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             const match = /language-(\w+)/.exec(className || '')
             const isInline = !match && !className;
             return !isInline && match ? (
-              <SyntaxHighlighter
-                // @ts-ignore
-                style={isDarkMode ? vscDarkPlus : vs}
-                language={match[1]}
-                PreTag="div"
-                customStyle={{
+              <Box
+                component="div"
+                sx={{
                   margin: 0,
                   borderRadius: '8px',
                   fontSize: '0.9rem',
                   backgroundColor: isDarkMode ? '#1e1e1e' : '#f5f5f5',
                   border: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0',
-                }}
-                codeTagProps={{
-                  style: {
-                    backgroundColor: 'transparent',
+                  overflow: 'auto',
+                  '& pre': {
+                    margin: 0,
+                    padding: '12px',
+                    backgroundColor: 'transparent !important',
+                    overflow: 'auto',
+                  },
+                  '& code': {
+                    color: isDarkMode ? '#d4d4d4' : '#333333',
+                    fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
+                    background: 'transparent',
+                    fontSize: 'inherit',
                   }
                 }}
-                {...props}
               >
-                {String(children).replace(/\n$/, '')}
-              </SyntaxHighlighter>
+                <SyntaxHighlighter
+                  // @ts-ignore
+                  style={isDarkMode ? vscDarkPlus : vs}
+                  language={match[1]}
+                  PreTag="pre"
+                  CodeTag="code"
+                  customStyle={{
+                    margin: 0,
+                    padding: '12px',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    borderRadius: 0,
+                  }}
+                  codeTagProps={{
+                    style: {
+                      color: 'inherit',
+                      fontFamily: 'inherit',
+                      background: 'transparent',
+                      fontSize: 'inherit',
+                    }
+                  }}
+                  {...props}
+                >
+                  {String(children).replace(/\n$/, '')}
+                </SyntaxHighlighter>
+              </Box>
             ) : (
               <code className={className} {...props}>
                 {children}
@@ -201,9 +248,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             )
           },
           h1: ({children}) => (
-            <Typography 
-              variant="h1" 
-              component="h1" 
+            <Typography
+              variant="h1"
+              component="h1"
               style={markdownStyles.h1}
               sx={{
                 fontWeight: 'bold',
@@ -214,9 +261,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             </Typography>
           ),
           h2: ({children}) => (
-            <Typography 
-              variant="h2" 
-              component="h2" 
+            <Typography
+              variant="h2"
+              component="h2"
               style={markdownStyles.h2}
               sx={{
                 fontWeight: 'bold',
@@ -227,9 +274,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             </Typography>
           ),
           h3: ({children}) => (
-            <Typography 
-              variant="h3" 
-              component="h3" 
+            <Typography
+              variant="h3"
+              component="h3"
               style={markdownStyles.h3}
               sx={{
                 fontWeight: 'bold',
@@ -240,9 +287,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             </Typography>
           ),
           h4: ({children}) => (
-            <Typography 
-              variant="h4" 
-              component="h4" 
+            <Typography
+              variant="h4"
+              component="h4"
               style={markdownStyles.h4}
               sx={{
                 fontWeight: 'bold',
@@ -278,7 +325,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             <td style={markdownStyles.td}>{children}</td>
           ),
           strong: ({children}) => (
-            <strong 
+            <strong
               style={markdownStyles.strong}
               className={theme.palette.mode === 'dark' ? 'darkmode-bold' : ''}
             >
@@ -286,10 +333,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             </strong>
           ),
           a: ({children, href}) => (
-            <a 
-              href={href} 
+            <a
+              href={href}
               style={markdownStyles.a}
-              target="_blank" 
+              target="_blank"
               rel="noopener noreferrer"
             >
               {children}
@@ -303,4 +350,4 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   );
 };
 
-export default MarkdownRenderer; 
+export default MarkdownRenderer;

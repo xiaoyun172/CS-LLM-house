@@ -4,16 +4,14 @@ import { dexieStorage } from '../DexieStorageService';
 import { EventEmitter, EVENT_NAMES } from '../EventEmitter';
 import { createStreamProcessor } from '../StreamProcessingService';
 import { MessageBlockStatus, AssistantMessageStatus, MessageBlockType } from '../../types/newMessage';
+import type { MessageBlock } from '../../types/newMessage';
 import { newMessagesActions } from '../../store/slices/newMessagesSlice';
 import type { ErrorInfo } from '../../store/slices/newMessagesSlice';
 import { formatErrorMessage, getErrorType } from '../../utils/error';
 import { updateOneBlock, addOneBlock } from '../../store/slices/messageBlocksSlice';
 import { versionService } from '../VersionService';
-import type {
-  Chunk,
-  TextDeltaChunk,
-  ThinkingDeltaChunk
-} from '../../types/chunk';
+import type { Chunk } from '../../types/chunk';
+import { v4 as uuid } from 'uuid';
 
 /**
  * 响应处理器配置类型
@@ -37,170 +35,299 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * 创建节流更新函数
- */
-const createThrottledUpdateBlock = () => {
-  return throttle(async (blockId: string, changes: any) => {
-    await dexieStorage.updateMessageBlock(blockId, changes);
-  }, 150); // 150ms节流 - 与电脑版保持一致
-};
+
 
 /**
  * 创建响应处理器
  * 处理API流式响应的接收、更新和完成
  */
 export function createResponseHandler({ messageId, blockId, topicId }: ResponseHandlerConfig) {
-  // 累计的响应内容
+  // 创建简单的节流数据库更新函数
+  const throttledUpdateBlock = throttle((blockId: string, changes: any) => {
+    dexieStorage.updateMessageBlock(blockId, changes);
+  }, 200); // 200ms节流，减少数据库写入频率
+
+  // 流式处理状态变量
   let accumulatedContent = '';
-
-  // 创建节流更新函数
-  const throttledUpdateBlock = createThrottledUpdateBlock();
-
-  // 思考块ID
+  let accumulatedThinking = '';
   let thinkingBlockId: string | null = null;
+  let mainTextBlockId: string | null = null;
+
+  // 占位符块转换状态跟踪
+  let lastBlockId: string | null = blockId;
+  let lastBlockType: MessageBlockType | null = MessageBlockType.UNKNOWN;
+
+  // 创建节流的Redux更新函数，避免无限循环
+  const throttledReduxUpdate = throttle((blockId: string, changes: any) => {
+    store.dispatch(updateOneBlock({ id: blockId, changes }));
+  }, 100); // 100ms节流，与电脑版保持一致
+
+  // 实现电脑版的回调系统
+  const callbacks = {
+    onTextChunk: (text: string) => {
+      accumulatedContent += text;
+
+      if (lastBlockType === MessageBlockType.UNKNOWN) {
+        // 第一次收到文本，转换占位符块为主文本块
+        lastBlockType = MessageBlockType.MAIN_TEXT;
+        mainTextBlockId = lastBlockId;
+
+        const initialChanges = {
+          type: MessageBlockType.MAIN_TEXT,
+          content: accumulatedContent,
+          status: MessageBlockStatus.STREAMING,
+          updatedAt: new Date().toISOString()
+        };
+
+        // 立即更新Redux状态（转换操作）
+        store.dispatch(updateOneBlock({ id: lastBlockId!, changes: initialChanges }));
+        // 同时保存到数据库（使用节流）
+        throttledUpdateBlock(lastBlockId!, initialChanges);
+      } else if (lastBlockType === MessageBlockType.THINKING) {
+        // 如果占位符块已经被转换为思考块，需要为普通文本创建新的块
+        if (!mainTextBlockId) {
+          // 创建新的主文本块
+          const newMainTextBlock: MessageBlock = {
+            id: uuid(),
+            messageId,
+            type: MessageBlockType.MAIN_TEXT,
+            content: accumulatedContent,
+            createdAt: new Date().toISOString(),
+            status: MessageBlockStatus.STREAMING
+          };
+
+          mainTextBlockId = newMainTextBlock.id;
+
+          // 添加到Redux状态
+          store.dispatch(addOneBlock(newMainTextBlock));
+          // 保存到数据库
+          dexieStorage.saveMessageBlock(newMainTextBlock);
+
+          // 将新块添加到消息的blocks数组
+          store.dispatch(newMessagesActions.upsertBlockReference({
+            messageId,
+            blockId: mainTextBlockId!,
+            status: MessageBlockStatus.STREAMING
+          }));
+        } else {
+          // 更新现有的主文本块
+          const blockChanges = {
+            content: accumulatedContent,
+            status: MessageBlockStatus.STREAMING,
+            updatedAt: new Date().toISOString()
+          };
+
+          throttledReduxUpdate(mainTextBlockId, blockChanges);
+          throttledUpdateBlock(mainTextBlockId, blockChanges);
+        }
+      } else if (lastBlockType === MessageBlockType.MAIN_TEXT && mainTextBlockId) {
+        // 更新现有的主文本块
+        const blockChanges = {
+          content: accumulatedContent,
+          status: MessageBlockStatus.STREAMING,
+          updatedAt: new Date().toISOString()
+        };
+
+        throttledReduxUpdate(mainTextBlockId, blockChanges);
+        throttledUpdateBlock(mainTextBlockId, blockChanges);
+      }
+    },
+
+    onThinkingChunk: (text: string, thinking_millsec?: number) => {
+      accumulatedThinking += text;
+      if (lastBlockId) {
+        if (lastBlockType === MessageBlockType.UNKNOWN) {
+          // 第一次收到思考内容，转换占位符块为思考块（立即执行，不节流）
+          lastBlockType = MessageBlockType.THINKING;
+
+          const initialChanges = {
+            type: MessageBlockType.THINKING,
+            content: accumulatedThinking,
+            status: MessageBlockStatus.STREAMING,
+            thinking_millsec: thinking_millsec || 0,
+            updatedAt: new Date().toISOString()
+          };
+
+          // 立即更新Redux状态（转换操作）
+          store.dispatch(updateOneBlock({ id: lastBlockId, changes: initialChanges }));
+          // 同时保存到数据库（使用节流）
+          throttledUpdateBlock(lastBlockId, initialChanges);
+        } else if (lastBlockType === MessageBlockType.THINKING) {
+          // 后续思考内容更新，使用节流更新Redux和数据库
+          const blockChanges = {
+            content: accumulatedThinking,
+            status: MessageBlockStatus.STREAMING,
+            thinking_millsec: thinking_millsec || 0,
+            updatedAt: new Date().toISOString()
+          };
+
+          // 使用节流更新Redux状态，避免过度渲染
+          throttledReduxUpdate(lastBlockId, blockChanges);
+          // 使用节流更新数据库
+          throttledUpdateBlock(lastBlockId, blockChanges);
+        }
+      }
+    }
+  };
 
   return {
     /**
-     * 处理流式响应片段
-     * @param chunk 响应片段
+     * 处理基于电脑版架构的 Chunk 事件
+     * @param chunk Chunk 事件对象
      */
-    handleChunk(chunk: string) {
-      // 尝试解析JSON，检查是否包含思考内容
-      let parsedChunk: any = null;
+    handleChunkEvent(chunk: Chunk) {
+      try {
+        switch (chunk.type) {
+          case 'thinking.delta':
+            const thinkingDelta = chunk as import('../../types/chunk').ThinkingDeltaChunk;
+            console.log(`[ResponseHandler] 处理思考增量，长度: ${thinkingDelta.text.length}`);
+            callbacks.onThinkingChunk?.(thinkingDelta.text, thinkingDelta.thinking_millsec);
+            break;
+
+          case 'thinking.complete':
+            const thinkingComplete = chunk as import('../../types/chunk').ThinkingCompleteChunk;
+            console.log(`[ResponseHandler] 处理思考完成，总长度: ${thinkingComplete.text.length}`);
+            // 对于完成事件，直接设置完整的思考内容，不调用增量回调
+            accumulatedThinking = thinkingComplete.text;
+
+            // 直接处理思考块转换，不使用增量回调
+            if (lastBlockId && lastBlockType === MessageBlockType.UNKNOWN) {
+              // 第一次收到思考内容，转换占位符块为思考块
+              lastBlockType = MessageBlockType.THINKING;
+              thinkingBlockId = lastBlockId;
+
+              const initialChanges = {
+                type: MessageBlockType.THINKING,
+                content: accumulatedThinking,
+                status: MessageBlockStatus.STREAMING,
+                thinking_millsec: thinkingComplete.thinking_millsec || 0,
+                updatedAt: new Date().toISOString()
+              };
+
+              console.log(`[ResponseHandler] 将占位符块 ${blockId} 转换为思考块（完成事件）`);
+
+              // 立即更新Redux状态
+              store.dispatch(updateOneBlock({ id: lastBlockId, changes: initialChanges }));
+              // 同时保存到数据库
+              throttledUpdateBlock(lastBlockId, initialChanges);
+            }
+            break;
+
+          case 'text.delta':
+            const textDelta = chunk as import('../../types/chunk').TextDeltaChunk;
+            console.log(`[ResponseHandler] 处理文本增量，长度: ${textDelta.text.length}`);
+            callbacks.onTextChunk?.(textDelta.text);
+            break;
+
+          case 'text.complete':
+            const textComplete = chunk as import('../../types/chunk').TextCompleteChunk;
+            console.log(`[ResponseHandler] 处理文本完成，总长度: ${textComplete.text.length}`);
+            // 对于完成事件，直接设置完整的文本内容，不调用增量回调
+            accumulatedContent = textComplete.text;
+
+            // 直接处理文本块转换，不使用增量回调
+            if (lastBlockType === MessageBlockType.UNKNOWN) {
+              // 第一次收到文本，转换占位符块为主文本块
+              lastBlockType = MessageBlockType.MAIN_TEXT;
+              mainTextBlockId = lastBlockId;
+
+              const initialChanges = {
+                type: MessageBlockType.MAIN_TEXT,
+                content: accumulatedContent,
+                status: MessageBlockStatus.STREAMING,
+                updatedAt: new Date().toISOString()
+              };
+
+              console.log(`[ResponseHandler] 将占位符块 ${blockId} 转换为主文本块（完成事件）`);
+
+              // 立即更新Redux状态
+              store.dispatch(updateOneBlock({ id: lastBlockId!, changes: initialChanges }));
+              // 同时保存到数据库
+              throttledUpdateBlock(lastBlockId!, initialChanges);
+            } else if (lastBlockType === MessageBlockType.THINKING) {
+              // 如果占位符块已经被转换为思考块，需要为普通文本创建新的块
+              if (!mainTextBlockId) {
+                // 创建新的主文本块
+                const newMainTextBlock: MessageBlock = {
+                  id: uuid(),
+                  messageId,
+                  type: MessageBlockType.MAIN_TEXT,
+                  content: accumulatedContent,
+                  createdAt: new Date().toISOString(),
+                  status: MessageBlockStatus.STREAMING
+                };
+
+                mainTextBlockId = newMainTextBlock.id;
+
+                console.log(`[ResponseHandler] 创建新的主文本块 ${mainTextBlockId}（完成事件）`);
+
+                // 添加到Redux状态
+                store.dispatch(addOneBlock(newMainTextBlock));
+                // 保存到数据库
+                dexieStorage.saveMessageBlock(newMainTextBlock);
+
+                // 将新块添加到消息的blocks数组
+                store.dispatch(newMessagesActions.upsertBlockReference({
+                  messageId,
+                  blockId: mainTextBlockId,
+                  status: MessageBlockStatus.STREAMING
+                }));
+              }
+            }
+            break;
+
+          default:
+            console.log(`[ResponseHandler] 忽略未处理的 chunk 类型: ${chunk.type}`);
+            break;
+        }
+      } catch (error) {
+        console.error(`[ResponseHandler] 处理 chunk 事件失败:`, error);
+      }
+    },
+
+    /**
+     * 处理流式响应片段（兼容旧接口）
+     * @param chunk 响应片段
+     * @param reasoning 推理内容（可选）
+     */
+    handleChunk(chunk: string, reasoning?: string) {
+      // 检查是否有推理内容
       let isThinking = false;
       let thinkingContent = '';
       let thinkingTime = 0;
 
-      try {
-        parsedChunk = JSON.parse(chunk);
-        if (parsedChunk && parsedChunk.reasoning) {
-          isThinking = true;
-          thinkingContent = parsedChunk.reasoning;
-          thinkingTime = parsedChunk.reasoningTime || 0;
-        }
-      } catch (e) {
-        // 不是JSON，按普通文本处理
-        parsedChunk = null;
-      }
-
-      // 如果是普通文本，附加到累积内容
-      if (!isThinking) {
-        accumulatedContent += chunk;
-      }
-
-      console.log(`[ResponseHandler] 接收块数据 - 长度: ${chunk.length}, 总长度: ${accumulatedContent.length}`);
-
-      // 简化流处理 - 只处理Redux状态更新，不重复发送事件
-      const streamProcessor = createStreamProcessor({
-        // 文本块处理 - 简化逻辑
-        onTextChunk: (_text) => {
-          // 更新消息状态
-          store.dispatch(newMessagesActions.updateMessage({
-            id: messageId,
-            changes: {
-              status: AssistantMessageStatus.STREAMING
-            }
-          }));
-
-          // 设置主题为流式响应状态
-          store.dispatch(newMessagesActions.setTopicStreaming({
-            topicId,
-            streaming: true
-          }));
-
-          // 更新消息块状态
-          store.dispatch(updateOneBlock({
-            id: blockId,
-            changes: {
-              content: accumulatedContent,
-              status: MessageBlockStatus.STREAMING
-            }
-          }));
-
-          // 保存到数据库(使用节流防止过多写操作)
-          throttledUpdateBlock(blockId, {
-            content: accumulatedContent,
-            status: MessageBlockStatus.STREAMING
-          });
-        },
-
-        // 思考块处理 - 简化逻辑
-        onThinkingChunk: (text, thinking_millsec) => {
-          // 检查是否已经有思考块
-          if (!thinkingBlockId) {
-            // 创建新的思考块
-            const newThinkingBlock = {
-              id: `thinking-${Date.now()}`,
-              messageId,
-              type: MessageBlockType.THINKING,
-              content: text,
-              thinking_millsec: thinking_millsec,
-              status: MessageBlockStatus.STREAMING,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            };
-
-            // 保存思考块ID
-            thinkingBlockId = newThinkingBlock.id;
-
-            // 添加到Redux状态
-            store.dispatch(addOneBlock(newThinkingBlock));
-
-            // 保存到数据库
-            dexieStorage.saveMessageBlock(newThinkingBlock);
-
-            // 将思考块ID添加到消息的blocks数组
-            store.dispatch(newMessagesActions.upsertBlockReference({
-              messageId,
-              blockId: thinkingBlockId,
-              status: MessageBlockStatus.STREAMING
-            }));
-          } else {
-            // 更新现有思考块
-            store.dispatch(updateOneBlock({
-              id: thinkingBlockId,
-              changes: {
-                content: text,
-                thinking_millsec: thinking_millsec,
-                status: MessageBlockStatus.STREAMING,
-                updatedAt: new Date().toISOString()
-              }
-            }));
-
-            // 保存到数据库(使用节流防止过多写操作)
-            throttledUpdateBlock(thinkingBlockId, {
-              content: text,
-              thinking_millsec: thinking_millsec,
-              status: MessageBlockStatus.STREAMING
-            });
-          }
-        }
-      });
-
-      // 简化数据块处理 - 只调用流处理器，不重复发送事件
-      if (isThinking) {
-        // 创建思考增量数据块
-        const thinkingDeltaChunk: ThinkingDeltaChunk = {
-          type: 'thinking.delta',
-          text: thinkingContent,
-          thinking_millsec: thinkingTime
-        };
-
-        // 处理思考数据块
-        streamProcessor(thinkingDeltaChunk);
+      // 优先使用传入的推理内容
+      if (reasoning !== undefined && reasoning.trim()) {
+        isThinking = true;
+        thinkingContent = reasoning;
+        thinkingTime = 0;
+        console.log(`[ResponseHandler] 接收到推理内容: "${reasoning}"`);
       } else {
-        // 创建文本增量数据块
-        const textDeltaChunk: TextDeltaChunk = {
-          type: 'text.delta',
-          text: chunk
-        };
-
-        // 处理文本数据块
-        streamProcessor(textDeltaChunk);
+        // 尝试解析JSON，检查是否包含思考内容
+        try {
+          const parsedChunk = JSON.parse(chunk);
+          if (parsedChunk && parsedChunk.reasoning) {
+            isThinking = true;
+            thinkingContent = parsedChunk.reasoning;
+            thinkingTime = parsedChunk.reasoningTime || 0;
+          }
+        } catch (e) {
+          // 不是JSON，按普通文本处理
+        }
       }
 
-      // 返回当前累积的内容，这样流式响应处理函数可以获取到最新内容
+      // 完全模仿电脑版的回调架构
+      if (isThinking) {
+        // 调用onThinkingChunk回调
+        console.log(`[ResponseHandler] 处理思考内容，长度: ${thinkingContent.length}`);
+        callbacks.onThinkingChunk?.(thinkingContent, thinkingTime);
+      } else {
+        // 调用onTextChunk回调
+        console.log(`[ResponseHandler] 处理普通文本，长度: ${chunk.length}`);
+        callbacks.onTextChunk?.(chunk);
+      }
+
+      // 返回当前累积的内容
       return accumulatedContent;
     },
 
@@ -210,11 +337,8 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
      * @returns 累计的响应内容
      */
     async complete(finalContent?: string) {
-      console.log(`[ResponseHandler] 完成响应 - 消息ID: ${messageId}, 块ID: ${blockId}`);
-
       // 确保最终内容是最新的
       if (finalContent && finalContent !== accumulatedContent) {
-        console.log(`[ResponseHandler] 更新最终内容 - 当前长度: ${accumulatedContent.length}, 新长度: ${finalContent.length}`);
         accumulatedContent = finalContent;
       }
 
@@ -230,15 +354,56 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         }
       }));
 
-      // 更新消息块状态
-      store.dispatch(updateOneBlock({
-        id: blockId,
-        changes: {
-          content: accumulatedContent,
-          status: MessageBlockStatus.SUCCESS,
-          updatedAt: now
+      // 更新消息块状态（确保所有相关块都被更新）
+      console.log(`[ResponseHandler] 完成时更新块状态 - lastBlockType: ${lastBlockType}, blockId: ${blockId}, mainTextBlockId: ${mainTextBlockId}`);
+
+      if (lastBlockType === MessageBlockType.MAIN_TEXT) {
+        // 只有主文本块，更新原始块
+        console.log(`[ResponseHandler] 更新主文本块 ${blockId} 状态为 SUCCESS`);
+        store.dispatch(updateOneBlock({
+          id: blockId,
+          changes: {
+            content: accumulatedContent,
+            status: MessageBlockStatus.SUCCESS,
+            updatedAt: now
+          }
+        }));
+      } else if (lastBlockType === MessageBlockType.THINKING) {
+        // 有思考块，更新思考块状态
+        console.log(`[ResponseHandler] 更新思考块 ${blockId} 状态为 SUCCESS`);
+        store.dispatch(updateOneBlock({
+          id: blockId,
+          changes: {
+            content: accumulatedThinking,
+            status: MessageBlockStatus.SUCCESS,
+            updatedAt: now
+          }
+        }));
+
+        // 如果还有主文本块，也要更新主文本块状态
+        if (mainTextBlockId && mainTextBlockId !== blockId) {
+          console.log(`[ResponseHandler] 更新主文本块 ${mainTextBlockId} 状态为 SUCCESS`);
+          store.dispatch(updateOneBlock({
+            id: mainTextBlockId,
+            changes: {
+              content: accumulatedContent,
+              status: MessageBlockStatus.SUCCESS,
+              updatedAt: now
+            }
+          }));
         }
-      }));
+      } else {
+        // 默认情况，更新为主文本块
+        console.log(`[ResponseHandler] 默认更新块 ${blockId} 状态为 SUCCESS`);
+        store.dispatch(updateOneBlock({
+          id: blockId,
+          changes: {
+            content: accumulatedContent,
+            status: MessageBlockStatus.SUCCESS,
+            updatedAt: now
+          }
+        }));
+      }
 
       // 设置主题为非流式响应状态
       store.dispatch(newMessagesActions.setTopicStreaming({
@@ -283,53 +448,128 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         topicId
       });
 
-      // 保存最终状态到数据库
-      await Promise.all([
-        dexieStorage.updateMessageBlock(blockId, {
+      // 保存最终状态到数据库（根据转换后的块类型）
+      const blockUpdatePromises = [];
+
+      // 保存原始块（思考块或主文本块）
+      if (lastBlockType === MessageBlockType.THINKING) {
+        console.log(`[ResponseHandler] 保存思考块 ${blockId} 到数据库，内容长度: ${accumulatedThinking.length}`);
+        blockUpdatePromises.push(dexieStorage.updateMessageBlock(blockId, {
+          type: MessageBlockType.THINKING, // 确保类型被正确保存
+          content: accumulatedThinking,
+          status: MessageBlockStatus.SUCCESS,
+          updatedAt: now
+        }));
+      } else {
+        console.log(`[ResponseHandler] 保存主文本块 ${blockId} 到数据库，内容长度: ${accumulatedContent.length}`);
+        blockUpdatePromises.push(dexieStorage.updateMessageBlock(blockId, {
+          type: MessageBlockType.MAIN_TEXT, // 确保类型被正确保存
           content: accumulatedContent,
           status: MessageBlockStatus.SUCCESS,
           updatedAt: now
-        }),
-        (async () => {
-          // 获取当前消息
-          const message = await dexieStorage.getMessage(messageId);
-          if (message) {
-            // 如果消息没有版本历史，创建一个初始版本
-            if (!message.versions || message.versions.length === 0) {
-              console.log(`[ResponseHandler] 创建初始版本历史记录 - 消息ID: ${messageId}`);
+        }));
+      }
 
+      // 如果有新创建的主文本块，也要保存它
+      if (mainTextBlockId && mainTextBlockId !== blockId) {
+        console.log(`[ResponseHandler] 保存新创建的主文本块 ${mainTextBlockId} 到数据库，内容长度: ${accumulatedContent.length}`);
+        blockUpdatePromises.push(dexieStorage.updateMessageBlock(mainTextBlockId, {
+          type: MessageBlockType.MAIN_TEXT, // 确保类型被正确保存
+          content: accumulatedContent,
+          status: MessageBlockStatus.SUCCESS,
+          updatedAt: now
+        }));
+      }
+
+      // 确保消息的 blocks 数组包含所有相关的块ID
+      const allBlockIds = [];
+      if (lastBlockType === MessageBlockType.THINKING) {
+        allBlockIds.push(blockId); // 思考块
+        if (mainTextBlockId && mainTextBlockId !== blockId) {
+          allBlockIds.push(mainTextBlockId); // 主文本块
+        }
+      } else {
+        allBlockIds.push(blockId); // 主文本块
+      }
+
+      console.log(`[ResponseHandler] 完成时的所有块ID: [${allBlockIds.join(', ')}]`);
+
+      // 更新消息的 blocks 数组
+      store.dispatch(newMessagesActions.updateMessage({
+        id: messageId,
+        changes: {
+          blocks: allBlockIds,
+          status: AssistantMessageStatus.SUCCESS,
+          updatedAt: now
+        }
+      }));
+
+      await Promise.all([
+        ...blockUpdatePromises,
+        (async () => {
+          // 获取当前消息的最新状态（包含所有块引用）
+          const currentMessage = store.getState().messages.entities[messageId];
+          if (currentMessage) {
+            // 如果消息没有版本历史，创建一个初始版本
+            if (!currentMessage.versions || currentMessage.versions.length === 0) {
               // 使用VersionService创建初始版本
               try {
                 await versionService.createInitialVersion(
                   messageId,
                   blockId,
                   accumulatedContent,
-                  message.model
+                  currentMessage.model
                 );
-
-                // 更新消息状态
-                await dexieStorage.updateMessage(messageId, {
-                  status: AssistantMessageStatus.SUCCESS,
-                  updatedAt: now
-                });
-
-                console.log(`[ResponseHandler] 初始版本创建成功 - 消息ID: ${messageId}`);
               } catch (versionError) {
                 console.error(`[ResponseHandler] 创建初始版本失败:`, versionError);
-
-                // 如果版本创建失败，仍然更新消息状态
-                await dexieStorage.updateMessage(messageId, {
-                  status: AssistantMessageStatus.SUCCESS,
-                  updatedAt: now
-                });
               }
-            } else {
-              // 如果已有版本历史，只更新状态
-              await dexieStorage.updateMessage(messageId, {
-                status: AssistantMessageStatus.SUCCESS,
-                updatedAt: now
-              });
             }
+
+            // 获取最新的消息状态（包含所有块引用）
+            const updatedMessage = {
+              ...currentMessage,
+              blocks: allBlockIds, // 使用我们计算的完整块ID数组
+              status: AssistantMessageStatus.SUCCESS,
+              updatedAt: now
+            };
+
+            console.log(`[ResponseHandler] 保存消息状态，更新后的blocks: [${updatedMessage.blocks?.join(', ')}]`);
+
+            // 关键修复：同时更新messages表和topic.messages数组
+            await Promise.all([
+              // 1. 更新messages表中的消息（包含最新的blocks数组）
+              dexieStorage.updateMessage(messageId, {
+                status: AssistantMessageStatus.SUCCESS,
+                updatedAt: now,
+                blocks: allBlockIds // 确保完整的blocks数组被保存
+              }),
+
+              // 2. 更新topic.messages数组中的消息
+              (async () => {
+                const topic = await dexieStorage.topics.get(topicId);
+                if (topic) {
+                  // 确保messages数组存在
+                  if (!topic.messages) {
+                    topic.messages = [];
+                  }
+
+                  // 查找消息在数组中的位置
+                  const messageIndex = topic.messages.findIndex(m => m.id === messageId);
+
+                  // 更新或添加消息到话题的messages数组
+                  if (messageIndex >= 0) {
+                    topic.messages[messageIndex] = updatedMessage;
+                  } else {
+                    topic.messages.push(updatedMessage);
+                  }
+
+                  console.log(`[ResponseHandler] 保存到topic.messages，blocks: [${updatedMessage.blocks?.join(', ')}]`);
+
+                  // 保存更新后的话题
+                  await dexieStorage.topics.put(topic);
+                }
+              })()
+            ]);
           }
         })()
       ]);
@@ -340,6 +580,26 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         topicId,
         status: 'success'
       });
+
+      // 触发话题自动命名 - 与电脑版保持一致
+      try {
+        // 异步执行话题命名，不阻塞主流程
+        setTimeout(async () => {
+          const { TopicNamingService } = await import('../TopicNamingService');
+
+          // 获取最新的话题数据
+          const topic = await dexieStorage.topics.get(topicId);
+          if (topic && TopicNamingService.shouldNameTopic(topic)) {
+            console.log(`[ResponseHandler] 触发话题自动命名: ${topicId}`);
+            const newName = await TopicNamingService.generateTopicName(topic);
+            if (newName) {
+              console.log(`[ResponseHandler] 话题自动命名成功: ${newName}`);
+            }
+          }
+        }, 1000); // 延迟1秒执行，确保消息已完全保存
+      } catch (error) {
+        console.error('[ResponseHandler] 话题自动命名失败:', error);
+      }
 
       return accumulatedContent;
     },

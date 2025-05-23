@@ -6,7 +6,7 @@ import messagesReducer from './slices/newMessagesSlice'; // 使用 normalizedMes
 import settingsReducer, { settingsMiddleware, loadSettings } from './settingsSlice';
 import { initSettingsAsync } from './slices/settingsSlice';
 import groupsReducer from './slices/groupsSlice';
-import webSearchReducer from './slices/webSearchSlice';
+import webSearchReducer, { initializeWebSearchSettings } from './slices/webSearchSlice';
 import systemPromptsReducer from './slices/systemPromptsSlice';
 import assistantsReducer from './slices/assistantsSlice';
 import messageBlocksReducer from './slices/messageBlocksSlice';
@@ -60,6 +60,16 @@ export const persistor = persistStore(store);
 // 加载设置
 store.dispatch(loadSettings());
 store.dispatch(initSettingsAsync());
+
+// 初始化网络搜索设置
+initializeWebSearchSettings().then(settings => {
+  if (settings) {
+    // 如果有保存的设置，更新store
+    store.dispatch({ type: 'webSearch/setWebSearchSettings', payload: settings });
+  }
+}).catch(error => {
+  console.error('初始化网络搜索设置失败:', error);
+});
 
 // 导出类型
 export type RootState = ReturnType<typeof rootReducer>;

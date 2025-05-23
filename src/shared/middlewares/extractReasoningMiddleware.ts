@@ -98,19 +98,15 @@ export function extractReasoningMiddleware<
         stream: stream.pipeThrough(
           new TransformStream<T, T>({
             transform: (chunk, controller) => {
+              // 特殊处理DeepSeek Reasoner模型 - 直接通过所有块，不进行标签处理
+              if (isDeepSeekReasoner) {
+                controller.enqueue(chunk);
+                return;
+              }
+
               // 处理非文本增量类型的块
               if (chunk.type !== 'text-delta') {
-                // 特殊处理DeepSeek Reasoner模型的reasoning_content字段
-                if (isDeepSeekReasoner &&
-                    chunk.type === 'reasoning' &&
-                    'textDelta' in chunk) {
-                  // 直接发送reasoning类型的块，不需要进行标签处理
-                  controller.enqueue(chunk);
-                  isReasoning = true;
-                  isFirstReasoning = false;
-                } else {
-                  controller.enqueue(chunk);
-                }
+                controller.enqueue(chunk);
                 return;
               }
 
