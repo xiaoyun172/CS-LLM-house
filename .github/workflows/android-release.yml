@@ -18,6 +18,9 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Clear npm cache
+        run: npm cache clean --force
+
       - name: Install Dependencies
         run: npm ci
 

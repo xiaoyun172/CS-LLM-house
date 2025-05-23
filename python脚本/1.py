@@ -11,15 +11,27 @@ import sys
 import platform
 import re # 导入正则表达式模块用于解析
 import codecs # 用于处理编码问题
+import threading # 用于异步执行Git命令
+import queue # 用于线程间通信
+from functools import lru_cache # 用于缓存结果
 
 class SimpleGitApp:
     def __init__(self, root):
         self.root = root
-        root.title("简易 Git 图形界面 (已修复状态显示)") # 更新标题
+        root.title("简易 Git 图形界面 (性能优化版)") # 更新标题
         # 增加窗口大小以适应更多控件
         root.geometry("950x780")
 
         self.repo_path = os.getcwd() # 初始仓库路径为当前目录
+
+        # 性能优化相关
+        self.command_queue = queue.Queue()  # 命令队列
+        self.result_queue = queue.Queue()   # 结果队列
+        self.is_busy = False                # 是否正在执行命令
+        self.pending_refresh = False        # 是否有待刷新的状态
+
+        # 启动结果处理线程
+        self.start_result_processor()
 
         # --- 主题和样式 (可选) ---
         style = ttk.Style()
@@ -186,60 +198,181 @@ class SimpleGitApp:
         self.update_repository_display() # 更新显示并尝试加载信息
         self.refresh_remotes() # 初始化远程仓库列表
 
+    # --- 性能优化方法 ---
+
+    def start_result_processor(self):
+        """启动结果处理线程"""
+        def process_results():
+            while True:
+                try:
+                    result = self.result_queue.get(timeout=0.1)
+                    if result is None:  # 退出信号
+                        break
+                    self.root.after(0, lambda r=result: self.handle_command_result(r))
+                except queue.Empty:
+                    continue
+                except Exception as e:
+                    print(f"结果处理错误: {e}")
+
+        self.result_thread = threading.Thread(target=process_results, daemon=True)
+        self.result_thread.start()
+
+    def handle_command_result(self, result):
+        """在主线程中处理命令结果"""
+        command_type, success, output, error, callback = result
+
+        # 显示输出
+        if output or error:
+            self.display_output(f"命令完成: {command_type}\n")
+            if output:
+                self.display_output(f"输出: {output}\n")
+            if error and not success:
+                self.display_output(f"错误: {error}\n")
+
+        # 执行回调
+        if callback:
+            try:
+                callback(success, output, error)
+            except Exception as e:
+                self.display_output(f"回调执行错误: {e}\n")
+
+        # 重置忙碌状态
+        self.is_busy = False
+
+        # 如果有待刷新的状态，执行刷新
+        if self.pending_refresh:
+            self.pending_refresh = False
+            self.root.after(100, self.refresh_status)  # 延迟100ms刷新
+
+    def run_git_command_async(self, command_list, callback=None, command_type="Git命令"):
+        """异步执行Git命令"""
+        if self.is_busy:
+            self.display_output("正在执行其他命令，请稍候...\n")
+            return False
+
+        self.is_busy = True
+        self.display_output(f"开始执行: {command_type}...\n")
+
+        def execute_command():
+            try:
+                stdout, stderr, returncode = self._run_git_command_sync(command_list)
+                success = returncode == 0
+                self.result_queue.put((command_type, success, stdout, stderr, callback))
+            except Exception as e:
+                self.result_queue.put((command_type, False, "", str(e), callback))
+
+        thread = threading.Thread(target=execute_command, daemon=True)
+        thread.start()
+        return True
+
     # --- 方法 ---
 
-    def run_git_command(self, command_list):
-        """安全地运行 Git 命令并返回输出和错误 (使用 self.repo_path)"""
+    def _run_git_command_sync(self, command_list):
+        """同步执行Git命令的内部方法"""
         if not self.repo_path or not os.path.exists(self.repo_path):
-             err_msg = f"错误：仓库路径 '{self.repo_path}' 无效或不存在。"
-             self.display_output(err_msg + "\n")
-             messagebox.showerror("路径错误", err_msg)
-             return None, err_msg, -1
+            err_msg = f"错误：仓库路径 '{self.repo_path}' 无效或不存在。"
+            return None, err_msg, -1
 
-        self.display_output(f"在 '{os.path.basename(self.repo_path)}' 运行: git {' '.join(shlex.quote(arg) for arg in command_list[1:])}\n", clear_previous=False)
         try:
             process = subprocess.run(
                 command_list, capture_output=True, text=True,
                 encoding='utf-8', errors='replace',
                 cwd=self.repo_path,
                 check=False,
-                env={**os.environ.copy(), 'GIT_EDITOR': 'true'}
+                env={**os.environ.copy(), 'GIT_EDITOR': 'true'},
+                timeout=30  # 添加30秒超时
             )
-            output_msg = f"命令: git {' '.join(shlex.quote(arg) for arg in command_list[1:])}\n"
+
             stdout_clean = "\n".join(line for line in process.stdout.splitlines() if line.strip())
             stderr_clean = "\n".join(line for line in process.stderr.splitlines() if line.strip())
 
-            if stdout_clean: output_msg += f"输出:\n{stdout_clean}\n"
-            # 改进 stderr 处理逻辑：只在退出码非0时标记为错误，否则为信息
-            if stderr_clean:
-                 level = "错误" if process.returncode != 0 else "信息"
-                 output_msg += f"{level} (Stderr):\n{stderr_clean}\n"
+            return stdout_clean, stderr_clean, process.returncode
 
-            output_msg += f"退出码: {process.returncode}\n"
-            self.display_output(output_msg)
-            return process.stdout, process.stderr, process.returncode
-
+        except subprocess.TimeoutExpired:
+            err_msg = "Git命令执行超时（30秒）"
+            return None, err_msg, -1
         except FileNotFoundError:
             err_msg = "错误: 'git' 命令未找到。请确保 Git 已安装并且在其系统的 PATH 环境变量中。"
-            self.display_output(err_msg + "\n"); messagebox.showerror("Git 未找到", err_msg)
             return None, err_msg, -1
         except Exception as e:
-            err_msg = f"运行命令时发生未知错误: {e}"; self.display_output(err_msg + "\n")
-            messagebox.showerror("未知错误", err_msg); return None, str(e), -1
+            err_msg = f"运行命令时发生未知错误: {e}"
+            return None, str(e), -1
+
+    def run_git_command(self, command_list):
+        """兼容性方法：同步运行 Git 命令并返回输出和错误"""
+        stdout, stderr, returncode = self._run_git_command_sync(command_list)
+
+        # 显示输出（简化版）
+        if stdout or stderr:
+            cmd_str = ' '.join(shlex.quote(arg) for arg in command_list[1:])
+            output_msg = f"命令: git {cmd_str}\n"
+            if stdout:
+                output_msg += f"输出:\n{stdout}\n"
+            if stderr:
+                level = "错误" if returncode != 0 else "信息"
+                output_msg += f"{level}:\n{stderr}\n"
+            output_msg += f"退出码: {returncode}\n"
+            self.display_output(output_msg)
+
+        return stdout, stderr, returncode
 
     def display_output(self, text, clear_previous=False):
-        """在输出区域显示文本"""
-        self.output_text.config(state=tk.NORMAL)
-        if clear_previous: self.output_text.delete("1.0", tk.END)
-        self.output_text.insert(tk.END, text + "---\n")
-        self.output_text.see(tk.END)
-        self.output_text.config(state=tk.DISABLED)
-        self.root.update_idletasks()
+        """在输出区域显示文本（优化版）"""
+        try:
+            self.output_text.config(state=tk.NORMAL)
+            if clear_previous:
+                self.output_text.delete("1.0", tk.END)
+            self.output_text.insert(tk.END, text + "---\n")
+
+            # 限制输出文本长度，避免内存占用过多
+            content = self.output_text.get("1.0", tk.END)
+            lines = content.split('\n')
+            if len(lines) > 1000:  # 保留最后1000行
+                self.output_text.delete("1.0", tk.END)
+                self.output_text.insert("1.0", '\n'.join(lines[-1000:]))
+
+            self.output_text.see(tk.END)
+            self.output_text.config(state=tk.DISABLED)
+            # 移除 update_idletasks() 调用以减少卡顿
+        except Exception as e:
+            print(f"显示输出时出错: {e}")
+
+    @lru_cache(maxsize=32)
+    def _cached_is_git_repo(self, path):
+        """缓存的Git仓库检查"""
+        if not path or not os.path.isdir(path):
+            return False
+        return os.path.exists(os.path.join(path, '.git'))
+
+    @lru_cache(maxsize=128)
+    def _parse_git_path(self, filepath):
+        """缓存的Git路径解析（简化版）"""
+        # 简化的路径解析，避免复杂的编码处理
+        if not filepath:
+            return filepath
+
+        # 处理引号
+        if filepath.startswith('"') and filepath.endswith('"'):
+            filepath = filepath[1:-1]
+
+        # 处理重命名
+        if ' -> ' in filepath:
+            filepath = filepath.split(' -> ')[-1]
+            if filepath.startswith('"') and filepath.endswith('"'):
+                filepath = filepath[1:-1]
+
+        # 简单的转义处理
+        if '\\' in filepath:
+            try:
+                filepath = filepath.encode('utf-8').decode('unicode_escape')
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                pass  # 保留原始路径
+
+        return filepath
 
     def is_git_repo(self, path):
-        """检查指定路径是否为 Git 仓库的根目录"""
-        if not path or not os.path.isdir(path): return False
-        return os.path.exists(os.path.join(path, '.git'))
+        """检查指定路径是否为 Git 仓库的根目录（使用缓存）"""
+        return self._cached_is_git_repo(path)
 
     def refresh_status(self):
         """(已修复 Bug) 刷新状态列表"""
@@ -263,58 +396,9 @@ class SimpleGitApp:
             if not line: continue
             status_code = line[:2]
             filepath = line[3:].strip()
-            # 处理路径解析 (带引号、转义、重命名)
-            if filepath.startswith('"') and filepath.endswith('"'):
-                 # 去掉引号
-                 filepath = filepath[1:-1]
 
-            # 处理Git的路径转义
-            # 处理 \xxx 形式的八进制转义序列（常见于中文路径）
-            if '\\' in filepath:
-                try:
-                    # 先尝试直接解码
-                    decoded = filepath.encode('utf-8').decode('unicode_escape')
-                    if not '\\' in decoded:  # 如果解码成功（不再包含反斜杠）
-                        filepath = decoded
-                    else:
-                        # 处理形如 \346\226\260\345\273\272\346\226\207\344\273\266\345\244\271 的路径
-                        # 这是UTF-8编码的八进制表示
-                        octal_pattern = r'\\([0-7]{3})'
-                        import re
-
-                        # 将所有八进制转义序列转换为对应的字节
-                        def replace_octal(match):
-                            return bytes([int(match.group(1), 8)]).decode('latin-1')
-
-                        # 先将八进制转义序列转换为字节序列
-                        byte_str = re.sub(octal_pattern, replace_octal, filepath)
-
-                        # 然后尝试将字节序列解码为UTF-8字符串
-                        try:
-                            filepath = byte_str.encode('latin-1').decode('utf-8')
-                        except UnicodeDecodeError:
-                            # 如果UTF-8解码失败，尝试其他编码
-                            try:
-                                filepath = byte_str.encode('latin-1').decode('gbk')
-                            except UnicodeDecodeError:
-                                # 如果所有尝试都失败，保留原始路径
-                                pass
-                except (UnicodeDecodeError, UnicodeEncodeError):
-                    # 如果解码过程中出错，保留原始路径
-                    pass
-
-            if ' -> ' in filepath:
-                filepath_parts = filepath.split(' -> ')
-                new_path_raw = filepath_parts[-1]
-                if new_path_raw.startswith('"') and new_path_raw.endswith('"'):
-                     try:
-                         filepath = new_path_raw[1:-1].encode('utf-8', 'surrogateescape').decode('utf-8')
-                         if '\\' in filepath:
-                             filepath = filepath.encode('latin-1', 'backslashreplace').decode('unicode_escape')
-                     except UnicodeDecodeError:
-                         filepath = new_path_raw[1:-1]
-                else:
-                    filepath = new_path_raw
+            # 使用简化的路径解析
+            filepath = self._parse_git_path(filepath)
 
             staged_char = status_code[0] # 保留空格 ' '
             unstaged_char = status_code[1] # 保留空格 ' '
@@ -333,7 +417,7 @@ class SimpleGitApp:
             # --- 修复结束 ---
 
     def get_selected_files(self, listbox):
-        """从列表框获取选中项并解析出文件路径"""
+        """从列表框获取选中项并解析出文件路径（优化版）"""
         selected_files = []
         selections = listbox.curselection()
         if not selections: return None # 没有选中项
@@ -343,52 +427,8 @@ class SimpleGitApp:
             try:
                 # 提取状态码后的文件路径
                 filepath = line[3:].strip()
-                # 进一步处理路径 (与 refresh_status 保持一致)
-                if ' -> ' in filepath:
-                    filepath_parts = filepath.split(' -> ')
-                    new_path_raw = filepath_parts[-1]
-                    if new_path_raw.startswith('"') and new_path_raw.endswith('"'):
-                        filepath = new_path_raw[1:-1]
-                    else:
-                        filepath = new_path_raw
-                elif filepath.startswith('"') and filepath.endswith('"'):
-                    filepath = filepath[1:-1]
-
-                # 处理Git的路径转义
-                # 处理 \xxx 形式的八进制转义序列（常见于中文路径）
-                if '\\' in filepath:
-                    try:
-                        # 先尝试直接解码
-                        decoded = filepath.encode('utf-8').decode('unicode_escape')
-                        if not '\\' in decoded:  # 如果解码成功（不再包含反斜杠）
-                            filepath = decoded
-                        else:
-                            # 处理形如 \346\226\260\345\273\272\346\226\207\344\273\266\345\244\271 的路径
-                            # 这是UTF-8编码的八进制表示
-                            octal_pattern = r'\\([0-7]{3})'
-                            import re
-
-                            # 将所有八进制转义序列转换为对应的字节
-                            def replace_octal(match):
-                                return bytes([int(match.group(1), 8)]).decode('latin-1')
-
-                            # 先将八进制转义序列转换为字节序列
-                            byte_str = re.sub(octal_pattern, replace_octal, filepath)
-
-                            # 然后尝试将字节序列解码为UTF-8字符串
-                            try:
-                                filepath = byte_str.encode('latin-1').decode('utf-8')
-                            except UnicodeDecodeError:
-                                # 如果UTF-8解码失败，尝试其他编码
-                                try:
-                                    filepath = byte_str.encode('latin-1').decode('gbk')
-                                except UnicodeDecodeError:
-                                    # 如果所有尝试都失败，保留原始路径
-                                    pass
-                    except (UnicodeDecodeError, UnicodeEncodeError):
-                        # 如果解码过程中出错，保留原始路径
-                        pass
-
+                # 使用简化的路径解析
+                filepath = self._parse_git_path(filepath)
                 selected_files.append(filepath)
             except IndexError:
                 self.display_output(f"错误：无法解析列表行: {line}\n")
@@ -396,47 +436,80 @@ class SimpleGitApp:
 
 
     def stage_selected(self):
-        """暂存选中的未暂存文件"""
+        """暂存选中的未暂存文件（异步版）"""
         if not self.is_git_repo(self.repo_path): return
         files_to_stage = self.get_selected_files(self.unstaged_list)
-        if files_to_stage is None: messagebox.showinfo("提示", "请先在“未暂存的更改”列表中选择文件。"); return
-        if not files_to_stage: self.display_output("未能识别选中的文件。\n"); return
-        for filepath in files_to_stage:
-            self.run_git_command(['git', 'add', '--', filepath])
-        self.refresh_status()
+        if files_to_stage is None:
+            messagebox.showinfo("提示", "请先在“未暂存的更改”列表中选择文件。")
+            return
+        if not files_to_stage:
+            self.display_output("未能识别选中的文件。\n")
+            return
+
+        def callback(success, output, error):
+            if success:
+                self.pending_refresh = True
+
+        # 批量添加文件
+        command = ['git', 'add', '--'] + files_to_stage
+        self.run_git_command_async(command, callback, f"暂存 {len(files_to_stage)} 个文件")
 
     def stage_all(self):
-        """暂存所有更改 (git add .)"""
+        """暂存所有更改 (git add .) - 异步版"""
         if not self.is_git_repo(self.repo_path): return
-        self.run_git_command(['git', 'add', '.']); self.refresh_status()
+
+        def callback(success, output, error):
+            if success:
+                self.pending_refresh = True
+
+        self.run_git_command_async(['git', 'add', '.'], callback, "暂存所有更改")
 
     def unstage_selected(self):
-        """取消暂存选中的已暂存文件"""
+        """取消暂存选中的已暂存文件（异步版）"""
         if not self.is_git_repo(self.repo_path): return
         files_to_unstage = self.get_selected_files(self.staged_list)
-        if files_to_unstage is None: messagebox.showinfo("提示", "请先在“已暂存的更改”列表中选择文件。"); return
-        if not files_to_unstage: self.display_output("未能识别选中的文件。\n"); return
-        for filepath in files_to_unstage:
-            self.run_git_command(['git', 'reset', 'HEAD', '--', filepath])
-        self.refresh_status()
+        if files_to_unstage is None:
+            messagebox.showinfo("提示", "请先在“已暂存的更改”列表中选择文件。")
+            return
+        if not files_to_unstage:
+            self.display_output("未能识别选中的文件。\n")
+            return
+
+        def callback(success, output, error):
+            if success:
+                self.pending_refresh = True
+
+        # 批量取消暂存
+        command = ['git', 'reset', 'HEAD', '--'] + files_to_unstage
+        self.run_git_command_async(command, callback, f"取消暂存 {len(files_to_unstage)} 个文件")
 
     def commit(self):
-        """提交暂存的更改"""
-        if not self.is_git_repo(self.repo_path): messagebox.showerror("错误", "不是有效的 Git 仓库，无法提交。"); return
+        """提交暂存的更改（异步版）"""
+        if not self.is_git_repo(self.repo_path):
+            messagebox.showerror("错误", "不是有效的 Git 仓库，无法提交。")
+            return
         message = self.commit_message.get("1.0", tk.END).strip()
-        if not message: messagebox.showwarning("警告", "提交信息不能为空！"); return
+        if not message:
+            messagebox.showwarning("警告", "提交信息不能为空！")
+            return
+
         # 检查是否有暂存更改
         stdout_status, _, returncode_status = self.run_git_command(['git', 'diff', '--cached', '--quiet'])
         if returncode_status == 0:
              messagebox.showinfo("提示", "没有已暂存的更改可供提交。\n请先使用 'git add' 添加更改。")
-             self.refresh_status(); return
+             self.refresh_status()
+             return
+
+        def callback(success, output, error):
+            if success:
+                self.root.after(0, lambda: self.commit_message.delete("1.0", tk.END))
+                self.pending_refresh = True
+
         # 执行提交
-        stdout, stderr, returncode = self.run_git_command(['git', 'commit', '-m', message])
-        if returncode == 0: self.commit_message.delete("1.0", tk.END)
-        self.refresh_status()
+        self.run_git_command_async(['git', 'commit', '-m', message], callback, "提交更改")
 
     def push(self, remote=None):
-        """推送本地提交到远程仓库
+        """推送本地提交到远程仓库（异步版）
 
         Args:
             remote: 指定远程仓库名称，如果为None则推送到默认远程仓库
@@ -445,21 +518,32 @@ class SimpleGitApp:
             messagebox.showerror("错误", "不是有效的 Git 仓库，无法推送。")
             return
 
+        def callback(success, output, error):
+            # 推送完成后不需要特殊处理
+            pass
+
         if remote:
-            self.display_output(f"正在尝试推送到 {remote}... \n提示：此脚本无法处理认证提示。\n", clear_previous=True)
-            self.run_git_command(['git', 'push', remote])
+            command = ['git', 'push', remote]
+            command_desc = f"推送到 {remote}"
         else:
-            self.display_output("正在尝试推送到默认远程仓库... \n提示：此脚本无法处理认证提示。\n", clear_previous=True)
-            self.run_git_command(['git', 'push'])
+            command = ['git', 'push']
+            command_desc = "推送到默认远程仓库"
+
+        self.run_git_command_async(command, callback, command_desc)
 
     def pull(self):
-        """从远程仓库拉取更改"""
-        if not self.is_git_repo(self.repo_path): messagebox.showerror("错误", "不是有效的 Git 仓库，无法拉取。"); return
-        self.display_output("正在尝试拉取... \n提示：若有冲突需手动解决。\n", clear_previous=True)
-        self.run_git_command(['git', 'pull'])
-        # 拉取后刷新状态和分支信息
-        self.refresh_status()
-        self.update_branch_info()
+        """从远程仓库拉取更改（异步版）"""
+        if not self.is_git_repo(self.repo_path):
+            messagebox.showerror("错误", "不是有效的 Git 仓库，无法拉取。")
+            return
+
+        def callback(success, output, error):
+            if success:
+                # 拉取后刷新状态和分支信息
+                self.pending_refresh = True
+                self.root.after(200, self.update_branch_info)  # 延迟更新分支信息
+
+        self.run_git_command_async(['git', 'pull'], callback, "拉取更改")
 
     def update_repository_display(self):
         """更新仓库路径显示，并尝试加载仓库信息"""
@@ -886,6 +970,17 @@ class SimpleGitApp:
         if messagebox.askyesno("确认删除", f"确定要删除远程仓库 '{selected_remote}' 吗？"):
             self.remove_remote(selected_remote)
 
+    def cleanup(self):
+        """清理资源"""
+        try:
+            # 发送退出信号给结果处理线程
+            self.result_queue.put(None)
+            # 清理缓存
+            self._cached_is_git_repo.cache_clear()
+            self._parse_git_path.cache_clear()
+        except Exception as e:
+            print(f"清理资源时出错: {e}")
+
 
 # --- 主程序入口 ---
 if __name__ == "__main__":
@@ -901,6 +996,17 @@ if __name__ == "__main__":
 
     root = tk.Tk()
     app = SimpleGitApp(root)
+
+    # 设置窗口关闭事件处理
+    def on_closing():
+        app.cleanup()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+
     # 只有在窗口未被销毁时才运行 mainloop
-    if root.winfo_exists():
-        root.mainloop()
+    try:
+        if root.winfo_exists():
+            root.mainloop()
+    except KeyboardInterrupt:
+        on_closing()

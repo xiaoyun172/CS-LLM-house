@@ -20,8 +20,18 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install Dependencies
-        run: npm ci
+      - name: Clear npm cache
+        run: npm cache clean --force
+
+      - name: Install Dependencies with retry
+        run: |
+          # 尝试 npm ci，如果失败则尝试替代方案
+          npm ci || {
+            echo "npm ci failed, trying alternative approaches..."
+            rm -rf node_modules package-lock.json
+            npm cache clean --force
+            npm install --no-package-lock
+          }
 
       - name: Build Web App
         run: npm run build
