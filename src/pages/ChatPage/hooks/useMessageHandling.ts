@@ -79,10 +79,10 @@ export const useMessageHandling = (
     }
   }, [dispatch, currentTopic, selectedModel]);
 
-  // 加载主题消息 - 使用电脑版的标准方式
+  // 加载主题消息 - 使用最佳实例的标准方式
   const loadTopicMessages = useCallback(async (topicId: string) => {
     try {
-      // 使用电脑版的 loadTopicMessagesThunk，确保消息和块正确加载到Redux
+      // 使用最佳实例的 loadTopicMessagesThunk，确保消息和块正确加载到Redux
       await dispatch(loadTopicMessagesThunk(topicId)); // 加载消息
       return selectMessagesForTopic(store.getState(), topicId)?.length || 0;
     } catch (error) {

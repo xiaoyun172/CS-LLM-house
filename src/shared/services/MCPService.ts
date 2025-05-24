@@ -5,6 +5,46 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createInMemoryMCPServer } from './MCPServerFactory';
 import { createSSEProxyUrl, createHTTPProxyUrl, logProxyUsage } from '../utils/mcpProxy';
+import { CustomHTTPTransport } from '../utils/CustomHTTPTransport';
+import { Capacitor } from '@capacitor/core';
+
+/**
+ * 构建函数调用工具名称 - 参考最佳实例逻辑
+ */
+function buildFunctionCallToolName(serverName: string, toolName: string): string {
+  const sanitizedServer = serverName.trim().replace(/-/g, '_');
+  const sanitizedTool = toolName.trim().replace(/-/g, '_');
+
+  // Combine server name and tool name
+  let name = sanitizedTool;
+  if (!sanitizedTool.includes(sanitizedServer.slice(0, 7))) {
+    name = `${sanitizedServer.slice(0, 7) || ''}-${sanitizedTool || ''}`;
+  }
+
+  // Replace invalid characters with underscores or dashes
+  // Keep a-z, A-Z, 0-9, underscores and dashes
+  name = name.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  // Ensure name starts with a letter or underscore (for valid JavaScript identifier)
+  if (!/^[a-zA-Z]/.test(name)) {
+    name = `tool-${name}`;
+  }
+
+  // Remove consecutive underscores/dashes (optional improvement)
+  name = name.replace(/[_-]{2,}/g, '_');
+
+  // Truncate to 63 characters maximum
+  if (name.length > 63) {
+    name = name.slice(0, 63);
+  }
+
+  // Handle edge case: ensure we still have a valid name if truncation left invalid chars at edges
+  if (name.endsWith('_') || name.endsWith('-')) {
+    name = name.slice(0, -1);
+  }
+
+  return name;
+}
 
 /**
  * MCP 服务管理类
@@ -149,14 +189,8 @@ export class MCPService {
     // 检查是否已有客户端连接
     const existingClient = this.clients.get(serverKey);
     if (existingClient) {
-      try {
-        // 测试连接是否仍然有效
-        await existingClient.ping();
-        return existingClient;
-      } catch (error) {
-        console.error(`[MCP] 现有连接失效，重新连接: ${server.name}`, error);
-        this.clients.delete(serverKey);
-      }
+      console.log(`[MCP] 复用现有连接: ${server.name}`);
+      return existingClient;
     }
 
     // 创建新的客户端
@@ -183,29 +217,51 @@ export class MCPService {
           throw new Error('SSE 服务器需要提供 baseUrl');
         }
 
-        // 使用代理解决 CORS 问题
-        const finalUrl = createSSEProxyUrl(server.baseUrl);
-        logProxyUsage(server.baseUrl, finalUrl, 'SSE');
+        if (Capacitor.isNativePlatform()) {
+          // 移动端：使用自定义 SSE 传输，直接连接原始 URL，绕过 CORS
+          console.log(`[MCP] 创建原生 SSE 传输: ${server.baseUrl}`);
+          const { CustomSSETransport } = await import('../utils/CustomSSETransport');
+          transport = new CustomSSETransport(new URL(server.baseUrl), {
+            headers: server.headers || {},
+            heartbeatTimeout: (server.timeout || 60) * 1000
+          });
+        } else {
+          // Web 端：使用代理解决 CORS 问题
+          const finalUrl = createSSEProxyUrl(server.baseUrl);
+          logProxyUsage(server.baseUrl, finalUrl, 'SSE');
 
-        console.log(`[MCP] 创建 SSE 传输: ${finalUrl}`);
+          console.log(`[MCP] 创建 SSE 传输: ${finalUrl}`);
 
-        const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
-        transport = new SSEClientTransport(new URL(finalUrl));
+          const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
+          transport = new SSEClientTransport(new URL(finalUrl));
+        }
       } else if (server.type === 'streamableHttp') {
         if (!server.baseUrl) {
           throw new Error('HTTP 流服务器需要提供 baseUrl');
         }
 
-        // 使用 HTTP 代理解决 CORS 问题
-        const finalUrl = createHTTPProxyUrl(server.baseUrl);
-        logProxyUsage(server.baseUrl, finalUrl, 'HTTP');
+        const isNative = Capacitor.isNativePlatform();
+        console.log(`[MCP] 平台检测结果: isNative=${isNative}, platform=${Capacitor.getPlatform()}`);
 
-        console.log(`[MCP] 创建 HTTP 流传输: ${finalUrl}`);
-        transport = new StreamableHTTPClientTransport(new URL(finalUrl), {
-          requestInit: {
-            headers: server.headers || {}
-          }
-        });
+        if (isNative) {
+          // 移动端：使用自定义 HTTP 传输，直接连接原始 URL，绕过 CORS
+          console.log(`[MCP] 创建原生 HTTP 流传输: ${server.baseUrl}`);
+          transport = new CustomHTTPTransport(new URL(server.baseUrl), {
+            headers: server.headers || {},
+            timeout: (server.timeout || 60) * 1000
+          });
+        } else {
+          // Web 端：使用代理解决 CORS 问题
+          const finalUrl = createHTTPProxyUrl(server.baseUrl);
+          logProxyUsage(server.baseUrl, finalUrl, 'HTTP');
+
+          console.log(`[MCP] 创建 HTTP 流传输: ${finalUrl}`);
+          transport = new StreamableHTTPClientTransport(new URL(finalUrl), {
+            requestInit: {
+              headers: server.headers || {}
+            }
+          });
+        }
       } else {
         throw new Error(`不支持的服务器类型: ${server.type}`);
       }
@@ -272,16 +328,22 @@ export class MCPService {
       console.log(`[MCP] 获取服务器工具: ${server.name}`);
 
       const client = await this.initClient(server);
-      const result = await client.listTools();
+      console.log(`[MCP] 客户端已连接，正在调用 listTools...`);
 
-      return result.tools.map(tool => ({
+      const result = await client.listTools();
+      console.log(`[MCP] listTools 响应:`, result);
+
+      const tools = result.tools.map(tool => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
         serverName: server.name,
         serverId: server.id,
-        id: `${server.id}-${tool.name}`
+        id: buildFunctionCallToolName(server.name, tool.name)
       }));
+
+      console.log(`[MCP] 服务器 ${server.name} 返回 ${tools.length} 个工具:`, tools.map(t => t.name));
+      return tools;
     } catch (error) {
       console.error(`[MCP] 获取工具列表失败:`, error);
       return [];

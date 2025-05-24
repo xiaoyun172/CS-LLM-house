@@ -37,7 +37,7 @@ interface MCPButtonProps {
 
 /**
  * MCP 按钮组件
- * 合并了工具开关和 MCP 工具管理功能，类似电脑版的设计
+ * 合并了工具开关和 MCP 工具管理功能，类似最佳实例的设计
  */
 const MCPButton: React.FC<MCPButtonProps> = ({
   toolsEnabled,

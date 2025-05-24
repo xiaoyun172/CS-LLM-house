@@ -8,7 +8,7 @@ import type { MessageBlock, Message } from '../../shared/types/newMessage';
 import { MessageBlockType, MessageBlockStatus } from '../../shared/types/newMessage';
 
 
-// 直接导入块组件，与电脑版保持一致
+// 直接导入块组件，与最佳实例保持一致
 import MainTextBlock from './blocks/MainTextBlock';
 import ThinkingBlock from './blocks/ThinkingBlock';
 import ImageBlock from './blocks/ImageBlock';
@@ -21,7 +21,6 @@ import MathBlock from './blocks/MathBlock';
 import MultiModelBlock from './blocks/MultiModelBlock';
 import ChartBlock from './blocks/ChartBlock';
 import FileBlock from './blocks/FileBlock';
-import ToolBlock from './blocks/ToolBlock';
 import PlaceholderBlock from './blocks/PlaceholderBlock';
 
 // 定义动画变体
@@ -72,30 +71,16 @@ const MessageBlockRenderer: React.FC<Props> = ({
 
   // 简化版本，不依赖事件监听，直接从Redux状态读取
 
-  // 获取所有有效的块并进行排序
+  // 获取所有有效的块 - 与最佳实例保持一致，不进行排序
   const renderedBlocks = useMemo(() => {
-    // 只渲染存在于Redux状态中的块
+    // 只渲染存在于Redux状态中的块，按照 blocks 数组的原始顺序
     const validBlocks = blocks
       .map((blockId) => blockEntities[blockId])
       .filter(Boolean) as MessageBlock[];
 
-    // 对块进行排序：思考块在前，其他块在后
-    const sortedBlocks = [...validBlocks].sort((a, b) => {
-      // 思考块的优先级最高
-      if (a.type === MessageBlockType.THINKING && b.type !== MessageBlockType.THINKING) {
-        return -1;
-      }
-      if (b.type === MessageBlockType.THINKING && a.type !== MessageBlockType.THINKING) {
-        return 1;
-      }
-
-      // 其他块按创建时间排序
-      const timeA = new Date(a.createdAt || 0).getTime();
-      const timeB = new Date(b.createdAt || 0).getTime();
-      return timeA - timeB;
-    });
-
-    return sortedBlocks;
+    // 与最佳实例保持一致：不对块进行排序，保持原始顺序
+    // 这样确保工具块显示在正确的位置（通常在主文本块之后）
+    return validBlocks;
   }, [blocks, blockEntities]);
 
   // 渲染占位符块
@@ -187,16 +172,16 @@ const MessageBlockRenderer: React.FC<Props> = ({
 
             switch (block.type) {
               case MessageBlockType.UNKNOWN:
-                // 参考电脑版逻辑：PROCESSING状态下渲染占位符块，SUCCESS状态下当作主文本块处理
+                // 参考最佳实例逻辑：PROCESSING状态下渲染占位符块，SUCCESS状态下当作主文本块处理
                 if (block.status === MessageBlockStatus.PROCESSING) {
                   blockComponent = <PlaceholderBlock key={block.id} block={block} />;
                 } else if (block.status === MessageBlockStatus.SUCCESS) {
                   // 兼容性处理：将 UNKNOWN 类型的成功状态块当作主文本块处理
-                  blockComponent = <MainTextBlock key={block.id} block={block as any} role={message.role} />;
+                  blockComponent = <MainTextBlock key={block.id} block={block as any} role={message.role} messageId={message.id} />;
                 }
                 break;
               case MessageBlockType.MAIN_TEXT:
-                blockComponent = <MainTextBlock key={block.id} block={block} role={message.role} />;
+                blockComponent = <MainTextBlock key={block.id} block={block} role={message.role} messageId={message.id} />;
                 break;
               case MessageBlockType.THINKING:
                 blockComponent = <ThinkingBlock key={block.id} block={block} />;
@@ -211,7 +196,7 @@ const MessageBlockRenderer: React.FC<Props> = ({
                 blockComponent = <CitationBlock key={block.id} block={block} />;
                 break;
               case MessageBlockType.ERROR:
-                blockComponent = <ErrorBlock key={block.id} block={block} />;
+                blockComponent = <ErrorBlock key={block.id} block={block} messageId={message.id} topicId={message.topicId} />;
                 break;
               case MessageBlockType.TRANSLATION:
                 blockComponent = <TranslationBlock key={block.id} block={block} />;
@@ -232,7 +217,8 @@ const MessageBlockRenderer: React.FC<Props> = ({
                 blockComponent = <FileBlock key={block.id} block={block} />;
                 break;
               case MessageBlockType.TOOL:
-                blockComponent = <ToolBlock key={block.id} block={block} />;
+                // 工具块现在在 MainTextBlock 中原位置渲染，这里跳过
+                blockComponent = null;
                 break;
               default:
                 console.warn('不支持的块类型:', (block as any).type, block);

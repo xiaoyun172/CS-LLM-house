@@ -47,7 +47,7 @@ export interface BaseMessageBlock {
   error?: Record<string, any>
 }
 
-// 占位符消息块（参考电脑版）
+// 占位符消息块（参考最佳实例）
 export interface PlaceholderMessageBlock extends BaseMessageBlock {
   type: typeof MessageBlockType.UNKNOWN
   content?: string
@@ -93,17 +93,13 @@ export interface CodeMessageBlock extends BaseMessageBlock {
   language?: string
 }
 
-// 工具消息块
+// 工具消息块 - 统一与最佳实例的数据结构
 export interface ToolMessageBlock extends BaseMessageBlock {
   type: typeof MessageBlockType.TOOL
-  toolId?: string
+  toolId: string // 必需字段，与最佳实例保持一致
   toolName?: string
-  name?: string
   arguments?: Record<string, any>
-  input?: Record<string, any>
-  output?: Record<string, any>
   content?: string | object
-  toolResponses?: import('../types').MCPToolResponse[]
   metadata?: BaseMessageBlock['metadata'] & {
     rawMcpToolResponse?: import('../types').MCPToolResponse
   }

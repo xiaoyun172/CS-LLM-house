@@ -47,7 +47,7 @@ export function useAssistantManagement({
     }
   }, [currentAssistant?.id, persistCurrentAssistantId]);
 
-  // 选择助手 - 直接使用Redux dispatch，类似电脑版
+  // 选择助手 - 直接使用Redux dispatch，类似最佳实例
   const handleSelectAssistant = async (assistant: Assistant) => {
     try {
       console.log('[useAssistantManagement] 开始选择助手:', assistant.name);
@@ -140,7 +140,7 @@ export function useAssistantManagement({
     }
   };
 
-  // 添加助手 - 直接使用Redux dispatch，类似电脑版
+  // 添加助手 - 直接使用Redux dispatch，类似最佳实例
   const handleAddAssistant = async (assistant: Assistant) => {
     try {
       console.log('[useAssistantManagement] 开始添加助手:', assistant.name);
@@ -174,7 +174,7 @@ export function useAssistantManagement({
     }
   };
 
-  // 更新助手 - 直接使用Redux dispatch，类似电脑版
+  // 更新助手 - 直接使用Redux dispatch，类似最佳实例
   const handleUpdateAssistant = async (assistant: Assistant) => {
     try {
       console.log('[useAssistantManagement] 开始更新助手:', assistant.name);
@@ -199,7 +199,7 @@ export function useAssistantManagement({
     }
   };
 
-  // 删除助手 - 直接使用Redux dispatch，类似电脑版
+  // 删除助手 - 直接使用Redux dispatch，类似最佳实例
   const handleDeleteAssistant = async (assistantId: string) => {
     try {
       console.log('[useAssistantManagement] 开始删除助手:', assistantId);

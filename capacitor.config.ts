@@ -21,6 +21,9 @@ const config: CapacitorConfig = {
     cleartext: false
   },
   plugins: {
+    CapacitorHttp: {
+      enabled: true
+    },
     WebView: {
       scrollEnabled: true,
       allowFileAccess: true

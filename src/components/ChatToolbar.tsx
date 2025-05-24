@@ -1,8 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Box, Typography, useTheme } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
-import ImageIcon from '@mui/icons-material/Image';
+import ClearAllIcon from '@mui/icons-material/ClearAll';
+import WarningIcon from '@mui/icons-material/Warning';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import SearchIcon from '@mui/icons-material/Search';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../shared/store';
@@ -40,6 +41,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [showProviderSelector, setShowProviderSelector] = useState(false);
+  const [clearConfirmMode, setClearConfirmMode] = useState(false);
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const dispatch = useDispatch();
@@ -53,6 +55,85 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const toolbarDisplayStyle = useSelector((state: RootState) =>
     (state.settings as any).toolbarDisplayStyle || 'both'
   );
+
+  // 获取输入框风格设置
+  const inputBoxStyle = useSelector((state: RootState) =>
+    (state.settings as any).inputBoxStyle || 'default'
+  );
+
+  // 根据风格获取工具栏样式
+  const getToolbarStyles = () => {
+    const baseStyles = {
+      buttonBg: isDarkMode ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+      buttonBorder: isDarkMode ? 'rgba(60, 60, 60, 0.8)' : 'rgba(230, 230, 230, 0.8)',
+      buttonShadow: isDarkMode ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.07)',
+      hoverBg: isDarkMode ? 'rgba(40, 40, 40, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+      hoverShadow: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)',
+      borderRadius: '50px',
+      backdropFilter: 'blur(5px)'
+    };
+
+    switch (inputBoxStyle) {
+      case 'modern':
+        return {
+          ...baseStyles,
+          buttonBg: isDarkMode
+            ? 'linear-gradient(135deg, rgba(45, 45, 45, 0.9) 0%, rgba(35, 35, 35, 0.9) 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%)',
+          buttonBorder: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          buttonShadow: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.1)',
+          hoverBg: isDarkMode
+            ? 'linear-gradient(135deg, rgba(55, 55, 55, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%)',
+          hoverShadow: isDarkMode ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.15)',
+          borderRadius: '16px',
+          backdropFilter: 'blur(10px)'
+        };
+      case 'minimal':
+        return {
+          ...baseStyles,
+          buttonBg: isDarkMode ? 'rgba(40, 40, 40, 0.6)' : 'rgba(255, 255, 255, 0.7)',
+          buttonBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+          buttonShadow: 'none',
+          hoverBg: isDarkMode ? 'rgba(50, 50, 50, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+          hoverShadow: 'none',
+          borderRadius: '12px',
+          backdropFilter: 'none'
+        };
+      default:
+        return baseStyles;
+    }
+  };
+
+  const toolbarStyles = getToolbarStyles();
+
+  // 处理清空内容的二次确认
+  const handleClearTopic = () => {
+    if (clearConfirmMode) {
+      // 第二次点击，执行清空
+      onClearTopic?.();
+      setClearConfirmMode(false);
+    } else {
+      // 第一次点击，进入确认模式
+      setClearConfirmMode(true);
+    }
+  };
+
+  // 自动重置确认模式（3秒后）
+  useEffect(() => {
+    if (clearConfirmMode) {
+      const timer = setTimeout(() => {
+        setClearConfirmMode(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [clearConfirmMode]);
+
+  // 统一图标样式
+  const getIconStyle = (isActive: boolean, defaultColor: string, activeColor?: string) => ({
+    fontSize: '18px',
+    color: isActive && activeColor ? activeColor : isDarkMode ? '#9E9E9E' : defaultColor
+  });
 
   // 创建新话题 - 使用统一的TopicService
   const handleCreateTopic = async () => {
@@ -127,27 +208,31 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const buttons = [
     {
       id: 'new-topic',
-      icon: <AddIcon sx={{ fontSize: '18px', color: isDarkMode ? '#9E9E9E' : '#4CAF50' }} />,
+      icon: <AddIcon sx={getIconStyle(false, '#4CAF50')} />,
       label: '新建话题',
       onClick: handleCreateTopic,
-      color: '#FFFFFF', // 白色文字
+      color: '#FFFFFF',
       bgColor: isDarkMode ? '#1E1E1E' : '#FFFFFF'
     },
     {
       id: 'clear-topic',
-      icon: <DeleteSweepIcon sx={{ fontSize: '18px', color: isDarkMode ? '#9E9E9E' : '#2196F3' }} />,
-      label: '清空内容',
-      onClick: onClearTopic,
-      color: '#FFFFFF', // 白色文字
-      bgColor: isDarkMode ? '#1E1E1E' : '#FFFFFF'
+      icon: clearConfirmMode
+        ? <WarningIcon sx={getIconStyle(true, '#f44336', '#FFFFFF')} />
+        : <ClearAllIcon sx={getIconStyle(false, '#2196F3')} />,
+      label: clearConfirmMode ? '确认清空' : '清空内容',
+      onClick: handleClearTopic,
+      color: '#FFFFFF',
+      bgColor: clearConfirmMode
+        ? (isDarkMode ? '#d32f2f' : '#f44336')
+        : (isDarkMode ? '#1E1E1E' : '#FFFFFF')
     },
     {
       id: 'generate-image',
-      icon: <ImageIcon sx={{ fontSize: '18px', color: imageGenerationMode ? '#FFFFFF' : isDarkMode ? '#9E9E9E' : '#9C27B0' }} />,
+      icon: <PhotoCameraIcon sx={getIconStyle(imageGenerationMode, '#9C27B0', '#FFFFFF')} />,
       label: imageGenerationMode ? '取消生成' : '生成图片',
       onClick: toggleImageGenerationMode,
-      color: '#FFFFFF', // 白色文字
-      bgColor: imageGenerationMode ? (isDarkMode ? '#424242' : '#9C27B0') : isDarkMode ? '#1E1E1E' : '#FFFFFF' // 激活时背景色变深
+      color: '#FFFFFF',
+      bgColor: imageGenerationMode ? (isDarkMode ? '#424242' : '#9C27B0') : isDarkMode ? '#1E1E1E' : '#FFFFFF'
     }
   ];
 
@@ -176,11 +261,11 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
 
     buttons.push({
       id: 'web-search',
-      icon: <SearchIcon sx={{ fontSize: '18px', color: webSearchActive ? '#FFFFFF' : isDarkMode ? '#9E9E9E' : '#3b82f6' }} />,
+      icon: <SearchIcon sx={getIconStyle(webSearchActive, '#3b82f6', '#FFFFFF')} />,
       label: webSearchActive ? '关闭搜索' : providerName,
       onClick: handleWebSearchClick,
-      color: '#FFFFFF', // 白色文字
-      bgColor: webSearchActive ? (isDarkMode ? '#424242' : '#3b82f6') : isDarkMode ? '#1E1E1E' : '#FFFFFF' // 激活时背景色变深
+      color: '#FFFFFF',
+      bgColor: webSearchActive ? (isDarkMode ? '#424242' : '#3b82f6') : isDarkMode ? '#1E1E1E' : '#FFFFFF'
     });
   }
 
@@ -228,9 +313,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
       >
         {/* MCP 按钮 - 合并工具开关和MCP工具功能 */}
         {onToolsEnabledChange && (
-          <Box sx={{ marginRight: '8px' }}>
-            <MCPToolsButton />
-          </Box>
+          <MCPToolsButton />
         )}
         {buttons.map((button) => (
           <Box
@@ -239,26 +322,29 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
             sx={{
               display: 'flex',
               alignItems: 'center',
-              background: button.bgColor || (isDarkMode ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)'), // 根据主题使用不同背景色
-              backdropFilter: 'blur(5px)', // 毛玻璃效果
-              WebkitBackdropFilter: 'blur(5px)', // Safari支持
-              color: isDarkMode ? '#FFFFFF' : button.id === 'new-topic' ? '#4CAF50' : button.id === 'clear-topic' ? '#2196F3' : button.id === 'generate-image' ? (imageGenerationMode ? '#FFFFFF' : '#9C27B0') : button.id === 'web-search' ? (webSearchActive ? '#FFFFFF' : '#3b82f6') : button.color,
-              border: `1px solid ${isDarkMode ? 'rgba(60, 60, 60, 0.8)' : 'rgba(230, 230, 230, 0.8)'}`,
-              borderRadius: '50px',
-              padding: '6px 12px', // 减小padding
+              background: button.bgColor || toolbarStyles.buttonBg,
+              backdropFilter: toolbarStyles.backdropFilter,
+              WebkitBackdropFilter: toolbarStyles.backdropFilter,
+              color: isDarkMode ? '#FFFFFF' : button.id === 'new-topic' ? '#4CAF50' : button.id === 'clear-topic' ? (clearConfirmMode ? '#FFFFFF' : '#2196F3') : button.id === 'generate-image' ? (imageGenerationMode ? '#FFFFFF' : '#9C27B0') : button.id === 'web-search' ? (webSearchActive ? '#FFFFFF' : '#3b82f6') : button.color,
+              border: `1px solid ${toolbarStyles.buttonBorder}`,
+              borderRadius: toolbarStyles.borderRadius,
+              padding: '6px 12px',
               margin: '0 4px',
               cursor: 'pointer',
-              boxShadow: `0 1px 3px ${isDarkMode ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.07)'}`,
-              transition: 'all 0.2s ease',
+              boxShadow: toolbarStyles.buttonShadow ? `0 1px 3px ${toolbarStyles.buttonShadow}` : 'none',
+              transition: 'all 0.3s ease',
               minWidth: 'max-content',
               userSelect: 'none',
               '&:hover': {
-                boxShadow: `0 2px 4px ${isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)'}`,
+                boxShadow: toolbarStyles.hoverShadow ? `0 2px 4px ${toolbarStyles.hoverShadow}` : 'none',
                 background: button.id === 'web-search' && webSearchActive
-                  ? button.bgColor // 保持激活状态的背景色
+                  ? button.bgColor
                   : button.id === 'generate-image' && imageGenerationMode
-                    ? button.bgColor // 保持图片生成模式的背景色
-                    : isDarkMode ? 'rgba(40, 40, 40, 0.95)' : 'rgba(255, 255, 255, 0.95)' // 根据主题设置悬停背景色
+                    ? button.bgColor
+                    : button.id === 'clear-topic' && clearConfirmMode
+                      ? (isDarkMode ? '#b71c1c' : '#d32f2f')
+                      : toolbarStyles.hoverBg,
+                transform: inputBoxStyle === 'modern' ? 'translateY(-1px)' : 'none'
               },
               '&:active': {
                 transform: 'scale(0.98)'

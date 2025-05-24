@@ -5,6 +5,8 @@
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { createSSEClient, SSEClient } from './sseClient';
+import { Capacitor } from '@capacitor/core';
+import { CapacitorHttp } from '@capacitor/core';
 
 export interface CustomSSETransportOptions {
   headers?: Record<string, string>;
@@ -80,18 +82,43 @@ export class CustomSSETransport implements Transport {
       // 构建发送 URL（通常是 SSE URL 去掉 /sse 后缀）
       const sendUrl = this.url.toString().replace(/\/sse\??.*$/, '/message');
 
-      const response = await fetch(sendUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...this.options.headers
-        },
-        body: JSON.stringify(message),
-        credentials: this.options.withCredentials ? 'include' : 'same-origin'
-      });
+      if (Capacitor.isNativePlatform()) {
+        // 移动端：使用 Capacitor HTTP 原生请求，绕过 CORS
+        console.log(`[Custom SSE Transport] 使用原生 HTTP 发送消息`);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const response = await CapacitorHttp.request({
+          url: sendUrl,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'AetherLink-Mobile/1.0',
+            ...this.options.headers
+          },
+          data: message,
+          readTimeout: 30000,
+          connectTimeout: 30000
+        });
+
+        if (response.status >= 400) {
+          throw new Error(`HTTP ${response.status}: ${response.data?.error || 'Request failed'}`);
+        }
+      } else {
+        // Web 端：使用标准 fetch
+        console.log(`[Custom SSE Transport] 使用标准 fetch 发送消息`);
+
+        const response = await fetch(sendUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...this.options.headers
+          },
+          body: JSON.stringify(message),
+          credentials: this.options.withCredentials ? 'include' : 'same-origin'
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
       }
 
       console.log(`[Custom SSE Transport] 消息发送成功`);

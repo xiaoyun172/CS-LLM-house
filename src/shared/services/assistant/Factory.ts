@@ -102,12 +102,12 @@ export class AssistantFactory {
         name: name || '新助手',
         description: description || `助手 ${name || '新助手'}`,
         icon: null, // 设置为null，避免序列化问题
-        emoji: '😀', // 添加emoji字段，与电脑版保持一致
+        emoji: '😀', // 添加emoji字段，与最佳实例保持一致
         isSystem: false,
         topicIds: [defaultTopic.id],
         topics: [defaultTopic],
         systemPrompt: finalPrompt,
-        type: 'assistant', // 添加type字段，与电脑版保持一致
+        type: 'assistant', // 添加type字段，与最佳实例保持一致
         // 确保其他必需的字段都有默认值
         avatar: undefined,
         tags: [],

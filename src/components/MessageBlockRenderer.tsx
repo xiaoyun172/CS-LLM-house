@@ -83,7 +83,7 @@ const MessageBlockRenderer: React.FC<MessageBlockRendererProps> = ({ block }) =>
               // 自定义代码块渲染
               code: ({ className, children, ...props }: any) => {
                 const match = /language-(\w+)/.exec(className || '');
-                // 使用与电脑版相同的判定逻辑：有 language- 类名或者包含换行符
+                // 使用与最佳实例相同的判定逻辑：有 language- 类名或者包含换行符
                 const isCodeBlock = match || (typeof children === 'string' && children.includes('\n'));
                 const inline = !isCodeBlock;
                 if (inline) {

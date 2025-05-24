@@ -112,7 +112,7 @@ export function getSystemAgents(): Assistant[] {
 
 /**
  * 获取用户自定义代理
- * 这里模拟电脑版的实现，实际应该从数据库中获取
+ * 这里模拟最佳实例的实现，实际应该从数据库中获取
  */
 export function getUserAgents(): Assistant[] {
   // 这里应该从数据库中获取用户自定义代理

@@ -1,7 +1,7 @@
 /**
  * OpenAI聊天完成模块
  * 负责处理聊天完成请求
- * 使用与电脑版一致的Provider实现
+ * 使用与最佳实例一致的Provider实现
  */
 import type { Message, Model } from '../../types';
 import { logApiRequest } from '../../services/LoggerService';
@@ -36,7 +36,7 @@ export async function sendChatRequest(
     const enableTools = opts.enableTools !== false;
 
     // 获取系统提示词 - 即使没有提供也使用空字符串，确保始终添加system角色消息
-    // 这样与电脑版保持一致，电脑版总是添加system角色消息
+    // 这样与最佳实例保持一致，最佳实例总是添加system角色消息
     const systemPrompt = opts.systemPrompt || '';
 
     console.log(`[API请求] 使用OpenAI API发送请求，模型ID: ${model.id}，提供商: ${model.provider}`);
@@ -94,7 +94,7 @@ export async function sendChatRequest(
       enableWebSearch,
       enableTools,
       hasSystemPrompt: Boolean(systemPrompt),
-      stream: true, // 添加流式输出信息，与电脑版保持一致
+      stream: true, // 添加流式输出信息，与最佳实例保持一致
       messages: messages.map(msg => ({
         role: msg.role,
         blocks: msg.blocks

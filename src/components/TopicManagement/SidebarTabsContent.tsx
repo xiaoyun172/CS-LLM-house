@@ -130,7 +130,7 @@ export default function SidebarTabsContent() {
           </TabPanel>
 
           <TabPanel value={value} index={1}>
-            {/* 直接渲染组件，与电脑版保持一致 */}
+            {/* 直接渲染组件，与最佳实例保持一致 */}
             <TopicTab
               key={assistantWithTopics?.id || currentAssistant?.id || 'no-assistant'}
               currentAssistant={assistantWithTopics || currentAssistant}

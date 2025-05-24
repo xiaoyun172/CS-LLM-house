@@ -1,10 +1,10 @@
 import React from 'react';
-import { 
-  Box, 
-  Typography, 
-  FormControl, 
-  InputLabel, 
-  Select, 
+import {
+  Box,
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
   MenuItem,
   Paper
 } from '@mui/material';
@@ -28,30 +28,52 @@ const AppearanceSettings: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          padding: 2, 
-          borderBottom: 1, 
+    <Box sx={{
+      height: '100vh',
+      backgroundColor: 'background.default',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: 2,
+          borderBottom: 1,
           borderColor: 'divider',
-          position: 'sticky',
-          top: 0,
           backgroundColor: 'background.paper',
-          zIndex: 10
+          zIndex: 10,
+          flexShrink: 0
         }}
       >
-        <ArrowBackIcon 
-          sx={{ mr: 2, cursor: 'pointer' }} 
+        <ArrowBackIcon
+          sx={{ mr: 2, cursor: 'pointer' }}
           onClick={handleBack}
         />
         <Typography variant="h6" color="primary">
           外观
         </Typography>
       </Box>
-      
-      <Box sx={{ p: 2 }}>
+
+      <Box sx={{
+        p: 2,
+        flex: 1,
+        overflow: 'auto',
+        '&::-webkit-scrollbar': {
+          width: '6px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: 'transparent',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: 'rgba(0,0,0,0.2)',
+          borderRadius: '3px',
+        },
+        '&::-webkit-scrollbar-thumb:hover': {
+          background: 'rgba(0,0,0,0.3)',
+        }
+      }}>
         {/* 主题设置 */}
         <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
           <Typography variant="subtitle1" sx={{ mb: 2 }}>
@@ -72,20 +94,20 @@ const AppearanceSettings: React.FC = () => {
         </Paper>
 
         {/* 聊天界面设置入口 */}
-        <Paper 
-          elevation={0} 
-          sx={{ 
-            p: 2, 
-            mb: 3, 
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            mb: 3,
             border: '1px solid #eee',
             cursor: 'pointer'
           }}
           onClick={handleNavigateToChatInterface}
         >
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center' 
+          <Box sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
           }}>
             <Typography variant="subtitle1">
               聊天界面设置

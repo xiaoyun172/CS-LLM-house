@@ -1,6 +1,6 @@
 /**
  * 本地 Google 搜索 MCP 服务器
- * 提供类似电脑版的本地搜索功能，适配移动端
+ * 提供类似最佳实例的本地搜索功能，适配移动端
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {

@@ -1,6 +1,6 @@
 /**
  * 移动版文件存储服务
- * 基于Capacitor文件系统API，提供类似电脑版的文件处理能力
+ * 基于Capacitor文件系统API，提供类似最佳实例的文件处理能力
  */
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';

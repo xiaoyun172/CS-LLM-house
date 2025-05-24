@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import TuneIcon from '@mui/icons-material/Tune';
+import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import type { MathRendererType } from '../../../shared/types';
 import type { ThinkingOption } from '../../../shared/config/reasoningConfig';
 
@@ -109,7 +109,7 @@ export default function ContextSettings({
           }
         }}
       >
-        <TuneIcon sx={{ mr: 1.5, color: 'primary.main' }} />
+        <TuneOutlinedIcon sx={{ mr: 1.5, color: 'primary.main' }} />
         <ListItemText
           primary="上下文设置"
           secondary={`长度: ${contextLength === 64000 ? '不限' : contextLength} 字符 | 消息数: ${contextCount === 100 ? '最大' : contextCount} 条`}

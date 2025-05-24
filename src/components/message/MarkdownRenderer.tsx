@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Typography, Box, useTheme } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import CodeBlock from './blocks/CodeBlock';
 import 'katex/dist/katex.min.css';
 import remarkGfm from 'remark-gfm';
 import remarkCjkFriendly from 'remark-cjk-friendly';
@@ -194,63 +193,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         components={{
           code({className, children, ...props}) {
             const match = /language-(\w+)/.exec(className || '')
-            // 使用与电脑版相同的判定逻辑：有 language- 类名或者包含换行符
+            // 使用与最佳实例相同的判定逻辑：有 language- 类名或者包含换行符
             const isCodeBlock = match || (typeof children === 'string' && children.includes('\n'));
             const isInline = !isCodeBlock;
             return !isInline ? (
-              <Box
-                component="div"
-                sx={{
-                  margin: 0,
-                  borderRadius: '8px',
-                  fontSize: '0.9rem',
-                  backgroundColor: isDarkMode ? '#1e1e1e' : '#f5f5f5',
-                  border: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0',
-                  overflow: 'auto',
-                  '& pre': {
-                    margin: 0,
-                    padding: '12px',
-                    backgroundColor: 'transparent !important',
-                    overflow: 'auto',
-                  },
-                  '& code': {
-                    color: isDarkMode ? '#d4d4d4' : '#333333',
-                    fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
-                    background: 'transparent',
-                    fontSize: 'inherit',
-                  }
-                }}
-              >
-                <SyntaxHighlighter
-                  // @ts-ignore
-                  style={isDarkMode ? vscDarkPlus : vs}
-                  language={match ? match[1] : 'text'}
-                  PreTag="pre"
-                  CodeTag="code"
-                  customStyle={{
-                    margin: 0,
-                    padding: '16px',
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    borderRadius: 0,
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                  }}
-                  codeTagProps={{
-                    style: {
-                      color: isDarkMode ? '#e6e6e6' : '#2d3748',
-                      fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace',
-                      background: 'transparent',
-                      fontSize: '14px',
-                      fontWeight: '400',
-                      letterSpacing: '0.025em',
-                    }
-                  }}
-                  {...props}
-                >
-                  {String(children).replace(/\n$/, '')}
-                </SyntaxHighlighter>
-              </Box>
+              <CodeBlock
+                code={String(children).replace(/\n$/, '')}
+                language={match ? match[1] : 'text'}
+              />
             ) : (
               <code className={className} {...props}>
                 {children}

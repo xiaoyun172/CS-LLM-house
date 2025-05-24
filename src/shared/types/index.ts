@@ -63,7 +63,7 @@ export interface FileContent {
   fileRecord?: FileType; // 文件记录，包含完整的文件信息
 }
 
-// 文件类型定义（兼容电脑版）
+// 文件类型定义（兼容最佳实例）
 export interface FileType {
   id: string; // 文件唯一标识
   name: string; // 存储的文件名（通常是UUID + 扩展名）
@@ -224,7 +224,7 @@ export type {
 export interface ChatTopic {
   id: string;
   assistantId: string;     // 关联的助手ID，必需
-  name: string;            // 主要字段，与电脑版一致
+  name: string;            // 主要字段，与最佳实例一致
   createdAt: string;
   updatedAt: string;
   isNameManuallyEdited: boolean;

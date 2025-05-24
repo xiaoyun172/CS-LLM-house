@@ -423,7 +423,7 @@ export default function TopicTab({
     }
   };
 
-  // 自动命名话题 - 与电脑版保持一致
+  // 自动命名话题 - 与最佳实例保持一致
   const handleAutoRenameTopic = async () => {
     if (!contextTopic) return;
 

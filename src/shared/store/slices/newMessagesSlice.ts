@@ -18,6 +18,14 @@ export interface ErrorInfo {
   context?: Record<string, any>;
 }
 
+// API Key 错误信息接口
+export interface ApiKeyErrorInfo {
+  message: string;
+  originalError: any;
+  timestamp: string;
+  canRetry: boolean;
+}
+
 // 2. 定义状态接口
 export interface NormalizedMessagesState extends EntityState<Message, string> {
   messageIdsByTopic: Record<string, string[]>; // 主题ID -> 消息ID数组的映射
@@ -27,6 +35,7 @@ export interface NormalizedMessagesState extends EntityState<Message, string> {
   displayCount: number;
   errors: ErrorInfo[]; // 错误信息数组，记录多个错误
   errorsByTopic: Record<string, ErrorInfo[]>; // 按主题分组的错误信息
+  apiKeyErrors: Record<string, { messageId: string; error: ApiKeyErrorInfo }>; // API Key 错误状态，按主题分组
 }
 
 // 3. 定义初始状态
@@ -37,7 +46,8 @@ const initialState: NormalizedMessagesState = messagesAdapter.getInitialState({
   streamingByTopic: {},
   displayCount: 20,
   errors: [],
-  errorsByTopic: {}
+  errorsByTopic: {},
+  apiKeyErrors: {}
 });
 
 // 定义 Payload 类型
@@ -82,6 +92,17 @@ interface RemoveMessagePayload {
 interface SetErrorPayload {
   error: ErrorInfo;
   topicId?: string; // 可选的主题ID，用于按主题分组错误
+}
+
+// API Key 错误相关的 Payload 类型
+interface SetApiKeyErrorPayload {
+  topicId: string;
+  messageId: string;
+  error: ApiKeyErrorInfo;
+}
+
+interface ClearApiKeyErrorPayload {
+  topicId: string;
 }
 
 // 添加块引用的Payload类型
@@ -145,6 +166,18 @@ const newMessagesSlice = createSlice({
           state.errorsByTopic[topicId].shift();
         }
       }
+    },
+
+    // 设置 API Key 错误
+    setApiKeyError(state, action: PayloadAction<SetApiKeyErrorPayload>) {
+      const { topicId, messageId, error } = action.payload;
+      state.apiKeyErrors[topicId] = { messageId, error };
+    },
+
+    // 清除 API Key 错误
+    clearApiKeyError(state, action: PayloadAction<ClearApiKeyErrorPayload>) {
+      const { topicId } = action.payload;
+      delete state.apiKeyErrors[topicId];
     },
 
     // 更新消息状态
@@ -278,14 +311,20 @@ export const {
   return state.messages;
 });
 
-// 自定义选择器
-export const selectMessagesByTopicId = (state: RootState, topicId: string) => {
-  if (!state.messages) {
-    return [];
+// 自定义选择器 - 使用 createSelector 进行记忆化
+export const selectMessagesByTopicId = createSelector(
+  [
+    (state: RootState) => state.messages,
+    (_state: RootState, topicId: string) => topicId
+  ],
+  (messagesState, topicId) => {
+    if (!messagesState) {
+      return [];
+    }
+    const messageIds = messagesState.messageIdsByTopic[topicId] || [];
+    return messageIds.map((id: string) => messagesState.entities[id]).filter(Boolean);
   }
-  const messageIds = state.messages.messageIdsByTopic[topicId] || [];
-  return messageIds.map((id: string) => selectMessageById(state as any, id)).filter(Boolean);
-};
+);
 
 export const selectCurrentTopicId = (state: RootState) =>
   state.messages ? state.messages.currentTopicId : null;
@@ -309,6 +348,15 @@ export const selectErrorsByTopic = (state: RootState, topicId: string) =>
   state.messages && state.messages.errorsByTopic[topicId]
     ? state.messages.errorsByTopic[topicId]
     : [];
+
+// API Key 错误相关选择器
+export const selectApiKeyError = (state: RootState, topicId: string) =>
+  state.messages && state.messages.apiKeyErrors[topicId]
+    ? state.messages.apiKeyErrors[topicId]
+    : null;
+
+export const selectHasApiKeyError = (state: RootState, topicId: string) =>
+  Boolean(state.messages && state.messages.apiKeyErrors[topicId]);
 
 // 使用createSelector创建记忆化选择器
 export const selectOrderedMessagesByTopicId = createSelector(

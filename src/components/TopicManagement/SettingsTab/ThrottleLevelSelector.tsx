@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import TuneIcon from '@mui/icons-material/Tune';
+import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import {
   getThrottleLevel,
   setThrottleLevel,
@@ -111,7 +111,7 @@ export default function ThrottleLevelSelector() {
           }
         }}
       >
-        <TuneIcon sx={{ mr: 1.5, color: 'primary.main' }} />
+        <TuneOutlinedIcon sx={{ mr: 1.5, color: 'primary.main' }} />
         <ListItemText
           primary="性能节流强度"
           secondary={currentConfig ? `当前: ${currentConfig.label}` : '优化流式输出性能'}

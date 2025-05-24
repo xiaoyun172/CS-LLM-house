@@ -97,12 +97,13 @@ export abstract class AbstractBaseProvider implements BaseProvider {
       return { tools };
     }
 
-    console.log(`[MCP] 用户选择的工具模式: ${mcpMode}`);
+    console.log(`[MCP] 用户选择的工具模式: ${mcpMode}, 工具数量: ${mcpTools.length}, 启用工具: ${enableToolUse}`);
 
     // 如果用户明确选择提示词模式，强制使用系统提示词模式
     if (mcpMode === 'prompt') {
       console.log(`[MCP] 用户选择提示词注入模式，使用系统提示词模式`);
       this.useSystemPromptForTools = true;
+      console.log(`[MCP] 设置 useSystemPromptForTools = true`);
       return { tools };
     }
 
@@ -131,13 +132,18 @@ export abstract class AbstractBaseProvider implements BaseProvider {
    * 这是提供商层面的备用注入机制
    */
   protected buildSystemPromptWithTools(basePrompt: string, mcpTools?: MCPTool[]): string {
+    console.log(`[MCP] buildSystemPromptWithTools - 工具数量: ${mcpTools?.length || 0}, useSystemPromptForTools: ${this.useSystemPromptForTools}`);
+
     // 如果没有工具或不使用系统提示词模式，直接返回基础提示词
     if (!mcpTools || mcpTools.length === 0 || !this.useSystemPromptForTools) {
+      console.log(`[MCP] 不注入工具提示词 - 原因: ${!mcpTools ? '无工具' : mcpTools.length === 0 ? '工具数量为0' : '不使用系统提示词模式'}`);
       return basePrompt || '';
     }
 
     console.log(`[MCP] 提供商层注入：将 ${mcpTools.length} 个工具注入到系统提示词中`);
-    return buildSystemPrompt(basePrompt || '', mcpTools);
+    const result = buildSystemPrompt(basePrompt || '', mcpTools);
+    console.log(`[MCP] 注入后的系统提示词长度: ${result.length}`);
+    return result;
   }
 
   /**

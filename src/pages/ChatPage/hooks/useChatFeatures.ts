@@ -109,7 +109,7 @@ export const useChatFeatures = (
       // 保存助手消息和块
       await TopicService.saveMessageAndBlocks(searchingMessage, searchingBlocks);
 
-      // 使用增强版搜索服务 - 支持电脑版所有提供商
+      // 使用增强版搜索服务 - 支持最佳实例所有提供商
       const searchResults = await EnhancedWebSearchService.searchWithStatus(
         query,
         currentTopic.id,

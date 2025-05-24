@@ -1,5 +1,5 @@
 /**
- * 错误处理工具类 - 参考电脑版架构
+ * 错误处理工具类 - 参考最佳实例架构
  * 提供错误格式化、错误详情提取、统一错误处理等功能
  */
 import LoggerService from '../services/LoggerService';
@@ -133,7 +133,7 @@ export function isAbortError(error: any): boolean {
 }
 
 /**
- * 统一错误处理函数 - 参考电脑版架构
+ * 统一错误处理函数 - 参考最佳实例架构
  * @param error 错误对象
  * @param context 错误上下文信息
  * @param options 处理选项
@@ -191,7 +191,7 @@ export function handleError(
 }
 
 /**
- * 异步函数错误包装器 - 参考电脑版架构
+ * 异步函数错误包装器 - 参考最佳实例架构
  * @param fn 异步函数
  * @param context 错误上下文
  * @param options 处理选项

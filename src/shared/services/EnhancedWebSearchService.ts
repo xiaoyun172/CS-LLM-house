@@ -6,7 +6,7 @@ import { AssistantMessageStatus } from '../types/newMessage';
 
 /**
  * 增强版网络搜索服务
- * 支持电脑版的所有搜索提供商，包括API提供商和本地搜索引擎
+ * 支持最佳实例的所有搜索提供商，包括API提供商和本地搜索引擎
  */
 class EnhancedWebSearchService {
   private isPaused: boolean = false;

@@ -1,5 +1,5 @@
 /**
- * 统一数据仓库服务 - 参考电脑版架构
+ * 统一数据仓库服务 - 参考最佳实例架构
  * 提供统一的数据访问接口，减少重复的数据库操作代码
  */
 import { dexieStorage } from './DexieStorageService';
@@ -9,7 +9,7 @@ import { handleError } from '../utils/error';
 
 /**
  * 数据仓库服务 - 统一数据访问层
- * 参考电脑版的简洁设计，提供高级数据操作接口
+ * 参考最佳实例的简洁设计，提供高级数据操作接口
  */
 export class DataRepository {
   /**
@@ -340,7 +340,7 @@ export class DataRepository {
   };
 
   /**
-   * 事务操作 - 参考电脑版的事务处理
+   * 事务操作 - 参考最佳实例的事务处理
    */
   static readonly transaction = {
     /**

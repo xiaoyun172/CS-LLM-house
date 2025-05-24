@@ -159,7 +159,7 @@ export function isReasoningModel(model?: Model): boolean {
          Boolean(model.modelTypes?.includes('reasoning'));
 }
 
-// 别名导出，保持与电脑版命名一致
+// 别名导出，保持与最佳实例命名一致
 export const isSupportedReasoningEffortGrokModel = isGrokReasoningModel;
 export const isSupportedThinkingTokenGeminiModel = isGeminiReasoningModel;
 export const isSupportedThinkingTokenQwenModel = isQwenReasoningModel;

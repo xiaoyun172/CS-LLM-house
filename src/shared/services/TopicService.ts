@@ -384,7 +384,7 @@ export class TopicService {
    */
   /**
    * 保存新消息和关联的块
-   * 使用电脑版原版的存储方式：将消息直接存储在topics表中，并使用事务确保数据一致性
+   * 使用最佳实例原版的存储方式：将消息直接存储在topics表中，并使用事务确保数据一致性
    */
   static async saveMessageAndBlocks(message: Message, blocks: MessageBlock[]): Promise<void> {
     try {
@@ -462,7 +462,7 @@ export class TopicService {
    */
   /**
    * 加载主题的所有消息
-   * 使用电脑版原版的方式：直接从topics表中获取消息
+   * 使用最佳实例原版的方式：直接从topics表中获取消息
    */
   static async loadTopicMessages(topicId: string): Promise<Message[]> {
     try {
@@ -474,7 +474,7 @@ export class TopicService {
         return [];
       }
 
-      // 使用电脑版原版方式：直接从topics表中获取消息
+      // 使用最佳实例原版方式：直接从topics表中获取消息
       let messages: Message[] = [];
 
       // 优先使用messages数组
@@ -557,10 +557,21 @@ export class TopicService {
             status: block.status
           });
 
-          // 确保块状态正确
-          if (block.status !== 'success' && block.status !== 'error') {
+          // 🔥 修复：处理工具块状态恢复，考虑多个工具的情况
+          if (!block.status || (typeof block.status !== 'string')) {
+            // 状态无效，修复为 success
+            console.log(`[TopicService] 修复无效块状态: ${block.id} - 从 ${block.status} 改为 success`);
             block.status = 'success';
             await dexieStorage.updateMessageBlock(block.id, { status: 'success' });
+          } else if (block.type === 'tool' && (block.status === 'processing' || block.status === 'streaming' || block.status === 'pending')) {
+            // 🔥 关键修复：工具块在重启后如果还是未完成状态，应该设为已完成
+            // 因为重启意味着之前的工具执行已经中断，应该被视为已完成
+            console.log(`[TopicService] 修复工具块未完成状态: ${block.id} - 从 ${block.status} 改为 success`);
+            block.status = 'success';
+            await dexieStorage.updateMessageBlock(block.id, { status: 'success' });
+          } else {
+            // 保持原有状态（success、error 等已完成状态）
+            console.log(`[TopicService] 保持块状态: ${block.id} - ${block.status} (类型: ${block.type})`);
           }
 
           blocks.push(block);

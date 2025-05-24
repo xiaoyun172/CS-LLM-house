@@ -4,22 +4,22 @@ import { dexieStorage } from '../../services/DexieStorageService'; // 保持兼�
 import { createUserMessage, createAssistantMessage } from '../../utils/messageUtils';
 import { getMainTextContent, findImageBlocks, findFileBlocks } from '../../utils/blockUtils';
 import { newMessagesActions } from '../slices/newMessagesSlice';
-import { upsertManyBlocks, upsertOneBlock, updateOneBlock, removeManyBlocks, addOneBlock } from '../slices/messageBlocksSlice';
-import { MessageBlockStatus, MessageBlockType, AssistantMessageStatus, UserMessageStatus } from '../../types/newMessage';
+import { upsertManyBlocks, upsertOneBlock, removeManyBlocks, addOneBlock } from '../slices/messageBlocksSlice';
+import { MessageBlockStatus, MessageBlockType, AssistantMessageStatus } from '../../types/newMessage';
 import { createResponseHandler } from '../../services/messages/ResponseHandler';
 import { ApiProviderRegistry } from '../../services/messages/ApiProvider';
 import { getFileTypeByExtension, readFileContent, FileTypes } from '../../utils/fileUtils';
 import { generateImage as generateOpenAIImage } from '../../api/openai/image';
 import { generateImage as generateGeminiImage } from '../../api/gemini/image';
-import { createImageBlock, createToolBlock } from '../../utils/messageUtils';
+import { createImageBlock } from '../../utils/messageUtils';
 import { throttle } from 'lodash';
 import { createAbortController } from '../../utils/abortController';
-import type { Message, MessageBlock, ToolMessageBlock } from '../../types/newMessage';
-import type { Model, MCPTool, MCPToolResponse, MCPCallToolResponse } from '../../types';
+import type { Message, MessageBlock } from '../../types/newMessage';
+import type { Model, MCPTool } from '../../types';
 import type { FileType } from '../../types';
 import type { RootState, AppDispatch } from '../index';
 import { mcpService } from '../../services/MCPService';
-import { parseToolUse, parseAndCallTools, hasToolUseTags, removeToolUseTags } from '../../utils/mcpToolParser';
+
 // 移除未使用的导入 - MCP 工具注入现在由提供商层处理
 
 // 保存消息和块到数据库
@@ -205,7 +205,7 @@ const processAssistantResponse = async (
       }
     }));
 
-    // 3. 创建占位符块（参考电脑版逻辑）
+    // 3. 创建占位符块（参考最佳实例逻辑）
     // 这避免了重复创建块的问题，通过动态转换块类型来处理不同的内容
     const placeholderBlock: MessageBlock = {
       id: uuid(),
@@ -448,7 +448,7 @@ const processAssistantResponse = async (
               responseHandler.handleChunk(content, reasoning);
             },
             onChunk: (chunk: import('../../types/chunk').Chunk) => {
-              // 使用新的 Chunk 事件处理（电脑版架构）
+              // 使用新的 Chunk 事件处理（最佳实例架构）
               responseHandler.handleChunkEvent(chunk);
             },
             enableTools: toolsEnabled !== false, // 默认启用工具
@@ -474,22 +474,9 @@ const processAssistantResponse = async (
         finalContent = '';
       }
 
-      // 处理 MCP 工具调用（如果内容包含工具使用标签）
-      // 在提示词注入模式下，AI 可能会使用 XML 标签格式调用工具
-      if (toolsEnabled && mcpTools.length > 0 && hasToolUseTags(finalContent, mcpTools)) {
-        const currentMcpMode = localStorage.getItem('mcp-mode') || 'function';
-        console.log(`[MCP] 检测到工具调用，模式: ${currentMcpMode}`);
-        await handleMCPToolCalls(
-          finalContent,
-          mcpTools,
-          assistantMessage.id,
-          topicId,
-          dispatch
-        );
-
-        // 从最终内容中移除工具使用标签
-        finalContent = removeToolUseTags(finalContent);
-      }
+      // 工具调用现在完全在 AI 提供者层面处理（包括函数调用和 XML 格式）
+      // AI 提供者会自动检测工具调用、执行工具、将结果添加到对话历史并继续对话
+      console.log(`[processAssistantResponse] 工具调用已在 AI 提供者层面处理完成`);
 
       // 对于非流式响应，onUpdate回调已经在Provider层正确处理了思考过程和普通文本
       // 不需要重复处理，避免重复调用导致的问题
@@ -629,7 +616,7 @@ const prepareMessagesForApi = async (
             try {
               const fileContent = await readFileContent(fileBlock.file);
               if (fileContent) {
-                // 按照电脑版格式：文件名\n文件内容
+                // 按照最佳实例格式：文件名\n文件内容
                 const fileName = fileBlock.file.origin_name || fileBlock.file.name || '未知文件';
                 parts.push({
                   type: 'text',
@@ -919,185 +906,6 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
   }
 };
 
-/**
- * 处理 MCP 工具调用
- */
-const handleMCPToolCalls = async (
-  content: string,
-  mcpTools: MCPTool[],
-  messageId: string,
-  _topicId: string,
-  dispatch: AppDispatch
-) => {
-  try {
-    console.log('[MCP] 开始处理工具调用');
 
-    // 解析工具使用
-    const toolResponses = parseToolUse(content, mcpTools);
 
-    if (toolResponses.length === 0) {
-      console.log('[MCP] 未找到有效的工具调用');
-      return;
-    }
 
-    console.log(`[MCP] 找到 ${toolResponses.length} 个工具调用`);
-
-    // 创建工具块
-    const toolBlock = createToolBlock(messageId, {
-      toolResponses,
-      status: MessageBlockStatus.PROCESSING
-    });
-
-    // 添加工具块到 Redux 状态
-    dispatch(addOneBlock(toolBlock));
-
-    // 保存工具块到数据库
-    await DataRepository.blocks.save(toolBlock);
-
-    // 将工具块ID添加到消息的blocks数组
-    dispatch(newMessagesActions.upsertBlockReference({
-      messageId: messageId,
-      blockId: toolBlock.id,
-      status: toolBlock.status
-    }));
-
-    // 更新消息的blocks数组
-    const message = await DataRepository.messages.getById(messageId);
-    if (message) {
-      const updatedMessage = {
-        ...message,
-        blocks: [...(message.blocks || []), toolBlock.id],
-        updatedAt: new Date().toISOString()
-      };
-
-      // 更新Redux中的消息
-      dispatch(newMessagesActions.updateMessage({
-        id: messageId,
-        changes: updatedMessage
-      }));
-
-      // 保存消息到数据库
-      await DataRepository.messages.update(messageId, updatedMessage);
-    }
-
-    // 执行工具调用
-    const results = await parseAndCallTools(
-      toolResponses,
-      mcpTools,
-      (toolResponse: MCPToolResponse, _result: MCPCallToolResponse) => {
-        // 工具调用状态更新回调
-        console.log(`[MCP] 工具 ${toolResponse.tool.name} 状态更新:`, toolResponse.status);
-
-        // 只在工具完成时更新工具块
-        if (toolResponse.status === 'done' || toolResponse.status === 'error') {
-          const finalStatus = toolResponse.status === 'done' ? MessageBlockStatus.SUCCESS : MessageBlockStatus.ERROR;
-
-          // 按照电脑版的方式，直接设置 content 为工具响应
-          const changes: Partial<ToolMessageBlock> = {
-            content: toolResponse.response,
-            status: finalStatus,
-            metadata: { rawMcpToolResponse: toolResponse }
-          };
-
-          console.log(`[MCP] 工具完成，更新工具块:`, {
-            blockId: toolBlock.id,
-            toolName: toolResponse.tool.name,
-            status: toolResponse.status,
-            finalStatus,
-            hasResponse: !!toolResponse.response,
-            contentType: typeof toolResponse.response
-          });
-
-          // 更新 Redux 状态
-          dispatch(updateOneBlock({
-            id: toolBlock.id,
-            changes
-          }));
-
-          // 更新数据库
-          DataRepository.blocks.update(toolBlock.id, changes);
-        }
-      }
-    );
-
-    console.log(`[MCP] 工具调用完成，共 ${results.length} 个结果`);
-
-    // 🔥 关键修复：将工具调用结果添加到对话上下文中
-    // 为每个工具调用结果创建一个用户消息，包含工具结果
-    for (const toolResponse of toolResponses) {
-      if (toolResponse.response && toolResponse.status === 'done') {
-        const toolResultContent = formatToolResultForContext(toolResponse);
-
-        // 创建包含工具结果的用户消息
-        const { message: toolResultMessage } = createUserMessage({
-          content: toolResultContent,
-          assistantId: message!.assistantId,
-          topicId: message!.topicId,
-          modelId: '', // 工具结果消息不需要模型ID
-          model: {} as any // 工具结果消息不需要模型
-        });
-
-        // 设置消息状态
-        toolResultMessage.status = UserMessageStatus.SUCCESS;
-
-        // 添加到 Redux 状态
-        dispatch(newMessagesActions.addMessage({
-          topicId: message!.topicId,
-          message: toolResultMessage
-        }));
-
-        // 保存到数据库
-        await DataRepository.messages.save(toolResultMessage);
-
-        console.log(`[MCP] 工具结果已添加到对话上下文:`, toolResponse.tool.name);
-      }
-    }
-
-  } catch (error) {
-    console.error('[MCP] 工具调用处理失败:', error);
-  }
-};
-
-/**
- * 格式化工具调用结果为上下文内容
- * 基于电脑版的实现
- */
-function formatToolResultForContext(toolResponse: MCPToolResponse): string {
-  const { tool, response } = toolResponse;
-
-  if (!response) {
-    return `工具 ${tool.name} 调用失败：无响应`;
-  }
-
-  if (response.isError) {
-    const errorContent = response.content?.[0]?.text || '未知错误';
-    return `工具 ${tool.name} 调用失败：${errorContent}`;
-  }
-
-  // 构建工具结果消息，格式与电脑版保持一致
-  let resultText = `Here is the result of mcp tool use \`${tool.name}\`:\n\n`;
-
-  if (response.content && response.content.length > 0) {
-    for (const item of response.content) {
-      switch (item.type) {
-        case 'text':
-          resultText += item.text || '';
-          break;
-        case 'image':
-          resultText += `[图像数据: ${item.mimeType || 'unknown'}]`;
-          break;
-        case 'resource':
-          resultText += `[资源数据: ${item.mimeType || 'unknown'}]`;
-          break;
-        default:
-          resultText += `[未知内容类型: ${item.type}]`;
-          break;
-      }
-      resultText += '\n';
-    }
-  } else {
-    resultText += '无响应内容';
-  }
-
-  return resultText.trim();
-}

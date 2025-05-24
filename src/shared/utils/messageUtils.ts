@@ -19,7 +19,7 @@ import {
   AssistantMessageStatus,
   UserMessageStatus
 } from '../types/newMessage.ts';
-import type { Model, FileType, MCPToolResponse } from '../types';
+import type { Model, FileType } from '../types';
 import { FileTypes } from '../utils/fileUtils';
 import store from '../store';
 import { messageBlocksSelectors } from '../store/slices/messageBlocksSlice';
@@ -287,44 +287,40 @@ export function createCodeBlock(messageId: string, content: string, language?: s
 
 /**
  * 创建工具块
- * 兼容电脑版的工具块结构
+ * 统一使用最佳实例的工具块结构
  */
-export function createToolBlock(messageId: string, toolData: {
-  toolResponses?: MCPToolResponse[];
-  toolId?: string;
+export function createToolBlock(messageId: string, toolId: string, overrides: {
   toolName?: string;
   arguments?: Record<string, any>;
   content?: string | object;
   status?: MessageBlockStatus;
   metadata?: any;
-}): MessageBlock {
+  error?: any;
+} = {}): MessageBlock {
   const now = new Date().toISOString();
 
-  // 如果有 toolResponses，使用移动端格式
-  if (toolData.toolResponses && toolData.toolResponses.length > 0) {
-    return {
-      id: uuid(),
-      messageId,
-      type: MessageBlockType.TOOL,
-      toolResponses: toolData.toolResponses,
-      createdAt: now,
-      status: toolData.status || MessageBlockStatus.PENDING,
-      metadata: toolData.metadata
-    };
+  // 确定初始状态
+  let initialStatus: MessageBlockStatus;
+  if (overrides.content !== undefined || overrides.error !== undefined) {
+    initialStatus = overrides.error ? MessageBlockStatus.ERROR : MessageBlockStatus.SUCCESS;
+  } else if (overrides.toolName || overrides.arguments) {
+    initialStatus = MessageBlockStatus.PROCESSING;
+  } else {
+    initialStatus = MessageBlockStatus.PROCESSING;
   }
 
-  // 否则使用电脑版兼容格式
   return {
     id: uuid(),
     messageId,
     type: MessageBlockType.TOOL,
-    toolId: toolData.toolId,
-    toolName: toolData.toolName,
-    arguments: toolData.arguments,
-    content: toolData.content,
+    toolId, // 必需字段
+    toolName: overrides.toolName,
+    arguments: overrides.arguments,
+    content: overrides.content,
     createdAt: now,
-    status: toolData.status || MessageBlockStatus.PENDING,
-    metadata: toolData.metadata
+    status: overrides.status || initialStatus,
+    metadata: overrides.metadata,
+    error: overrides.error
   };
 }
 

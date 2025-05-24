@@ -11,7 +11,7 @@ import { ApiProviderRegistry } from './ApiProvider';
  * 应用上下文限制到消息列表
  */
 export function applyContextLimits(messages: Message[], contextLength: number, contextCount: number): Message[] {
-  // 电脑版逻辑：从消息列表中取出最近的N条消息
+  // 最佳实例逻辑：从消息列表中取出最近的N条消息
   // 使用lodash的takeRight函数，但这里我们用原生JavaScript实现
   const limitedByCountMessages = [...messages].slice(-contextCount);
 
@@ -50,7 +50,7 @@ export function applyContextLimits(messages: Message[], contextLength: number, c
  */
 export async function getContextSettings(): Promise<{ contextLength: number; contextCount: number }> {
   let contextLength = 16000; // 默认上下文长度，设置为16K
-  let contextCount = 5;      // 默认上下文数量，与电脑版DEFAULT_CONTEXTCOUNT保持一致
+  let contextCount = 5;      // 默认上下文数量，与最佳实例DEFAULT_CONTEXTCOUNT保持一致
 
   try {
     const appSettings = await getStorageItem<any>('appSettings');
@@ -62,7 +62,7 @@ export async function getContextSettings(): Promise<{ contextLength: number; con
     console.error('读取上下文设置失败:', error);
   }
 
-  // 电脑版逻辑：如果contextCount为100，则视为无限制（100000）
+  // 最佳实例逻辑：如果contextCount为100，则视为无限制（100000）
   if (contextCount === 100) {
     contextCount = 100000;
   }

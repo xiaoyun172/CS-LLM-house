@@ -9,7 +9,7 @@ import { LocalGoogleSearchServer } from './mcpServers/LocalGoogleSearchServer';
 
 /**
  * 创建内存 MCP 服务器
- * 移植自电脑版的内置服务器工厂
+ * 移植自最佳实例的内置服务器工厂
  */
 export function createInMemoryMCPServer(name: string, args: string[] = [], envs: Record<string, string> = {}): Server {
   console.log(`[MCP] 创建内存 MCP 服务器: ${name}，参数: ${args}，环境变量: ${JSON.stringify(envs)}`);

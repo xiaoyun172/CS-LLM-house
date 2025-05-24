@@ -1,5 +1,5 @@
 // Memory MCP Server
-// 移植自电脑版的 Memory 服务器
+// 移植自最佳实例的 Memory 服务器
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';

@@ -1,5 +1,5 @@
 /**
- * OpenAI响应处理模块 - 类似电脑版OpenAIResponseProvider
+ * OpenAI响应处理模块 - 类似最佳实例OpenAIResponseProvider
  * 负责处理特殊的API响应格式和错误处理
  */
 import type { Model } from '../../types';

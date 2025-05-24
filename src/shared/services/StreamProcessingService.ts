@@ -1,5 +1,5 @@
 /**
- * 流处理服务 - 参考电脑版架构，简化流处理逻辑
+ * 流处理服务 - 参考最佳实例架构，简化流处理逻辑
  */
 import { AssistantMessageStatus } from '../types/newMessage';
 import type {
@@ -11,7 +11,7 @@ import type {
   BlockCompleteChunk
 } from '../types/chunk';
 
-// 流处理器回调接口 - 简化版本，参考电脑版
+// 流处理器回调接口 - 简化版本，参考最佳实例
 export interface StreamProcessorCallbacks {
   // 文本内容块接收
   onTextChunk?: (text: string) => void;
@@ -26,7 +26,7 @@ export interface StreamProcessorCallbacks {
   onComplete?: (status: AssistantMessageStatus, response?: any) => void;
 }
 
-// 创建流处理器实例的函数 - 简化版本，参考电脑版
+// 创建流处理器实例的函数 - 简化版本，参考最佳实例
 export function createStreamProcessor(callbacks: StreamProcessorCallbacks = {}) {
   // 返回的函数处理单个数据块或最终信号
   return (chunk: Chunk) => {
@@ -37,7 +37,7 @@ export function createStreamProcessor(callbacks: StreamProcessorCallbacks = {}) 
         return;
       }
 
-      // 2. 处理数据块 - 简化逻辑，参考电脑版
+      // 2. 处理数据块 - 简化逻辑，参考最佳实例
       if (chunk.type === 'text.delta' && callbacks.onTextChunk) {
         callbacks.onTextChunk((chunk as TextDeltaChunk).text);
       }

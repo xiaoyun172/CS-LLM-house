@@ -5,7 +5,7 @@ import { handleError } from '../utils/error';
 
 /**
  * 统一数据修复服务 - 整合所有数据修复功能
- * 参考电脑版简洁架构，提供统一的数据修复入口
+ * 参考最佳实例简洁架构，提供统一的数据修复入口
  */
 export class DataRepairService {
   /**

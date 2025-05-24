@@ -1,6 +1,6 @@
 /**
  * Gemini 文件服务
- * 提供类似电脑版的文件上传和管理功能
+ * 提供类似最佳实例的文件上传和管理功能
  * 注意：移动端暂时不支持真正的文件上传到 Gemini，这里提供兼容接口
  */
 import type { Model, FileType } from '../../types';
@@ -9,7 +9,7 @@ import { mobileFileStorage } from '../../services/MobileFileStorageService';
 
 // 文件大小常量
 const MB = 1024 * 1024;
-const MAX_FILE_SIZE = 20 * MB; // 20MB 限制，与电脑版保持一致
+const MAX_FILE_SIZE = 20 * MB; // 20MB 限制，与最佳实例保持一致
 
 /**
  * Gemini 文件缓存

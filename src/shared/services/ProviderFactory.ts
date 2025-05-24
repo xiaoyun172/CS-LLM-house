@@ -1,5 +1,5 @@
 /**
- * 供应商工厂模块 - 参考电脑版架构
+ * 供应商工厂模块 - 参考最佳实例架构
  * 负责根据供应商类型返回适当的API处理模块
  */
 import type { Model } from '../types';
@@ -17,17 +17,18 @@ export function getActualProviderType(model: Model): string {
   // 优先使用providerType字段(如果存在)，否则回退到provider字段
   let providerType = (model as any).providerType || model.provider;
 
-  // 智能路由：如果没有明确指定provider，根据模型ID和baseUrl自动推断
+  // 智能路由：只有在没有明确指定provider或provider为'auto'时才进行推断
+  // 如果用户明确选择了供应商，就使用用户的选择，不进行自动推断
   if (!providerType || providerType === 'auto') {
     providerType = inferProviderFromModel(model);
   }
 
-  console.log(`[ProviderFactory] 获取提供商类型: ${providerType}, 模型ID: ${model.id}`);
+  console.log(`[ProviderFactory] 获取提供商类型: ${providerType}, 模型ID: ${model.id}, 原始provider: ${model.provider}`);
   return providerType;
 }
 
 /**
- * 智能推断Provider类型 - 类似电脑版AiHubMixProvider的功能
+ * 智能推断Provider类型 - 类似最佳实例AiHubMixProvider的功能
  * @param model 模型配置
  * @returns 推断的Provider类型
  */
@@ -100,7 +101,7 @@ export function getProviderApi(model: Model): any {
     case 'siliconflow': // 硅基流动使用OpenAI兼容API
     case 'volcengine':  // 火山引擎使用OpenAI兼容API
     default:
-      // 默认使用OpenAI兼容API，与电脑版保持一致
+      // 默认使用OpenAI兼容API，与最佳实例保持一致
       return openaiApi;
   }
 }
@@ -203,7 +204,7 @@ function getDefaultGroupName(modelId: string): string {
 }
 
 /**
- * 获取模型列表 - 简化版本，参考电脑版架构
+ * 获取模型列表 - 简化版本，参考最佳实例架构
  * @param provider 提供商配置
  * @returns 格式化的模型列表
  */
@@ -219,7 +220,7 @@ export async function fetchModels(provider: any): Promise<any[]> {
 
     let rawModels: any[] = [];
 
-    // 简化的Provider选择逻辑，与电脑版保持一致
+    // 简化的Provider选择逻辑，与最佳实例保持一致
     switch (providerType.toLowerCase()) {
       case 'anthropic':
         rawModels = await anthropicApi.fetchModels(provider);

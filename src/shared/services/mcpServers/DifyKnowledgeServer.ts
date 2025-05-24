@@ -1,5 +1,5 @@
 // Dify Knowledge MCP Server
-// 移植自电脑版的 Dify Knowledge 服务器
+// 移植自最佳实例的 Dify Knowledge 服务器
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';

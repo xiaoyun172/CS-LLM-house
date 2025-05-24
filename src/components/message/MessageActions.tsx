@@ -220,7 +220,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     handleMenuClose();
   };
 
-  // 创建分支 - 使用电脑版的事件机制
+  // 创建分支 - 使用最佳实例的事件机制
   const handleCreateBranch = useCallback(() => {
     if (messageIndex === undefined) {
       console.error('[MessageActions] 无法创建分支: 缺少messageIndex');

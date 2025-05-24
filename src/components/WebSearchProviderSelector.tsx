@@ -35,7 +35,7 @@ interface WebSearchProviderSelectorProps {
 
 /**
  * 网络搜索提供商选择器
- * 类似电脑版的快捷面板，适配移动端UI
+ * 类似最佳实例的快捷面板，适配移动端UI
  */
 const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
   open,

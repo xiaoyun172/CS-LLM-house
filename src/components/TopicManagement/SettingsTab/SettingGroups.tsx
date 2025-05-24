@@ -9,8 +9,8 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import SettingsIcon from '@mui/icons-material/Settings';
-import TuneIcon from '@mui/icons-material/Tune';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import SettingItem from './SettingItem';
 
 interface Setting {
@@ -53,11 +53,11 @@ export default function SettingGroups({ groups, onSettingChange }: SettingGroups
   const getGroupIcon = (groupId: string) => {
     switch (groupId) {
       case 'general':
-        return <SettingsIcon sx={{ color: 'primary.main' }} />;
+        return <SettingsOutlinedIcon sx={{ color: 'primary.main' }} />;
       case 'context':
-        return <TuneIcon sx={{ color: 'primary.main' }} />;
+        return <TuneOutlinedIcon sx={{ color: 'primary.main' }} />;
       default:
-        return <SettingsIcon sx={{ color: 'primary.main' }} />;
+        return <SettingsOutlinedIcon sx={{ color: 'primary.main' }} />;
     }
   };
 

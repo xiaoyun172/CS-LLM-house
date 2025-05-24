@@ -10,7 +10,7 @@ import { getDefaultTopic } from '../services/assistant/types';
 
 /**
  * 助手钩子 - 加载助手及其关联的话题
- * 参考电脑版实现，但适配移动端的数据结构
+ * 参考最佳实例实现，但适配移动端的数据结构
  */
 export function useAssistant(assistantId: string | null) {
   const dispatch = useDispatch();

@@ -546,10 +546,10 @@ export class OpenAIProvider extends BaseProvider {
     // 记录原始消息数量
     console.log(`[OpenAIProvider.sendChatMessage] 原始消息数量: ${messages.length}`);
 
-    // 准备消息数组 - 使用电脑版风格的消息处理
+    // 准备消息数组 - 使用最佳实例风格的消息处理
     const apiMessages = [];
 
-    // 添加系统消息 - 与电脑版保持一致，始终添加系统消息，即使提示词为空
+    // 添加系统消息 - 与最佳实例保持一致，始终添加系统消息，即使提示词为空
     // 构建系统提示，包含工具说明
     const finalSystemPrompt = this.buildSystemPrompt(
       systemPrompt,
@@ -630,7 +630,7 @@ export class OpenAIProvider extends BaseProvider {
 
     console.log(`[OpenAIProvider.sendChatMessage] 最终API消息数量: ${apiMessages.length}`);
 
-    // 确保至少有一条用户消息 - 电脑版风格的安全检查
+    // 确保至少有一条用户消息 - 最佳实例风格的安全检查
     if (apiMessages.length === 0 || !apiMessages.some(msg => msg.role === 'user')) {
       console.warn('[OpenAIProvider.sendChatMessage] 警告: 消息列表中没有用户消息，添加默认用户消息');
 
@@ -674,14 +674,14 @@ export class OpenAIProvider extends BaseProvider {
       }`);
     });
 
-    // 构建请求参数 - 与电脑版保持一致，始终启用流式输出
+    // 构建请求参数 - 与最佳实例保持一致，始终启用流式输出
     const requestParams: any = {
       model: this.model.id,
       messages: apiMessages,
       temperature: this.getTemperature(),
       top_p: this.getTopP(),
       max_tokens: this.model.maxTokens,
-      stream: true // 始终启用流式输出，与电脑版保持一致
+      stream: true // 始终启用流式输出，与最佳实例保持一致
     };
 
     console.log(`[OpenAIProvider.sendChatMessage] 请求参数:`, {
@@ -745,7 +745,7 @@ export class OpenAIProvider extends BaseProvider {
         return await this.handleStreamResponse(requestParams, onUpdate);
       } else {
         // 即使没有回调，也使用流式响应，但结果会在完成后一次性返回
-        // 这与电脑版的行为一致，电脑版总是使用流式响应
+        // 这与最佳实例的行为一致，最佳实例总是使用流式响应
         console.log(`[OpenAIProvider.sendChatMessage] 使用流式响应模式（无回调）`);
         return await this.handleStreamResponseWithoutCallback(requestParams);
       }
@@ -821,7 +821,7 @@ export class OpenAIProvider extends BaseProvider {
   /**
    * 处理流式响应（无回调）
    * 使用流式响应但不使用回调，结果会在完成后一次性返回
-   * 这与电脑版的行为一致
+   * 这与最佳实例的行为一致
    * @param params 请求参数
    * @returns 响应内容
    */

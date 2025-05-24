@@ -20,6 +20,7 @@ import { DataManager } from './shared/services';
 import { DataRepairService } from './shared/services/DataRepairService';
 import { DatabaseCleanupService } from './shared/services/DatabaseCleanupService';
 import { dexieStorage } from './shared/services/DexieStorageService';
+
 import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from '@mui/material';
 
 // 初始化日志拦截器
@@ -286,6 +287,9 @@ function App() {
       };
 
       loadAllTopics();
+
+      // 工具块状态恢复已通过修复 TopicService.ts 中的状态保持逻辑解决
+      console.log('[App] 工具块状态现在会正确保持，无需额外恢复');
 
       // 重复话题修复已整合到统一数据修复中，这里只是记录
       console.log('[App] 重复话题修复已整合到统一数据修复流程中');

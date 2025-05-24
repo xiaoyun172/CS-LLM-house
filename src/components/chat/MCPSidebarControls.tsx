@@ -20,17 +20,20 @@ import {
   FormControl,
   FormLabel,
   RadioGroup,
-  Radio
+  Radio,
+  Collapse,
+  IconButton
 } from '@mui/material';
 import {
-  Extension as ExtensionIcon,
+  ExtensionOutlined as ExtensionOutlinedIcon,
   ExpandMore as ExpandMoreIcon,
-  Settings as SettingsIcon,
-  Cloud as CloudIcon,
-  Storage as StorageIcon,
-  Http as HttpIcon,
-  Psychology as PsychologyIcon,
-  Code as CodeIcon
+  ExpandLess as ExpandLessIcon,
+  SettingsOutlined as SettingsOutlinedIcon,
+  CloudOutlined as CloudOutlinedIcon,
+  StorageOutlined as StorageOutlinedIcon,
+  HttpOutlined as HttpOutlinedIcon,
+  PsychologyOutlined as PsychologyOutlinedIcon,
+  CodeOutlined as CodeOutlinedIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import type { MCPServer, MCPServerType } from '../../shared/types';
@@ -52,6 +55,7 @@ const MCPSidebarControls: React.FC<MCPSidebarControlsProps> = ({
   const navigate = useNavigate();
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [activeServers, setActiveServers] = useState<MCPServer[]>([]);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     loadServers();
@@ -85,13 +89,13 @@ const MCPSidebarControls: React.FC<MCPSidebarControlsProps> = ({
   const getServerTypeIcon = (type: MCPServerType) => {
     switch (type) {
       case 'sse':
-        return <CloudIcon />;
+        return <CloudOutlinedIcon />;
       case 'streamableHttp':
-        return <HttpIcon />;
+        return <HttpOutlinedIcon />;
       case 'inMemory':
-        return <StorageIcon />;
+        return <StorageOutlinedIcon />;
       default:
-        return <SettingsIcon />;
+        return <SettingsOutlinedIcon />;
     }
   };
 
@@ -111,189 +115,260 @@ const MCPSidebarControls: React.FC<MCPSidebarControlsProps> = ({
   const hasActiveServers = activeServers.length > 0;
 
   return (
-    <Box sx={{ p: 2 }}>
-      {/* MCP 工具总开关 */}
-      <Box sx={{ mb: 2 }}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={toolsEnabled}
-              onChange={(e) => onToolsToggle?.(e.target.checked)}
-              color="primary"
-            />
+    <Box>
+      {/* 可折叠的MCP标题栏 */}
+      <ListItem
+        component="div"
+        onClick={() => setExpanded(!expanded)}
+        sx={{
+          px: 2,
+          py: 0.75,
+          cursor: 'pointer',
+          position: 'relative',
+          zIndex: 1,
+          '&:hover': {
+            backgroundColor: 'transparent !important',
+            transform: 'none !important',
+            boxShadow: 'none !important'
+          },
+          '&:focus': {
+            backgroundColor: 'transparent !important'
+          },
+          '&:active': {
+            backgroundColor: 'rgba(0, 0, 0, 0.02)'
+          },
+          '& *': {
+            '&:hover': {
+              backgroundColor: 'transparent !important',
+              transform: 'none !important'
+            }
           }
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <ExtensionIcon sx={{ color: '#10b981' }} />
-              <Typography variant="subtitle2" fontWeight={600}>
-                MCP 工具
-              </Typography>
-              {hasActiveServers && (
-                <Chip
-                  label={activeServers.length}
-                  size="small"
-                  color="success"
-                  variant="outlined"
-                />
-              )}
-            </Box>
+        }}
+      >
+        <ExtensionOutlinedIcon sx={{ mr: 1.5, color: 'primary.main' }} />
+        <ListItemText
+          primary="MCP 工具"
+          secondary={
+            hasActiveServers
+              ? `${activeServers.length} 个服务器运行中 | 模式: ${mcpMode === 'function' ? '函数调用' : '提示词注入'}`
+              : `模式: ${mcpMode === 'function' ? '函数调用' : '提示词注入'}`
           }
+          primaryTypographyProps={{
+            fontWeight: 'medium',
+            sx: { mt: 1, mb: 0.25 }
+          }}
+          secondaryTypographyProps={{
+            fontSize: '0.75rem',
+            sx: { mt: 0.5, mb: 0.5 }
+          }}
         />
-      </Box>
+        <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {hasActiveServers && (
+            <Chip
+              label={activeServers.length}
+              size="small"
+              color="success"
+              variant="outlined"
+              sx={{ mr: 1 }}
+            />
+          )}
+          <IconButton edge="end" size="small" sx={{ padding: '4px' }}>
+            {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+          </IconButton>
+        </ListItemSecondaryAction>
+      </ListItem>
 
-      {toolsEnabled && (
-        <>
-          <Divider sx={{ mb: 2 }} />
-
-          {/* 工具调用模式选择 */}
+      {/* 可折叠的内容区域 */}
+      <Collapse
+        in={expanded}
+        timeout={{ enter: 300, exit: 200 }}
+        easing={{ enter: 'cubic-bezier(0.4, 0, 0.2, 1)', exit: 'cubic-bezier(0.4, 0, 0.6, 1)' }}
+        unmountOnExit
+      >
+        <Box sx={{ px: 2, pb: 2 }}>
+          {/* MCP 工具总开关 */}
           <Box sx={{ mb: 2 }}>
-            <FormControl component="fieldset">
-              <FormLabel component="legend" sx={{ fontSize: '0.875rem', fontWeight: 600, mb: 1 }}>
-                工具调用模式
-              </FormLabel>
-              <RadioGroup
-                value={mcpMode}
-                onChange={handleModeChange}
-                sx={{ gap: 0.5 }}
-              >
-                <FormControlLabel
-                  value="function"
-                  control={<Radio size="small" />}
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CodeIcon sx={{ fontSize: 16 }} />
-                      <Box>
-                        <Typography variant="body2" fontWeight={500}>
-                          函数调用
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          模型自动调用工具（推荐）
-                        </Typography>
-                      </Box>
-                    </Box>
-                  }
-                  sx={{
-                    m: 0,
-                    p: 1,
-                    borderRadius: 1,
-                    border: '1px solid',
-                    borderColor: mcpMode === 'function' ? 'primary.main' : 'divider',
-                    bgcolor: mcpMode === 'function' ? alpha('#1976d2', 0.05) : 'transparent'
-                  }}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={toolsEnabled}
+                  onChange={(e) => onToolsToggle?.(e.target.checked)}
+                  color="primary"
                 />
-                <FormControlLabel
-                  value="prompt"
-                  control={<Radio size="small" />}
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <PsychologyIcon sx={{ fontSize: 16 }} />
-                      <Box>
-                        <Typography variant="body2" fontWeight={500}>
-                          提示词注入
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          通过提示词指导 AI 使用工具
-                        </Typography>
-                      </Box>
-                    </Box>
-                  }
-                  sx={{
-                    m: 0,
-                    p: 1,
-                    borderRadius: 1,
-                    border: '1px solid',
-                    borderColor: mcpMode === 'prompt' ? 'primary.main' : 'divider',
-                    bgcolor: mcpMode === 'prompt' ? alpha('#1976d2', 0.05) : 'transparent'
-                  }}
-                />
-              </RadioGroup>
-            </FormControl>
+              }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" fontWeight={600}>
+                    启用 MCP 工具
+                  </Typography>
+                  {hasActiveServers && (
+                    <Chip
+                      label={activeServers.length}
+                      size="small"
+                      color="success"
+                      variant="outlined"
+                    />
+                  )}
+                </Box>
+              }
+            />
           </Box>
 
-          <Divider sx={{ mb: 2 }} />
+          {toolsEnabled && (
+            <>
+              <Divider sx={{ mb: 2 }} />
 
-          {/* MCP 服务器列表 */}
-          <Accordion defaultExpanded>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="subtitle2" fontWeight={600}>
-                MCP 服务器 ({servers.length})
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails sx={{ p: 0 }}>
-              {servers.length === 0 ? (
-                <Box sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    还没有配置 MCP 服务器
-                  </Typography>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={handleNavigateToSettings}
-                    startIcon={<SettingsIcon />}
+              {/* 工具调用模式选择 */}
+              <Box sx={{ mb: 2 }}>
+                <FormControl component="fieldset">
+                  <FormLabel component="legend" sx={{ fontSize: '0.875rem', fontWeight: 600, mb: 1 }}>
+                    工具调用模式
+                  </FormLabel>
+                  <RadioGroup
+                    value={mcpMode}
+                    onChange={handleModeChange}
+                    sx={{ gap: 0.5 }}
                   >
-                    添加服务器
-                  </Button>
-                </Box>
-              ) : (
-                <List dense sx={{ py: 0 }}>
-                  {servers.map((server) => (
-                    <ListItem key={server.id} sx={{ px: 1, py: 0.5 }}>
-                      <ListItemIcon sx={{ minWidth: 32 }}>
-                        <Avatar
-                          sx={{
-                            bgcolor: alpha(getServerTypeColor(server.type), 0.1),
-                            color: getServerTypeColor(server.type),
-                            width: 24,
-                            height: 24
-                          }}
-                        >
-                          {getServerTypeIcon(server.type)}
-                        </Avatar>
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Typography variant="body2" fontWeight={500}>
-                            {server.name}
-                          </Typography>
-                        }
-                        secondary={
-                          server.description && (
-                            <Typography variant="caption" color="text.secondary">
-                              {server.description}
+                    <FormControlLabel
+                      value="function"
+                      control={<Radio size="small" />}
+                      label={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CodeOutlinedIcon sx={{ fontSize: 16 }} />
+                          <Box>
+                            <Typography variant="body2" fontWeight={500}>
+                              函数调用
                             </Typography>
-                          )
-                        }
-                      />
-                      <ListItemSecondaryAction>
-                        <Switch
-                          checked={server.isActive}
-                          onChange={(e) => handleToggleServer(server.id, e.target.checked)}
-                          color="primary"
-                          size="small"
-                        />
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                  ))}
-                </List>
-              )}
+                            <Typography variant="caption" color="text.secondary">
+                              模型自动调用工具（推荐）
+                            </Typography>
+                          </Box>
+                        </Box>
+                      }
+                      sx={{
+                        m: 0,
+                        p: 1,
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: mcpMode === 'function' ? 'primary.main' : 'divider',
+                        bgcolor: mcpMode === 'function' ? alpha('#1976d2', 0.05) : 'transparent'
+                      }}
+                    />
+                    <FormControlLabel
+                      value="prompt"
+                      control={<Radio size="small" />}
+                      label={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <PsychologyOutlinedIcon sx={{ fontSize: 16 }} />
+                          <Box>
+                            <Typography variant="body2" fontWeight={500}>
+                              提示词注入
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              通过提示词指导 AI 使用工具
+                            </Typography>
+                          </Box>
+                        </Box>
+                      }
+                      sx={{
+                        m: 0,
+                        p: 1,
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: mcpMode === 'prompt' ? 'primary.main' : 'divider',
+                        bgcolor: mcpMode === 'prompt' ? alpha('#1976d2', 0.05) : 'transparent'
+                      }}
+                    />
+                  </RadioGroup>
+                </FormControl>
+              </Box>
 
-              {servers.length > 0 && (
-                <Box sx={{ p: 1 }}>
-                  <Button
-                    fullWidth
-                    size="small"
-                    variant="text"
-                    onClick={handleNavigateToSettings}
-                    startIcon={<SettingsIcon />}
-                  >
-                    管理服务器
-                  </Button>
-                </Box>
-              )}
-            </AccordionDetails>
-          </Accordion>
-        </>
-      )}
+              <Divider sx={{ mb: 2 }} />
+
+              {/* MCP 服务器列表 */}
+              <Accordion defaultExpanded>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    MCP 服务器 ({servers.length})
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 0 }}>
+                  {servers.length === 0 ? (
+                    <Box sx={{ p: 2, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        还没有配置 MCP 服务器
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={handleNavigateToSettings}
+                        startIcon={<SettingsOutlinedIcon />}
+                      >
+                        添加服务器
+                      </Button>
+                    </Box>
+                  ) : (
+                    <List dense sx={{ py: 0 }}>
+                      {servers.map((server) => (
+                        <ListItem key={server.id} sx={{ px: 1, py: 0.5 }}>
+                          <ListItemIcon sx={{ minWidth: 32 }}>
+                            <Avatar
+                              sx={{
+                                bgcolor: alpha(getServerTypeColor(server.type), 0.1),
+                                color: getServerTypeColor(server.type),
+                                width: 24,
+                                height: 24
+                              }}
+                            >
+                              {getServerTypeIcon(server.type)}
+                            </Avatar>
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Typography variant="body2" fontWeight={500}>
+                                {server.name}
+                              </Typography>
+                            }
+                            secondary={
+                              server.description && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {server.description}
+                                </Typography>
+                              )
+                            }
+                          />
+                          <ListItemSecondaryAction>
+                            <Switch
+                              checked={server.isActive}
+                              onChange={(e) => handleToggleServer(server.id, e.target.checked)}
+                              color="primary"
+                              size="small"
+                            />
+                          </ListItemSecondaryAction>
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+
+                  {servers.length > 0 && (
+                    <Box sx={{ p: 1 }}>
+                      <Button
+                        fullWidth
+                        size="small"
+                        variant="text"
+                        onClick={handleNavigateToSettings}
+                        startIcon={<SettingsOutlinedIcon />}
+                      >
+                        管理服务器
+                      </Button>
+                    </Box>
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            </>
+          )}
+        </Box>
+      </Collapse>
     </Box>
   );
 };

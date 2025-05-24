@@ -329,6 +329,30 @@ export interface BlockCompleteChunk {
   error?: ResponseError
 }
 
+export interface MCPToolInProgressChunk {
+  /**
+   * 数据块类型
+   */
+  type: 'mcp_tool_in_progress'
+
+  /**
+   * 工具响应列表
+   */
+  responses: any[]
+}
+
+export interface MCPToolCompleteChunk {
+  /**
+   * 数据块类型
+   */
+  type: 'mcp_tool_complete'
+
+  /**
+   * 工具响应列表
+   */
+  responses: any[]
+}
+
 export type Chunk =
   | BlockCreatedChunk
   | BlockInProgressChunk
@@ -351,4 +375,6 @@ export type Chunk =
   | LLMWebSearchCompleteChunk
   | LLMResponseCompleteChunk
   | BlockCompleteChunk
+  | MCPToolInProgressChunk
+  | MCPToolCompleteChunk
   | ErrorChunk

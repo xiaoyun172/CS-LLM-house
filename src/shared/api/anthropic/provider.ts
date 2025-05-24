@@ -1,6 +1,6 @@
 /**
  * Anthropic Provider模块
- * 提供类似电脑版的Provider类实现
+ * 提供类似最佳实例的Provider类实现
  */
 import Anthropic from '@anthropic-ai/sdk';
 import type { Message, Model, MCPTool } from '../../types';
@@ -108,7 +108,7 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   /**
-   * 获取消息内容 - 电脑版风格的消息内容提取
+   * 获取消息内容 - 最佳实例风格的消息内容提取
    * @param message 消息对象
    * @returns 消息内容
    */
@@ -138,7 +138,7 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   /**
-   * 发送聊天消息 - 电脑版风格的消息处理
+   * 发送聊天消息 - 最佳实例风格的消息处理
    */
   async sendChatMessage(
     messages: Message[],
@@ -180,7 +180,7 @@ export class AnthropicProvider extends BaseProvider {
         mcpMode: mcpMode // 传递 MCP 模式
       });
 
-      // 准备消息数组 - 电脑版风格的消息处理
+      // 准备消息数组 - 最佳实例风格的消息处理
       const anthropicMessages = [];
       let systemMessage = null;
 
@@ -210,7 +210,7 @@ export class AnthropicProvider extends BaseProvider {
         }
       }
 
-      // 确保至少有一条用户消息 - 电脑版风格的安全检查
+      // 确保至少有一条用户消息 - 最佳实例风格的安全检查
       if (anthropicMessages.length === 0 || !anthropicMessages.some(msg => msg.role === 'user')) {
         console.warn('[AnthropicProvider.sendChatMessage] 警告: 消息列表中没有用户消息，添加默认用户消息');
 

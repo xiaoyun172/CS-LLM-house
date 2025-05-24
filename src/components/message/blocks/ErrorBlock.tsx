@@ -1,12 +1,17 @@
 import React from 'react';
-import { Box, Typography, Alert, Link, Collapse, IconButton } from '@mui/material';
+import { Box, Typography, Alert, Link, Collapse, IconButton, Button } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import SettingsIcon from '@mui/icons-material/Settings';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import type { ErrorMessageBlock } from '../../../shared/types/newMessage';
 import { getErrorType } from '../../../shared/utils/error';
+import { isApiKeyError, retryApiKeyError, showApiKeyConfigHint } from '../../../shared/utils/apiKeyErrorHandler';
 
 interface Props {
   block: ErrorMessageBlock;
+  messageId?: string;
+  topicId?: string;
   onRegenerate?: () => void;
 }
 
@@ -14,8 +19,9 @@ interface Props {
  * 错误块组件
  * 负责渲染错误信息
  */
-const ErrorBlock: React.FC<Props> = ({ block, onRegenerate }) => {
+const ErrorBlock: React.FC<Props> = ({ block, messageId, topicId, onRegenerate }) => {
   const [expanded, setExpanded] = React.useState(false);
+  const [retrying, setRetrying] = React.useState(false);
 
   // HTTP错误状态码
   const HTTP_ERROR_CODES = [400, 401, 403, 404, 429, 500, 502, 503, 504];
@@ -31,6 +37,9 @@ const ErrorBlock: React.FC<Props> = ({ block, onRegenerate }) => {
 
   // 获取错误详情
   const errorDetails = block.error?.details || block.details || '';
+
+  // 检测是否为 API Key 错误
+  const isApiKeyErr = block.error ? isApiKeyError(block.error) : false;
 
   // 获取错误建议
   const getErrorSuggestion = () => {
@@ -73,6 +82,28 @@ const ErrorBlock: React.FC<Props> = ({ block, onRegenerate }) => {
   // 切换展开/折叠状态
   const toggleExpanded = () => {
     setExpanded(!expanded);
+  };
+
+  // 处理重试
+  const handleRetry = async () => {
+    if (!messageId || !topicId) {
+      console.error('[ErrorBlock] 缺少 messageId 或 topicId，无法重试');
+      return;
+    }
+
+    setRetrying(true);
+    try {
+      await retryApiKeyError(messageId, topicId);
+    } catch (error) {
+      console.error('[ErrorBlock] 重试失败:', error);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  // 处理打开设置
+  const handleOpenSettings = () => {
+    showApiKeyConfigHint();
   };
 
   return (
@@ -125,20 +156,45 @@ const ErrorBlock: React.FC<Props> = ({ block, onRegenerate }) => {
           )}
         </Collapse>
 
-        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
-          <Link
-            component="button"
-            variant="caption"
-            onClick={() => {
-              // 调用重新生成回调
-              if (onRegenerate) {
-                onRegenerate();
-              }
-            }}
-            sx={{ mr: 1 }}
-          >
-            重新生成
-          </Link>
+        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+          {isApiKeyErr && messageId && topicId ? (
+            // API Key 错误的特殊按钮
+            <>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<SettingsIcon />}
+                onClick={handleOpenSettings}
+                sx={{ fontSize: '0.75rem' }}
+              >
+                检查配置
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<RefreshIcon />}
+                onClick={handleRetry}
+                disabled={retrying}
+                sx={{ fontSize: '0.75rem' }}
+              >
+                {retrying ? '重试中...' : '重试'}
+              </Button>
+            </>
+          ) : (
+            // 普通错误的重新生成按钮
+            <Link
+              component="button"
+              variant="caption"
+              onClick={() => {
+                // 调用重新生成回调
+                if (onRegenerate) {
+                  onRegenerate();
+                }
+              }}
+            >
+              重新生成
+            </Link>
+          )}
         </Box>
       </Alert>
     </Box>

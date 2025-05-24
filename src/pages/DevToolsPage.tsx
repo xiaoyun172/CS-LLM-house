@@ -23,16 +23,20 @@ import {
   DialogTitle,
   useTheme,
   Checkbox,
-  Tooltip
+  Tooltip,
+
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import SelectAllIcon from '@mui/icons-material/SelectAll';
 import ClearIcon from '@mui/icons-material/Clear';
+
 import { useNavigate } from 'react-router-dom';
 import LoggerService from '../shared/services/LoggerService';
+import RequestInterceptorService from '../shared/services/RequestInterceptorService';
 import { Clipboard } from '@capacitor/clipboard';
+
 
 // 定义新的日志项类型
 interface LogEntry {
@@ -42,6 +46,8 @@ interface LogEntry {
   data?: any;
 }
 
+
+
 // 开发者工具页面
 const DevToolsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -49,14 +55,17 @@ const DevToolsPage: React.FC = () => {
   const isDarkMode = theme.palette.mode === 'dark';
   const [tabValue, setTabValue] = useState(0);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+
   const [filter, setFilter] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
-  
+
   // 多选功能相关状态
   const [selectMode, setSelectMode] = useState(false);
   const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
+
+
 
   // 添加日志
   const addLog = (log: LogEntry) => {
@@ -73,6 +82,8 @@ const DevToolsPage: React.FC = () => {
     setClearDialogOpen(false);
   };
 
+
+
   // 清除日志
   const clearLogs = () => {
     // 清空日志
@@ -88,8 +99,11 @@ const DevToolsPage: React.FC = () => {
     setClearDialogOpen(false);
   };
 
-  // 加载日志
+  // 加载数据
   useEffect(() => {
+    // 初始化请求拦截器
+    RequestInterceptorService.setupRequestInterceptors();
+
     // 加载已存储的日志
     const storedLogs = LoggerService.getRecentLogs();
     setLogs(storedLogs);
@@ -102,10 +116,15 @@ const DevToolsPage: React.FC = () => {
     };
     addLog(initLog);
 
-    // 定期刷新日志
+    // 现代WebView管理系统在后台自动运行，无需前端调用
+
+    // 定期刷新日志和网络请求
     const intervalId = setInterval(() => {
       const updatedLogs = LoggerService.getRecentLogs();
       setLogs(updatedLogs);
+
+      // 获取网络请求记录
+      RequestInterceptorService.getAllRequests();
     }, 1000);
 
     return () => {
@@ -113,12 +132,14 @@ const DevToolsPage: React.FC = () => {
     };
   }, []);
 
+
+
   // 自动滚动到底部
   useEffect(() => {
-    if (autoScroll && logsEndRef.current) {
+    if (autoScroll && tabValue === 0 && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, autoScroll]);
+  }, [logs, autoScroll, tabValue]);
 
   // 处理标签页变化
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
@@ -151,6 +172,8 @@ const DevToolsPage: React.FC = () => {
         return 'inherit';
     }
   };
+
+
 
   // 格式化JSON显示
   const formatJSON = (jsonString: string) => {
@@ -196,24 +219,26 @@ const DevToolsPage: React.FC = () => {
     setSelectedLogs(new Set());
   };
 
+
+
   // 复制选中的日志
   const copySelectedLogs = () => {
     const selectedLogEntries = filteredLogs.filter(log => selectedLogs.has(log.timestamp));
-    
+
     if (selectedLogEntries.length === 0) return;
-    
+
     const textToCopy = selectedLogEntries.map(log => {
       const time = new Date(log.timestamp).toLocaleTimeString();
       return `[${time}][${log.level}] ${log.message}${log.data ? '\n' + JSON.stringify(log.data, null, 2) : ''}`;
     }).join('\n\n');
-    
+
     // 使用Capacitor的Clipboard插件代替navigator.clipboard
     Clipboard.write({
       string: textToCopy
     }).then(() => {
       // 成功复制后添加一条日志
       LoggerService.log('INFO', `[开发者工具] 已复制 ${selectedLogEntries.length} 条日志到剪贴板`);
-      
+
       // 可选：复制成功后退出选择模式
       // setSelectMode(false);
       // setSelectedLogs(new Set());
@@ -238,7 +263,7 @@ const DevToolsPage: React.FC = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             开发者工具
           </Typography>
-          
+
           {/* 多选模式工具栏 */}
           {selectMode ? (
             <>
@@ -253,8 +278,8 @@ const DevToolsPage: React.FC = () => {
                 </IconButton>
               </Tooltip>
               <Tooltip title="复制选中日志">
-                <IconButton 
-                  color="inherit" 
+                <IconButton
+                  color="inherit"
                   onClick={copySelectedLogs}
                   disabled={selectedLogs.size === 0}
                 >
@@ -342,12 +367,12 @@ const DevToolsPage: React.FC = () => {
                 <ListItem
                   sx={{
                     py: 0.5,
-                    bgcolor: theme.palette.mode === 'dark' 
+                    bgcolor: theme.palette.mode === 'dark'
                       ? (index % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent')
                       : (index % 2 === 0 ? 'rgba(0,0,0,0.02)' : 'transparent'),
                     cursor: selectMode ? 'pointer' : 'default',
                     '&:hover': {
-                      bgcolor: selectMode 
+                      bgcolor: selectMode
                         ? (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)')
                         : undefined
                     }
@@ -358,7 +383,7 @@ const DevToolsPage: React.FC = () => {
                       edge="end"
                       checked={selectedLogs.has(log.timestamp)}
                       onChange={() => handleLogSelect(log.timestamp)}
-                      inputProps={{ 'aria-labelledby': `log-${log.timestamp}` }}
+                      slotProps={{ input: { 'aria-labelledby': `log-${log.timestamp}` } }}
                     />
                   )}
                 >
@@ -416,12 +441,12 @@ const DevToolsPage: React.FC = () => {
                       sx={{
                         borderLeft: `4px solid ${getLogLevelColor(log.level)}`,
                         pl: 2,
-                        backgroundColor: theme.palette.mode === 'dark' 
+                        backgroundColor: theme.palette.mode === 'dark'
                           ? (log.level === 'INFO' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(156, 39, 176, 0.1)')
                           : (log.level === 'INFO' ? 'rgba(76, 175, 80, 0.05)' : 'rgba(156, 39, 176, 0.05)'),
                         cursor: selectMode ? 'pointer' : 'default',
                         '&:hover': {
-                          bgcolor: selectMode 
+                          bgcolor: selectMode
                             ? (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)')
                             : undefined
                         }
@@ -432,7 +457,7 @@ const DevToolsPage: React.FC = () => {
                           edge="end"
                           checked={selectedLogs.has(log.timestamp)}
                           onChange={() => handleLogSelect(log.timestamp)}
-                          inputProps={{ 'aria-labelledby': `log-${log.timestamp}` }}
+                          slotProps={{ input: { 'aria-labelledby': `log-${log.timestamp}` } }}
                         />
                       )}
                     >
@@ -453,7 +478,7 @@ const DevToolsPage: React.FC = () => {
                             variant="outlined"
                             sx={{
                               p: 1,
-                              backgroundColor: theme.palette.mode === 'dark' 
+                              backgroundColor: theme.palette.mode === 'dark'
                                 ? 'rgba(255, 255, 255, 0.03)'
                                 : 'rgba(0, 0, 0, 0.02)',
                               maxHeight: '300px',
@@ -474,7 +499,7 @@ const DevToolsPage: React.FC = () => {
                               variant="outlined"
                               sx={{
                                 p: 1,
-                                backgroundColor: theme.palette.mode === 'dark' 
+                                backgroundColor: theme.palette.mode === 'dark'
                                   ? 'rgba(33, 150, 243, 0.1)'
                                   : 'rgba(33, 150, 243, 0.05)',
                                 maxHeight: '200px',
@@ -498,7 +523,21 @@ const DevToolsPage: React.FC = () => {
 
         {tabValue === 2 && (
           <Box sx={{ p: 2 }}>
-            <Typography>开发者工具设置（开发中）</Typography>
+            <Typography variant="h6" gutterBottom>
+              开发者工具设置
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              现代WebView内核管理系统已在后台自动运行，无需手动配置。
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 2 }}>
+              系统会自动：
+            </Typography>
+            <Typography variant="body2" component="ul" sx={{ pl: 2, mt: 1 }}>
+              <li>检测WebView版本并选择最佳策略</li>
+              <li>在版本过旧时提示升级</li>
+              <li>应用性能优化配置</li>
+              <li>确保最佳的浏览体验</li>
+            </Typography>
           </Box>
         )}
       </Paper>

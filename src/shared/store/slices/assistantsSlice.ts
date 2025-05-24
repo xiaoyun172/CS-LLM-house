@@ -89,7 +89,7 @@ const assistantsSlice = createSlice({
         console.log(`[assistantsSlice] 更新助手 ${assistantId} 的话题，数量: ${topics.length}，topicIds: ${assistant.topicIds.join(', ')}`);
       }
     },
-    // 添加新的reducers，类似电脑版
+    // 添加新的reducers，类似最佳实例
     addAssistant: (state, action: PayloadAction<Assistant>) => {
       // 检查是否已存在相同ID的助手
       const existingIndex = state.assistants.findIndex(a => a.id === action.payload.id);

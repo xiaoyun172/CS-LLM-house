@@ -57,7 +57,7 @@ export function useTopicManagement({
         setTimeout(() => {
           refreshTopics();
 
-          // 确保话题侧边栏显示并选中新话题 - 模拟电脑版行为
+          // 确保话题侧边栏显示并选中新话题 - 模拟最佳实例行为
           EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
 
           // 再次确保新话题被选中，防止其他逻辑覆盖

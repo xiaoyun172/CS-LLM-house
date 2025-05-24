@@ -404,7 +404,7 @@ function getDisabledThinkingConfig(provider: string | Model): any {
 
 /**
  * 获取指定模型是否支持思考过程
- * 使用更全面的模型检测方法，与电脑版保持一致
+ * 使用更全面的模型检测方法，与最佳实例保持一致
  * @param model 模型对象或模型ID
  * @returns 是否支持思考过程
  */

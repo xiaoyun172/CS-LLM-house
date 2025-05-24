@@ -1,46 +1,91 @@
-import React from 'react';
+import React, { useMemo, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkCjkFriendly from 'remark-cjk-friendly';
+import remarkMath from 'remark-math';
 import { Box, Link, useTheme } from '@mui/material';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import CodeBlock from './blocks/CodeBlock';
+import 'katex/dist/katex.min.css';
+
+// 🔥 参考最佳实例：工具函数
+const ALLOWED_ELEMENTS = /<(style|p|div|span|b|i|strong|em|ul|ol|li|table|tr|td|th|thead|tbody|h[1-6]|blockquote|pre|code|br|hr|svg|path|circle|rect|line|polyline|polygon|text|g|defs|title|desc|tspan|sub|sup)/i;
+const DISALLOWED_ELEMENTS = ['iframe'];
+
+/**
+ * 转义括号 - 参考最佳实例实现
+ */
+function escapeBrackets(text: string): string {
+  const pattern = /(```[\s\S]*?```|`.*?`)|\\\[([\s\S]*?[^\\])\\]|\\\((.*?)\\\)/g;
+  return text.replace(pattern, (match, codeBlock, squareBracket, roundBracket) => {
+    if (codeBlock) {
+      return codeBlock;
+    } else if (squareBracket) {
+      return `\n$$\n${squareBracket}\n$$\n`;
+    } else if (roundBracket) {
+      return `$${roundBracket}$`;
+    }
+    return match;
+  });
+}
+
+/**
+ * 移除SVG空行 - 参考最佳实例实现
+ */
+function removeSvgEmptyLines(text: string): string {
+  const svgPattern = /(<svg[\s\S]*?<\/svg>)/g;
+  return text.replace(svgPattern, (svgMatch) => {
+    return svgMatch
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .join('\n');
+  });
+}
 
 interface MarkdownProps {
   content: string;
   allowHtml?: boolean;
+  mathEngine?: 'KaTeX' | 'none'; // 添加数学引擎支持
 }
 
-const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false }) => {
+const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEngine = 'KaTeX' }) => {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
 
-  // 自定义深色主题样式
-  const darkThemeStyle = {
-    ...vscDarkPlus,
-    'code[class*="language-"]': {
-      ...vscDarkPlus['code[class*="language-"]'],
-      background: 'transparent',
-    },
-    'pre[class*="language-"]': {
-      ...vscDarkPlus['pre[class*="language-"]'],
-      background: '#1e1e1e',
+  // 🔥 参考最佳实例：remark 插件配置
+  const remarkPlugins = useMemo(() => {
+    const plugins = [remarkGfm, remarkCjkFriendly];
+    if (mathEngine !== 'none') {
+      plugins.push(remarkMath);
     }
-  };
+    return plugins;
+  }, [mathEngine]);
 
-  // 自定义浅色主题样式
-  const lightThemeStyle = {
-    ...vs,
-    'code[class*="language-"]': {
-      ...vs['code[class*="language-"]'],
-      background: 'transparent',
-    },
-    'pre[class*="language-"]': {
-      ...vs['pre[class*="language-"]'],
-      background: '#f5f5f5',
+  // 🔥 参考最佳实例：内容预处理 + 强化换行处理
+  const messageContent = useMemo(() => {
+    if (!content) return '';
+
+    let processedContent = removeSvgEmptyLines(escapeBrackets(content));
+
+    // 🔥 强化换行处理：确保单个换行符被保持
+    // 将单个换行符转换为双换行符，这样 Markdown 会正确识别为段落分隔
+    processedContent = processedContent.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
+
+    return processedContent;
+  }, [content]);
+
+  // 🔥 参考最佳实例：rehype 插件配置
+  const rehypePlugins = useMemo(() => {
+    const plugins: any[] = [];
+    if (allowHtml && ALLOWED_ELEMENTS.test(messageContent)) {
+      plugins.push(rehypeRaw);
     }
-  };
+    if (mathEngine === 'KaTeX') {
+      plugins.push(rehypeKatex as any);
+    }
+    return plugins;
+  }, [mathEngine, messageContent, allowHtml]);
 
   return (
     <Box sx={{
@@ -162,8 +207,19 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false }) => {
       }
     }}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkCjkFriendly]}
-        rehypePlugins={allowHtml ? [rehypeRaw] : []}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        disallowedElements={DISALLOWED_ELEMENTS}
+        remarkRehypeOptions={{
+          // 🔥 参考最佳实例配置 + 强化换行处理
+          footnoteLabel: '脚注',
+          footnoteLabelTagName: 'h4',
+          footnoteBackContent: ' ',
+          // 强制保持换行符
+          allowDangerousHtml: false,
+          // 确保换行符被正确处理
+          handlers: {}
+        }}
         components={{
           a: ({ ...props }) => (
             <Link
@@ -202,7 +258,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false }) => {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
 
-            // 使用与电脑版相同的判定逻辑：有 language- 类名或者包含换行符
+            // 使用与最佳实例相同的判定逻辑：有 language- 类名或者包含换行符
             const isCodeBlock = match || (typeof children === 'string' && children.includes('\n'));
 
             return props.inline || !isCodeBlock ? (
@@ -210,59 +266,10 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false }) => {
                 {children}
               </code>
             ) : (
-              <Box
-                component="div"
-                sx={{
-                  margin: 0,
-                  borderRadius: '8px',
-                  fontSize: '0.9rem',
-                  backgroundColor: isDarkMode ? '#1e1e1e' : '#f5f5f5',
-                  border: isDarkMode ? '1px solid #333' : '1px solid #e0e0e0',
-                  overflow: 'auto',
-                  '& pre': {
-                    margin: 0,
-                    padding: '12px',
-                    backgroundColor: 'transparent !important',
-                    overflow: 'auto',
-                  },
-                  '& code': {
-                    color: isDarkMode ? '#d4d4d4' : '#333333',
-                    fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
-                    background: 'transparent',
-                    fontSize: 'inherit',
-                  }
-                }}
-              >
-                <SyntaxHighlighter
-                  language={language || 'text'}
-                  style={isDarkMode ? darkThemeStyle : lightThemeStyle}
-                  PreTag="div"
-                  CodeTag="code"
-                  customStyle={{
-                    margin: 0,
-                    padding: '16px',
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    borderRadius: 0,
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                  }}
-                  codeTagProps={{
-                    style: {
-                      color: isDarkMode ? '#e6e6e6' : '#2d3748',
-                      fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace',
-                      background: 'transparent',
-                      fontSize: '14px',
-                      fontWeight: '400',
-                      letterSpacing: '0.025em',
-                    }
-                  }}
-                  wrapLongLines={true}
-                  {...props}
-                >
-                  {String(children).replace(/\n$/, '')}
-                </SyntaxHighlighter>
-              </Box>
+              <CodeBlock
+                code={String(children).replace(/\n$/, '')}
+                language={language || 'text'}
+              />
             );
           },
           // 自定义段落渲染，避免嵌套问题
@@ -300,18 +307,44 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false }) => {
 
             if (hasBlockElement(children)) {
               // 如果包含块级元素，使用div而不是p
-              return <Box component="div" sx={{ mb: 2, lineHeight: 1.6 }} {...props}>{children}</Box>;
+              return (
+                <Box
+                  component="div"
+                  sx={{
+                    mb: 2,
+                    lineHeight: 1.6,
+                    whiteSpace: 'pre-wrap', // 保持换行符和空格
+                    wordBreak: 'break-word' // 长单词换行
+                  }}
+                  {...props}
+                >
+                  {children}
+                </Box>
+              );
             }
 
-            // 普通段落，只包含内联元素
-            return <Box component="p" sx={{ mb: 2, lineHeight: 1.6 }} {...props}>{children}</Box>;
+            // 🔥 修复换行问题：普通段落，保持换行符
+            return (
+              <Box
+                component="p"
+                sx={{
+                  mb: 2,
+                  lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap', // 保持换行符和空格
+                  wordBreak: 'break-word' // 长单词换行
+                }}
+                {...props}
+              >
+                {children}
+              </Box>
+            );
           },
         }}
       >
-        {content}
+        {messageContent}
       </ReactMarkdown>
     </Box>
   );
 };
 
-export default Markdown;
+export default memo(Markdown);

@@ -18,7 +18,7 @@ import { styled } from '@mui/material/styles';
 
 import { MessageBlockStatus } from '../../../shared/types/newMessage';
 import type { ToolMessageBlock } from '../../../shared/types/newMessage';
-import Markdown from '../Markdown';
+
 import { EventEmitter } from '../../../shared/services/EventEmitter';
 
 interface Props {
@@ -26,7 +26,7 @@ interface Props {
 }
 
 /**
- * 工具调用块组件 - 基于电脑版的实现
+ * 工具调用块组件 - 基于最佳实例的实现
  * 显示AI的工具调用过程和结果
  */
 const ToolBlock: React.FC<Props> = ({ block }) => {
@@ -34,16 +34,18 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
   const [copied, setCopied] = useState(false);
   const theme = useTheme();
 
-  // 获取工具响应数据 - 按照电脑版的方式
+  // 获取工具响应数据 - 统一使用最佳实例的方式
   const toolResponse = block.metadata?.rawMcpToolResponse;
 
   const isProcessing = block.status === MessageBlockStatus.STREAMING ||
                        block.status === MessageBlockStatus.PROCESSING;
+  const isCompleted = block.status === MessageBlockStatus.SUCCESS;
+  const hasError = block.status === MessageBlockStatus.ERROR;
 
   // 复制工具调用内容到剪贴板
   const handleCopyCall = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); // 防止触发折叠/展开
-    const input = block.input || (block.toolResponses?.[0]?.arguments);
+    const input = block.arguments || toolResponse?.arguments;
     if (input) {
       const callText = JSON.stringify(input, null, 2);
 
@@ -52,16 +54,16 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
       setTimeout(() => setCopied(false), 2000);
       EventEmitter.emit('ui:copy_success', { content: '已复制工具调用内容' });
     }
-  }, [block.input, block.toolResponses]);
+  }, [block.arguments, toolResponse]);
 
   // 切换折叠/展开状态
   const toggleExpanded = useCallback(() => {
     setExpanded(!expanded);
   }, [expanded]);
 
-  // 格式化工具调用参数 - 按照电脑版的方式
+  // 格式化工具调用参数 - 统一使用最佳实例的方式
   const formatToolCall = useCallback(() => {
-    const params = toolResponse?.arguments || block.input || (block.toolResponses?.[0]?.arguments);
+    const params = toolResponse?.arguments || block.arguments;
     if (!params) return '';
 
     try {
@@ -69,11 +71,11 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
     } catch (e) {
       return String(params);
     }
-  }, [toolResponse, block.input, block.toolResponses]);
+  }, [toolResponse, block.arguments]);
 
-  // 格式化工具结果内容 - 按照电脑版的方式
+  // 格式化工具结果内容 - 按照最佳实例的方式
   const formatToolResult = useCallback(() => {
-    // 按照电脑版的方式，优先使用 block.content（这是我们在 messageThunk 中设置的）
+    // 按照最佳实例的方式，优先使用 block.content（这是我们在 messageThunk 中设置的）
     if (block.content && typeof block.content === 'object') {
       const response = block.content as any;
 
@@ -121,17 +123,8 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
       return '无响应内容';
     }
 
-    // 兼容旧格式
-    if (block.output) {
-      try {
-        return JSON.stringify(block.output, null, 2);
-      } catch (e) {
-        return String(block.output);
-      }
-    }
-
-    // 兼容 toolResponses 格式
-    const toolResponseData = block.toolResponses?.[0];
+    // 从 metadata.rawMcpToolResponse 中获取输出（最佳实例方式）
+    const toolResponseData = toolResponse;
     if (toolResponseData?.response) {
       const { response } = toolResponseData;
 
@@ -151,7 +144,7 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
           }
         }
 
-        return response.content.map((item) => {
+        return response.content.map((item: any) => {
           switch (item.type) {
             case 'text':
               const text = item.text || '';
@@ -173,7 +166,7 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
     }
 
     return '无响应内容';
-  }, [block.content, block.output, block.toolResponses]);
+  }, [block.content, toolResponse]);
 
   // 复制工具结果内容到剪贴板
   const handleCopyResult = useCallback((e: React.MouseEvent) => {
@@ -187,10 +180,10 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
     }
   }, [formatToolResult]);
 
-  // 获取工具名称
+  // 获取工具名称 - 统一使用最佳实例的方式
   const getToolName = useCallback(() => {
-    return block.name || block.toolName || (block.toolResponses?.[0]?.tool?.name) || '工具调用';
-  }, [block.name, block.toolName, block.toolResponses]);
+    return block.toolName || toolResponse?.tool?.name || '工具调用';
+  }, [block.toolName, toolResponse]);
 
   return (
     <StyledPaper
@@ -227,11 +220,30 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
 
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
           {getToolName()}
+          {/* 🔥 参考最佳实例：显示工具状态 */}
           {isProcessing && (
             <Chip
               label="处理中"
               size="small"
               color="info"
+              variant="outlined"
+              sx={{ ml: 1, height: 20 }}
+            />
+          )}
+          {isCompleted && (
+            <Chip
+              label="已完成"
+              size="small"
+              color="success"
+              variant="outlined"
+              sx={{ ml: 1, height: 20 }}
+            />
+          )}
+          {hasError && (
+            <Chip
+              label="失败"
+              size="small"
+              color="error"
               variant="outlined"
               sx={{ ml: 1, height: 20 }}
             />
@@ -267,6 +279,8 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
               variant="outlined"
               sx={{
                 p: 1.5,
+                maxHeight: '200px', // 限制参数显示区域的最大高度
+                overflowY: 'auto', // 超出部分可滚动
                 backgroundColor: theme.palette.mode === 'dark'
                   ? 'rgba(0, 0, 0, 0.2)'
                   : 'rgba(0, 0, 0, 0.03)',
@@ -274,7 +288,21 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
                 fontSize: '0.85rem',
                 overflowX: 'auto',
                 whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word'
+                wordBreak: 'break-word',
+                // 自定义滚动条样式
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  backgroundColor: 'transparent',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  borderRadius: '3px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                },
               }}
             >
               {formatToolCall()}
@@ -284,7 +312,7 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
           <Divider sx={{ my: 2 }} />
 
           {/* 工具结果部分 */}
-          {(block.content || block.output || block.toolResponses?.[0]?.response || isProcessing) && (
+          {(block.content || toolResponse?.response || isProcessing) && (
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 <Typography variant="caption" color="text.secondary">
@@ -307,7 +335,47 @@ const ToolBlock: React.FC<Props> = ({ block }) => {
                   </Typography>
                 </Box>
               ) : (
-                <Markdown content={formatToolResult()} allowHtml={false} />
+                <Box
+                  sx={{
+                    maxHeight: '300px', // 限制最大高度为300px，与最佳实例保持一致
+                    overflowY: 'auto', // 超出部分可滚动
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 1,
+                    backgroundColor: 'background.paper',
+                    // 自定义滚动条样式
+                    '&::-webkit-scrollbar': {
+                      width: '6px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      backgroundColor: 'transparent',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                      borderRadius: '3px',
+                    },
+                    '&::-webkit-scrollbar-thumb:hover': {
+                      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                    },
+                  }}
+                >
+                  {/* 🔥 修复：工具结果使用纯文本显示，避免 Markdown 渲染导致代码块问题 */}
+                  <Typography
+                    component="pre"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.85rem',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      margin: 0,
+                      color: 'text.primary',
+                      lineHeight: 1.4
+                    }}
+                  >
+                    {formatToolResult()}
+                  </Typography>
+                </Box>
               )}
             </Box>
           )}

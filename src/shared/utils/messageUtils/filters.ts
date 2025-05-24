@@ -1,12 +1,12 @@
 /**
- * 消息过滤工具函数 - 参考电脑版架构
+ * 消息过滤工具函数 - 参考最佳实例架构
  * 统一处理消息去重、分组、过滤等逻辑
  */
 import type { Message } from '../../types';
 import { TopicStatsService } from '../../services/TopicStatsService';
 
 /**
- * 按照askId分组消息 - 参考电脑版实现
+ * 按照askId分组消息 - 参考最佳实例实现
  * @param messages 消息数组
  * @returns 分组后的消息对象
  */
@@ -30,7 +30,7 @@ export function getGroupedMessages(messages: Message[]): { [key: string]: (Messa
 }
 
 /**
- * 去重消息 - 统一的去重逻辑，参考电脑版架构
+ * 去重消息 - 统一的去重逻辑，参考最佳实例架构
  * @param messages 消息数组
  * @returns 去重后的消息数组
  */
@@ -79,7 +79,7 @@ export function deduplicateMessages(messages: Message[]): Message[] {
 }
 
 /**
- * 过滤有用的消息 - 参考电脑版实现
+ * 过滤有用的消息 - 参考最佳实例实现
  * @param messages 消息数组
  * @returns 过滤后的消息数组
  */
@@ -121,7 +121,7 @@ export function filterUsefulMessages(messages: Message[]): Message[] {
 }
 
 /**
- * 过滤空消息 - 参考电脑版实现
+ * 过滤空消息 - 参考最佳实例实现
  * @param messages 消息数组
  * @returns 过滤后的消息数组
  */

@@ -32,6 +32,7 @@ const ChatInterfaceSettings: React.FC = () => {
   const showToolDetails = (settings as any).showToolDetails !== false;
   const showCitationDetails = (settings as any).showCitationDetails !== false;
   const toolbarDisplayStyle = settings.toolbarDisplayStyle || 'both';
+  const inputBoxStyle = settings.inputBoxStyle || 'default';
   const showSystemPromptBubble = settings.showSystemPromptBubble !== false;
 
   const handleBack = () => {
@@ -75,6 +76,12 @@ const ChatInterfaceSettings: React.FC = () => {
     }));
   };
 
+  const handleInputBoxStyleChange = (event: { target: { value: any } }) => {
+    dispatch(updateSettings({
+      inputBoxStyle: event.target.value
+    }));
+  };
+
   const handleSystemPromptBubbleChange = (event: { target: { value: any } }) => {
     dispatch(updateSettings({
       showSystemPromptBubble: event.target.value === 'show'
@@ -82,7 +89,13 @@ const ChatInterfaceSettings: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
+    <Box sx={{
+      height: '100vh',
+      backgroundColor: 'background.default',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }}>
       <Box
         sx={{
           display: 'flex',
@@ -90,10 +103,9 @@ const ChatInterfaceSettings: React.FC = () => {
           padding: 2,
           borderBottom: 1,
           borderColor: 'divider',
-          position: 'sticky',
-          top: 0,
           backgroundColor: 'background.paper',
-          zIndex: 10
+          zIndex: 10,
+          flexShrink: 0
         }}
       >
         <ArrowBackIcon
@@ -105,7 +117,24 @@ const ChatInterfaceSettings: React.FC = () => {
         </Typography>
       </Box>
 
-      <Box sx={{ p: 2 }}>
+      <Box sx={{
+        p: 2,
+        flex: 1,
+        overflow: 'auto',
+        '&::-webkit-scrollbar': {
+          width: '6px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: 'transparent',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: 'rgba(0,0,0,0.2)',
+          borderRadius: '3px',
+        },
+        '&::-webkit-scrollbar-thumb:hover': {
+          background: 'rgba(0,0,0,0.3)',
+        }
+      }}>
         {/* 思考过程显示设置 */}
         <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -201,6 +230,30 @@ const ChatInterfaceSettings: React.FC = () => {
           </Typography>
         </Paper>
 
+        {/* 输入框风格设置 */}
+        <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            输入框风格
+          </Typography>
+
+          <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+            <InputLabel>输入框风格</InputLabel>
+            <Select
+              value={inputBoxStyle}
+              onChange={handleInputBoxStyleChange}
+              label="输入框风格"
+            >
+              <MenuItem value="default">默认风格</MenuItem>
+              <MenuItem value="modern">现代风格</MenuItem>
+              <MenuItem value="minimal">简约风格</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            选择聊天输入框和工具栏的视觉风格。默认风格保持原有设计，现代风格采用更时尚的外观，简约风格则更加简洁。
+          </Typography>
+        </Paper>
+
         {/* 工具调用设置 */}
         <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -281,6 +334,9 @@ const ChatInterfaceSettings: React.FC = () => {
             控制是否在聊天界面顶部显示系统提示词气泡。系统提示词气泡可以帮助您查看和编辑当前会话的系统提示词。
           </Typography>
         </Paper>
+
+        {/* 底部间距 */}
+        <Box sx={{ height: '20px' }} />
       </Box>
     </Box>
   );

@@ -78,7 +78,7 @@ export async function generateImage(
 }
 
 /**
- * 从API提供商获取模型列表 - 简化版本，参考电脑版架构
+ * 从API提供商获取模型列表 - 简化版本，参考最佳实例架构
  * @param provider 模型提供商配置
  * @returns 模型列表
  */
@@ -86,7 +86,7 @@ export async function fetchModels(provider: any): Promise<Model[]> {
   try {
     logApiRequest('获取模型列表', 'INFO', { provider: provider.id });
 
-    // 直接使用供应商工厂获取已格式化的模型，参考电脑版架构
+    // 直接使用供应商工厂获取已格式化的模型，参考最佳实例架构
     const { fetchModels: factoryFetchModels } = await import('./ProviderFactory');
     const models = await factoryFetchModels(provider);
 

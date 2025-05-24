@@ -8,7 +8,7 @@ export interface Assistant {
   description?: string;
   avatar?: string;
   icon?: ReactNode | null; // 重新添加 icon 字段
-  emoji?: string; // 添加emoji字段，与电脑版保持一致
+  emoji?: string; // 添加emoji字段，与最佳实例保持一致
   tags?: string[];
   engine?: string;
   model?: string;
@@ -41,7 +41,7 @@ export interface Assistant {
   localModelPath?: string;
   localModelType?: string;
   file_ids?: string[];
-  type?: string; // 添加type字段，与电脑版保持一致
+  type?: string; // 添加type字段，与最佳实例保持一致
 }
 
 export interface ChatTopic {

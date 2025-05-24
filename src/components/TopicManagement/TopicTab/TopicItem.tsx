@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ListItemButton,
   ListItemText,
@@ -8,8 +8,10 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useSelector } from 'react-redux';
+import { createSelector } from '@reduxjs/toolkit';
 import { getMainTextContent } from '../../../shared/utils/blockUtils';
 import type { ChatTopic } from '../../../shared/types';
+import type { RootState } from '../../../shared/store';
 import { selectMessagesForTopic } from '../../../shared/store/selectors/messageSelectors';
 
 interface TopicItemProps {
@@ -44,8 +46,20 @@ export default function TopicItem({
     onDeleteTopic(topic.id, event);
   };
 
+  // 创建记忆化的 selector 来避免不必要的重新渲染
+  const selectTopicMessages = useMemo(
+    () => createSelector(
+      [
+        (state: RootState) => state,
+        () => topic.id
+      ],
+      (state, topicId) => selectMessagesForTopic(state, topicId) || []
+    ),
+    [topic.id] // 只有当 topic.id 改变时才重新创建 selector
+  );
+
   // 从Redux状态获取该话题的最新消息
-  const messages = useSelector((state: any) => selectMessagesForTopic(state, topic.id)) || [];
+  const messages = useSelector(selectTopicMessages);
 
   // 获取话题的显示名称
   const displayName = topic.name || topic.title || '无标题话题';

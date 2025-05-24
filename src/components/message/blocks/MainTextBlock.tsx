@@ -1,113 +1,123 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import type { MainTextMessageBlock } from '../../../shared/types/newMessage';
-import { MessageBlockStatus } from '../../../shared/types/newMessage';
+import React, { useMemo } from 'react';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../../shared/store';
+import { messageBlocksSelectors } from '../../../shared/store/slices/messageBlocksSlice';
+import type { MainTextMessageBlock, ToolMessageBlock } from '../../../shared/types/newMessage';
+import { MessageBlockType } from '../../../shared/types/newMessage';
 import Markdown from '../Markdown';
-import { shouldUseHighPerformanceMode } from '../../../shared/utils/performanceSettings';
-import HighPerformanceStreamingContainer from './HighPerformanceStreamingContainer';
+import ToolBlock from './ToolBlock';
+import { hasToolUseTags, fixBrokenToolTags } from '../../../shared/utils/mcpToolParser';
 
 interface Props {
   block: MainTextMessageBlock;
   role: string;
+  messageId?: string;
 }
 
-/**
- * 智能流式文本容器
- * 根据性能设置选择最佳渲染策略
- */
-const StreamingTextContainer: React.FC<{ content: string; isStreaming: boolean; onComplete?: () => void }> = ({ content, isStreaming, onComplete }) => {
-  // 检查是否启用高性能模式
-  const useHighPerformanceMode = shouldUseHighPerformanceMode(isStreaming);
-
-  console.log(`[StreamingTextContainer] isStreaming: ${isStreaming}, useHighPerformanceMode: ${useHighPerformanceMode}`);
-
-  // 如果启用高性能模式且正在流式输出，使用超高性能容器
-  if (useHighPerformanceMode && isStreaming) {
-    console.log(`[StreamingTextContainer] 使用高性能容器`);
-    return (
-      <HighPerformanceStreamingContainer
-        content={content}
-        isStreaming={isStreaming}
-        onComplete={onComplete}
-      />
-    );
-  }
-
-  // 否则始终使用标准 Markdown 渲染（无论是否流式）
-  console.log(`[StreamingTextContainer] 使用 Markdown 渲染`);
-  return <Markdown content={content} allowHtml={false} />;
-};
-
-/**
- * 主文本块组件 - 高性能版本
- * 流式输出时使用轻量级渲染，完成后自动切换到完整渲染
- */
-const MainTextBlock: React.FC<Props> = ({ block, role }) => {
-  const isUserMessage = role === 'user';
+const MainTextBlock: React.FC<Props> = ({ block, role, messageId }) => {
   const content = block.content || '';
+  const isUserMessage = role === 'user';
 
-  // 判断是否正在流式输出
-  const isStreaming = block.status === MessageBlockStatus.STREAMING;
+  // 获取工具块
+  const blockEntities = useSelector((state: RootState) => messageBlocksSelectors.selectEntities(state));
 
-  // 状态切换优化：使用延迟切换避免闪烁
-  const [renderMode, setRenderMode] = useState<'streaming' | 'complete'>(() =>
-    isStreaming ? 'streaming' : 'complete'
-  );
+  // 处理内容和工具块的原位置渲染
+  const renderedContent = useMemo(() => {
+    // 🔥 使用工具解析器的检测函数，支持自动修复被分割的标签
+    const hasTools = hasToolUseTags(content);
 
-  // 监听状态变化，延迟切换渲染模式
-  useEffect(() => {
-    console.log(`[MainTextBlock] isStreaming 变化: ${isStreaming}, 当前 renderMode: ${renderMode}`);
-
-    if (isStreaming) {
-      // 立即切换到流式模式
-      console.log(`[MainTextBlock] 切换到流式模式`);
-      setRenderMode('streaming');
-    } else {
-      // 延迟切换到完整模式，避免闪烁
-      console.log(`[MainTextBlock] 准备切换到完整模式，延迟100ms`);
-      const timer = setTimeout(() => {
-        console.log(`[MainTextBlock] 切换到完整模式`);
-        setRenderMode('complete');
-      }, 100); // 100ms 延迟，给用户一个平滑的过渡
-
-      return () => {
-        clearTimeout(timer);
-      };
+    if (isUserMessage || !hasTools) {
+      // 用户消息或没有工具标签，直接渲染
+      return <Markdown content={content} allowHtml={false} />;
     }
-  }, [isStreaming]);
 
-  // 如果内容为空，不显示任何内容
-  if (!content || content.trim() === '') {
+    // 查找对应的工具块
+    const toolBlocks = Object.values(blockEntities).filter(
+      (block): block is ToolMessageBlock =>
+        block?.type === MessageBlockType.TOOL &&
+        !!messageId &&
+        block.messageId === messageId
+    );
+
+    // 🔥 使用修复后的内容进行工具标签处理
+    const fixedContent = fixBrokenToolTags(content);
+
+    // 统计XML中的工具调用数量
+    const toolUseMatches = fixedContent.match(/<tool_use[\s\S]*?<\/tool_use>/gi) || [];
+    console.log(`[MainTextBlock] 检测到 ${toolUseMatches.length} 个工具标签，${toolBlocks.length} 个工具块`);
+
+    if (toolBlocks.length === 0) {
+      // 没有工具块，移除工具标签
+      const cleanContent = fixedContent.replace(/<tool_use[\s\S]*?<\/tool_use>/gi, '');
+      return <Markdown content={cleanContent} allowHtml={false} />;
+    }
+
+    // 分割内容并插入工具块
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let toolIndex = 0;
+
+    // 使用更宽松的正则表达式匹配工具标签
+    const toolUseRegex = /<tool_use[\s\S]*?<\/tool_use>/gi;
+    let match;
+
+    while ((match = toolUseRegex.exec(fixedContent)) !== null) {
+      // 添加工具标签前的文本
+      if (match.index > lastIndex) {
+        const textBefore = fixedContent.slice(lastIndex, match.index);
+        if (textBefore.trim()) {
+          parts.push(
+            <Markdown key={`text-${parts.length}`} content={textBefore} allowHtml={false} />
+          );
+        }
+      }
+
+      // 添加工具块（如果存在）
+      if (toolIndex < toolBlocks.length) {
+        const toolBlock = toolBlocks[toolIndex];
+        console.log(`[MainTextBlock] 渲染工具块 ${toolIndex}: ${toolBlock.id}`);
+        parts.push(
+          <div key={`tool-${toolBlock.id}`} style={{ margin: '16px 0' }}>
+            <ToolBlock block={toolBlock} />
+          </div>
+        );
+        toolIndex++;
+      } else {
+        // 如果工具块不够，显示占位符
+        console.warn(`[MainTextBlock] 工具块不足，跳过第 ${toolIndex} 个工具标签`);
+        parts.push(
+          <div key={`placeholder-${toolIndex}`} style={{ margin: '16px 0', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+            <span style={{ color: '#666' }}>工具调用处理中...</span>
+          </div>
+        );
+        toolIndex++;
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // 添加剩余的文本
+    if (lastIndex < fixedContent.length) {
+      const textAfter = fixedContent.slice(lastIndex);
+      if (textAfter.trim()) {
+        parts.push(
+          <Markdown key={`text-${parts.length}`} content={textAfter} allowHtml={false} />
+        );
+      }
+    }
+
+    return <>{parts}</>;
+  }, [content, isUserMessage, blockEntities, messageId]);
+
+  if (!content.trim()) {
     return null;
   }
 
-  // 容器样式优化
-  const containerStyle = useMemo(() => ({
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: 0,
-    boxSizing: 'border-box' as const
-  }), []);
-
   return (
-    <div style={containerStyle}>
-      {isUserMessage ? (
-        // 用户消息始终使用纯文本
-        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {content}
-        </div>
-      ) : (
-        // AI消息使用智能渲染模式
-        <StreamingTextContainer
-          content={content}
-          isStreaming={renderMode === 'streaming'}
-          onComplete={() => {
-            // 高性能容器完成后，强制切换到完整模式
-            setRenderMode('complete');
-          }}
-        />
-      )}
+    <div className="main-text-block">
+      {renderedContent}
     </div>
   );
 };
 
-export default React.memo(MainTextBlock);
+export default MainTextBlock;

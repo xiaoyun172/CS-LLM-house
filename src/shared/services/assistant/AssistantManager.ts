@@ -99,7 +99,7 @@ export class AssistantManager {
   }
 
   /**
-   * 设置当前助手 - 简化错误处理，类似电脑版
+   * 设置当前助手 - 简化错误处理，类似最佳实例
    */
   static async setCurrentAssistant(assistantId: string): Promise<boolean> {
     try {
@@ -113,7 +113,7 @@ export class AssistantManager {
   }
 
   /**
-   * 添加助手 - 简化错误处理，类似电脑版
+   * 添加助手 - 简化错误处理，类似最佳实例
    */
   static async addAssistant(assistant: Assistant): Promise<boolean> {
     try {
@@ -156,7 +156,7 @@ export class AssistantManager {
   }
 
   /**
-   * 更新助手 - 简化错误处理，类似电脑版
+   * 更新助手 - 简化错误处理，类似最佳实例
    */
   static async updateAssistant(assistant: Assistant): Promise<boolean> {
     try {
@@ -192,7 +192,7 @@ export class AssistantManager {
   }
 
   /**
-   * 删除助手 - 简化错误处理，类似电脑版
+   * 删除助手 - 简化错误处理，类似最佳实例
    */
   static async deleteAssistant(assistantId: string): Promise<boolean> {
     try {

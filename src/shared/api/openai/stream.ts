@@ -1,10 +1,11 @@
 /**
  * OpenAI流式响应模块
  * 负责处理流式响应
- * 使用与电脑版一致的for await循环处理流式响应
+ * 使用与最佳实例一致的for await循环处理流式响应
  */
 import { logApiRequest } from '../../services/LoggerService';
 import { EventEmitter, EVENT_NAMES } from '../../services/EventEmitter';
+import { hasToolUseTags } from '../../utils/mcpToolParser';
 
 /**
  * 流式完成请求
@@ -49,8 +50,17 @@ export async function streamCompletion(
 
     // 合并额外参数，但确保必要的参数不被覆盖
     if (additionalParams) {
-      // 先删除基本参数以确保它们不会被覆盖
-      const { model, messages, stream, ...otherParams } = additionalParams;
+      // 先删除基本参数和内部参数以确保它们不会被覆盖
+      const {
+        model,
+        messages,
+        stream,
+        enableTools,
+        mcpTools,
+        enableReasoning,
+        signal,
+        ...otherParams
+      } = additionalParams;
       Object.assign(streamParams, otherParams);
     }
 
@@ -127,6 +137,7 @@ export async function streamCompletion(
 
           // 累加内容 - 这是关键步骤
           fullContent += content;
+          console.log(`[streamCompletion] 累积内容，当前增量: ${content.length}, 总长度: ${fullContent.length}`);
 
           // 调用回调函数 - 只传递内容增量，不传递推理内容（推理内容已经单独处理）
           if (onUpdate) {
@@ -185,6 +196,37 @@ export async function streamCompletion(
       throw error;
     }
 
+    // 检查是否需要处理工具调用
+    const enableTools = additionalParams?.enableTools;
+    const mcpTools = additionalParams?.mcpTools;
+
+    if (enableTools && mcpTools && mcpTools.length > 0 && fullContent) {
+      console.log(`[streamCompletion] 检查工具调用 - 内容长度: ${fullContent.length}, 工具数量: ${mcpTools.length}`);
+      console.log(`[streamCompletion] 内容预览: ${fullContent.substring(0, 200)}...`);
+
+      // 使用静态导入的工具解析函数
+
+      // 检查是否包含工具调用
+      const hasTools = hasToolUseTags(fullContent, mcpTools);
+      console.log(`[streamCompletion] 工具调用检测结果: ${hasTools}`);
+
+      if (hasTools) {
+        console.log(`[streamCompletion] 检测到工具调用，需要重新发起请求`);
+
+        // 这里我们需要触发工具调用处理
+        // 但由于 streamCompletion 是底层函数，我们只能返回特殊标记
+        // 让上层的 Provider 处理工具调用
+        return {
+          content: fullContent,
+          reasoning: fullReasoning,
+          reasoningTime: hasReasoningContent && fullReasoning ? (reasoningEndTime > reasoningStartTime ? reasoningEndTime - reasoningStartTime : 0) : undefined,
+          hasToolCalls: true
+        } as any;
+      } else {
+        console.log(`[streamCompletion] 未检测到工具调用`);
+      }
+    }
+
     // 返回结果 - 如果有推理内容，返回对象；否则返回字符串
     if (hasReasoningContent && fullReasoning) {
       const reasoningTime = reasoningEndTime > reasoningStartTime ? reasoningEndTime - reasoningStartTime : 0;
@@ -200,7 +242,7 @@ export async function streamCompletion(
     console.error('[streamCompletion] 流式响应处理失败:', error);
     console.error('[streamCompletion] 错误详情:', error.message);
 
-    // 直接抛出错误，不进行重试 - 与电脑版保持一致
+    // 直接抛出错误，不进行重试 - 与最佳实例保持一致
     throw error;
   }
 }

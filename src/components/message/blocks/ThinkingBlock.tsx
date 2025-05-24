@@ -90,7 +90,7 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
     setContent(block.content || '');
   }, [block.content]);
 
-  // 添加流式输出事件监听 - 简化版本，参考电脑版
+  // 添加流式输出事件监听 - 简化版本，参考最佳实例
   useEffect(() => {
     // 检查是否正在流式输出
     if (isThinking) {

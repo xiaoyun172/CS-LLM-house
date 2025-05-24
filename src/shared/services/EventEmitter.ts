@@ -1,6 +1,6 @@
 /**
  * 使用 Emittery 库实现事件系统
- * 与电脑版保持一致，确保流式输出事件能够正确触发
+ * 与最佳实例保持一致，确保流式输出事件能够正确触发
  */
 import Emittery from 'emittery';
 
@@ -59,7 +59,12 @@ export const EVENT_NAMES = {
   ESTIMATED_TOKEN_COUNT: 'estimated_token_count',
   EDIT_CODE_BLOCK: 'edit_code_block',
 
-  // 电脑版兼容事件
+  // API Key 错误相关事件
+  API_KEY_ERROR: 'api_key:error',
+  API_KEY_RETRY: 'api_key:retry',
+  SHOW_API_KEY_CONFIG: 'api_key:show_config',
+
+  // 最佳实例兼容事件
   NEW_BRANCH: 'NEW_BRANCH',
   NEW_CONTEXT: 'NEW_CONTEXT',
   CLEAR_MESSAGES: 'CLEAR_MESSAGES',

@@ -1,6 +1,6 @@
 /**
  * Gemini Provider模块
- * 提供类似电脑版的Provider类实现
+ * 提供类似最佳实例的Provider类实现
  * 支持推理模型、图像生成、文件处理等完整功能
  */
 import {
@@ -230,7 +230,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * 获取消息内容 - 电脑版风格的消息内容提取
+   * 获取消息内容 - 最佳实例风格的消息内容提取
    * @param message 消息对象
    * @returns 消息内容
    */
@@ -260,7 +260,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * 获取消息中的图片 - 电脑版风格的图片提取
+   * 获取消息中的图片 - 最佳实例风格的图片提取
    * @param message 消息对象
    * @returns 图片数组
    */
@@ -291,7 +291,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * 上传文件到 Gemini - 电脑版风格的文件上传
+   * 上传文件到 Gemini - 最佳实例风格的文件上传
    * @param file 文件对象
    * @returns Gemini 文件对象
    */
@@ -306,7 +306,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * 获取文件的 base64 编码 - 电脑版风格的文件处理
+   * 获取文件的 base64 编码 - 最佳实例风格的文件处理
    * @param file 文件对象
    * @returns base64 数据和 MIME 类型
    */
@@ -321,7 +321,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * 列出已上传的文件 - 电脑版风格的文件管理
+   * 列出已上传的文件 - 最佳实例风格的文件管理
    * @returns 文件列表
    */
   async listFiles(): Promise<any[]> {
@@ -335,7 +335,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * 删除已上传的文件 - 电脑版风格的文件管理
+   * 删除已上传的文件 - 最佳实例风格的文件管理
    * @param fileId Gemini 文件 ID
    */
   async deleteFile(fileId: string): Promise<void> {
@@ -448,7 +448,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * 发送聊天消息 - 电脑版风格的消息处理
+   * 发送聊天消息 - 最佳实例风格的消息处理
    */
   async sendChatMessage(
     messages: Message[],
@@ -499,7 +499,7 @@ export class GeminiProvider extends BaseProvider {
         mcpMode: mcpMode // 传递 MCP 模式
       });
 
-      // 准备消息数组 - 电脑版风格的消息处理
+      // 准备消息数组 - 最佳实例风格的消息处理
       let systemMessage = null;
       const userMessages = [];
 

@@ -16,7 +16,7 @@ export function useSettingsManagement() {
     copyableCodeBlocks: true,
     highPerformanceStreaming: getHighPerformanceStreamingSetting(), // 从 localStorage 加载
     contextLength: 16000, // 设置为16K，适合大多数模型
-    contextCount: 5,      // 与电脑版保持一致，DEFAULT_CONTEXTCOUNT = 5
+    contextCount: 5,      // 与最佳实例保持一致，DEFAULT_CONTEXTCOUNT = 5
     mathRenderer: 'KaTeX' as const,
     defaultThinkingEffort: 'medium' as ThinkingOption
   });

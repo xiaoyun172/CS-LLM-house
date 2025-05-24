@@ -77,7 +77,7 @@ class DexieStorageService extends Dexie {
 
   /**
    * 升级到数据库版本5：将消息直接存储在topics表中
-   * 实现电脑版原版的存储方式
+   * 实现最佳实例原版的存储方式
    */
   private async upgradeToV5(): Promise<void> {
     console.log('开始升级到数据库版本5: 将消息直接存储在topics表中...');
@@ -757,7 +757,7 @@ class DexieStorageService extends Dexie {
 
   /**
    * 获取话题的所有消息
-   * 电脑版原版方式：直接从topics表中获取消息
+   * 最佳实例原版方式：直接从topics表中获取消息
    */
   async getTopicMessages(topicId: string): Promise<Message[]> {
     try {
@@ -825,7 +825,7 @@ class DexieStorageService extends Dexie {
 
   /**
    * 保存消息
-   * 电脑版原版方式：将消息直接存储在topics表中
+   * 最佳实例原版方式：将消息直接存储在topics表中
    */
   async saveMessage(message: Message): Promise<void> {
     if (!message.id) {
@@ -1029,7 +1029,7 @@ class DexieStorageService extends Dexie {
     async (blockId: string, changes: any) => {
       return this.updateMessageBlock(blockId, changes);
     },
-    150 // 150ms节流时间 - 与电脑版保持一致
+    150 // 150ms节流时间 - 与最佳实例保持一致
   );
 }
 

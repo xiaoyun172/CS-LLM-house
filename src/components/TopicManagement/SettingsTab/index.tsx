@@ -20,6 +20,7 @@ import AvatarUploader from '../../settings/AvatarUploader';
 import MCPSidebarControls from '../../chat/MCPSidebarControls';
 import ThrottleLevelSelector from './ThrottleLevelSelector';
 import ContextSettings from './ContextSettings';
+import CodeBlockSettings from './CodeBlockSettings';
 
 interface Setting {
   id: string;
@@ -211,6 +212,9 @@ export default function SettingsTab({
 
       {/* 节流强度选择器 */}
       <ThrottleLevelSelector />
+
+      {/* 代码块设置 */}
+      <CodeBlockSettings onSettingChange={handleSettingChange} />
 
       {/* 可折叠的上下文设置 */}
       <ContextSettings

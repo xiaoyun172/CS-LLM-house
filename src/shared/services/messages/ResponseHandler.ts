@@ -4,7 +4,7 @@ import { dexieStorage } from '../DexieStorageService';
 import { EventEmitter, EVENT_NAMES } from '../EventEmitter';
 import { createStreamProcessor } from '../StreamProcessingService';
 import { MessageBlockStatus, AssistantMessageStatus, MessageBlockType } from '../../types/newMessage';
-import type { MessageBlock } from '../../types/newMessage';
+import type { MessageBlock, ToolMessageBlock } from '../../types/newMessage';
 import { newMessagesActions } from '../../store/slices/newMessagesSlice';
 import type { ErrorInfo } from '../../store/slices/newMessagesSlice';
 import { formatErrorMessage, getErrorType } from '../../utils/error';
@@ -12,6 +12,9 @@ import { updateOneBlock, addOneBlock } from '../../store/slices/messageBlocksSli
 import { versionService } from '../VersionService';
 import type { Chunk } from '../../types/chunk';
 import { v4 as uuid } from 'uuid';
+import { globalToolTracker } from '../../utils/toolExecutionSync';
+import { createToolBlock } from '../../utils/messageUtils';
+import { hasToolUseTags } from '../../utils/mcpToolParser';
 
 /**
  * 响应处理器配置类型
@@ -57,12 +60,15 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
   let lastBlockId: string | null = blockId;
   let lastBlockType: MessageBlockType | null = MessageBlockType.UNKNOWN;
 
+  // 工具调用ID到块ID的映射 - 参考最佳实例逻辑
+  const toolCallIdToBlockIdMap = new Map<string, string>();
+
   // 创建节流的Redux更新函数，避免无限循环
   const throttledReduxUpdate = throttle((blockId: string, changes: any) => {
     store.dispatch(updateOneBlock({ id: blockId, changes }));
-  }, 100); // 100ms节流，与电脑版保持一致
+  }, 100); // 100ms节流，与最佳实例保持一致
 
-  // 实现电脑版的回调系统
+  // 实现最佳实例的回调系统
   const callbacks = {
     onTextChunk: (text: string) => {
       accumulatedContent += text;
@@ -172,10 +178,10 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
 
   return {
     /**
-     * 处理基于电脑版架构的 Chunk 事件
+     * 处理基于最佳实例架构的 Chunk 事件
      * @param chunk Chunk 事件对象
      */
-    handleChunkEvent(chunk: Chunk) {
+    async handleChunkEvent(chunk: Chunk) {
       try {
         switch (chunk.type) {
           case 'thinking.delta':
@@ -222,8 +228,18 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
           case 'text.complete':
             const textComplete = chunk as import('../../types/chunk').TextCompleteChunk;
             console.log(`[ResponseHandler] 处理文本完成，总长度: ${textComplete.text.length}`);
-            // 对于完成事件，直接设置完整的文本内容，不调用增量回调
-            accumulatedContent = textComplete.text;
+
+            // 🔥 关键修复：检查是否需要追加内容而不是覆盖
+            if (accumulatedContent.trim() && !textComplete.text.includes(accumulatedContent)) {
+              // 如果已有内容且新内容不包含旧内容，则追加
+              const separator = '\n\n';
+              accumulatedContent = accumulatedContent + separator + textComplete.text;
+              console.log(`[ResponseHandler] 追加文本内容，累积长度: ${accumulatedContent.length}`);
+            } else {
+              // 否则直接设置（第一次或新内容已包含旧内容）
+              accumulatedContent = textComplete.text;
+              console.log(`[ResponseHandler] 设置文本内容，长度: ${accumulatedContent.length}`);
+            }
 
             // 直接处理文本块转换，不使用增量回调
             if (lastBlockType === MessageBlockType.UNKNOWN) {
@@ -276,6 +292,18 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
             }
             break;
 
+          case 'mcp_tool_in_progress':
+            console.log(`[ResponseHandler] 处理工具调用进行中事件`);
+            // 创建或更新工具块
+            await this.handleToolProgress(chunk as any);
+            break;
+
+          case 'mcp_tool_complete':
+            console.log(`[ResponseHandler] 处理工具调用完成事件`);
+            // 更新工具块状态
+            await this.handleToolComplete(chunk as any);
+            break;
+
           default:
             console.log(`[ResponseHandler] 忽略未处理的 chunk 类型: ${chunk.type}`);
             break;
@@ -316,7 +344,7 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         }
       }
 
-      // 完全模仿电脑版的回调架构
+      // 完全模仿最佳实例的回调架构
       if (isThinking) {
         // 调用onThinkingChunk回调
         console.log(`[ResponseHandler] 处理思考内容，长度: ${thinkingContent.length}`);
@@ -332,14 +360,335 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
     },
 
     /**
-     * 响应完成处理
+     * 原子性工具块操作 - 使用静态导入
+     */
+    async atomicToolBlockOperation(toolId: string, toolBlock: any, operation: 'create' | 'update') {
+      try {
+        // 参考 Cline：使用事务确保原子性
+        await dexieStorage.transaction('rw', [
+          dexieStorage.message_blocks,
+          dexieStorage.messages
+        ], async () => {
+          if (operation === 'create') {
+            // 1. 更新映射
+            toolCallIdToBlockIdMap.set(toolId, toolBlock.id);
+
+            // 2. 添加到 Redux 状态
+            store.dispatch(addOneBlock(toolBlock));
+
+            // 3. 保存到数据库
+            await dexieStorage.saveMessageBlock(toolBlock);
+
+            // 4. 更新消息的 blocks 数组
+            store.dispatch(newMessagesActions.upsertBlockReference({
+              messageId: messageId,
+              blockId: toolBlock.id,
+              status: toolBlock.status
+            }));
+          }
+        });
+
+        console.log(`[ResponseHandler] 原子性工具块操作完成: ${operation} - toolId: ${toolId}, blockId: ${toolBlock.id}`);
+      } catch (error) {
+        console.error(`[ResponseHandler] 原子性工具块操作失败: ${operation} - toolId: ${toolId}:`, error);
+        throw error;
+      }
+    },
+
+    /**
+     * 处理单个工具错误 - 参考 Cline 的错误处理机制
+     */
+    async handleSingleToolError(toolId: string, error: any) {
+      try {
+        const existingBlockId = toolCallIdToBlockIdMap.get(toolId);
+        if (existingBlockId) {
+          // 更新工具块状态为错误
+          const errorChanges = {
+            status: MessageBlockStatus.ERROR,
+            error: {
+              message: error.message || '工具执行失败',
+              details: error.stack || error.toString()
+            },
+            updatedAt: new Date().toISOString()
+          };
+
+          store.dispatch(updateOneBlock({
+            id: existingBlockId,
+            changes: errorChanges
+          }));
+
+          await dexieStorage.updateMessageBlock(existingBlockId, errorChanges);
+        }
+      } catch (updateError) {
+        console.error(`[ResponseHandler] 更新工具错误状态失败:`, updateError);
+      }
+    },
+
+    /**
+     * 处理工具调用进行中事件 - 参考 Cline 的稳定性机制
+     */
+    async handleToolProgress(chunk: { type: 'mcp_tool_in_progress'; responses: any[] }) {
+      try {
+        console.log(`[ResponseHandler] 处理工具进行中，工具数量: ${chunk.responses?.length || 0}`);
+
+        if (!chunk.responses || chunk.responses.length === 0) {
+          return;
+        }
+
+        // 使用静态导入的模块
+
+        // 参考 Cline 的顺序处理机制：逐个处理工具响应，确保稳定性
+        for (const toolResponse of chunk.responses) {
+          try {
+            console.log(`[ResponseHandler] 处理工具响应: toolResponse.id=${toolResponse.id}, tool.name=${toolResponse.tool.name}, tool.id=${toolResponse.tool.id}`);
+
+            // 参考 Cline：如果是 invoking 状态，创建新的工具块
+            if (toolResponse.status === 'invoking') {
+              // 检查是否已存在该工具的块（防止重复创建）
+              const existingBlockId = toolCallIdToBlockIdMap.get(toolResponse.id);
+              if (existingBlockId) {
+                console.log(`[ResponseHandler] 工具块已存在: ${existingBlockId} (toolId: ${toolResponse.id})`);
+                continue;
+              }
+
+              // 参考 Cline：标记工具开始执行
+              globalToolTracker.startTool(toolResponse.id);
+
+              const toolBlock = createToolBlock(messageId, toolResponse.id, {
+                toolName: toolResponse.tool.name,
+                arguments: toolResponse.arguments,
+                status: MessageBlockStatus.PROCESSING,
+                metadata: {
+                  rawMcpToolResponse: toolResponse,
+                  // 参考 Cline 添加更多元数据
+                  toolUseId: toolResponse.id,
+                  startTime: new Date().toISOString(),
+                  serverName: toolResponse.tool.serverName || 'unknown'
+                }
+              });
+
+              console.log(`[ResponseHandler] 创建工具块: blockId=${toolBlock.id}, toolId=${toolResponse.id}, toolName=${(toolBlock as ToolMessageBlock).toolName}`);
+
+              // 🔥 修复：简化操作，避免复杂事务
+              // 1. 更新映射
+              toolCallIdToBlockIdMap.set(toolResponse.id, toolBlock.id);
+
+              // 2. 添加到 Redux 状态
+              store.dispatch(addOneBlock(toolBlock));
+
+              // 3. 保存到数据库
+              await dexieStorage.saveMessageBlock(toolBlock);
+
+              // 4. 更新消息的 blocks 数组
+              store.dispatch(newMessagesActions.upsertBlockReference({
+                messageId: messageId,
+                blockId: toolBlock.id,
+                status: toolBlock.status
+              }));
+
+            } else {
+              console.warn(`[ResponseHandler] 收到未处理的工具状态: ${toolResponse.status} for ID: ${toolResponse.id}`);
+            }
+          } catch (toolError) {
+            // 参考 Cline 的错误处理：单个工具失败不影响其他工具
+            console.error(`[ResponseHandler] 处理单个工具失败 (toolId: ${toolResponse.id}):`, toolError);
+            await this.handleSingleToolError(toolResponse.id, toolError);
+          }
+        }
+      } catch (error) {
+        console.error(`[ResponseHandler] 处理工具进行中事件失败:`, error);
+      }
+    },
+
+    /**
+     * 原子性工具块更新 - 修复事务中的动态导入问题
+     */
+    async atomicToolBlockUpdate(blockId: string, changes: any) {
+      try {
+        // 🔥 修复：在事务外预先导入所需模块
+        const { updateOneBlock } = await import('../../store/slices/messageBlocksSlice');
+
+        await dexieStorage.transaction('rw', [
+          dexieStorage.message_blocks
+        ], async () => {
+          // 1. 更新 Redux 状态
+          store.dispatch(updateOneBlock({
+            id: blockId,
+            changes
+          }));
+
+          // 2. 更新数据库
+          await dexieStorage.updateMessageBlock(blockId, changes);
+        });
+
+        console.log(`[ResponseHandler] 原子性工具块更新完成: blockId: ${blockId}`);
+      } catch (error) {
+        console.error(`[ResponseHandler] 原子性工具块更新失败: blockId: ${blockId}:`, error);
+        throw error;
+      }
+    },
+
+    /**
+     * 计算工具执行时长 - 参考 Cline 的时间跟踪
+     */
+    calculateToolDuration(toolId: string): number | undefined {
+      try {
+        const blockId = toolCallIdToBlockIdMap.get(toolId);
+        if (!blockId) return undefined;
+
+        const block = store.getState().messageBlocks.entities[blockId];
+        if (!block?.metadata?.startTime) return undefined;
+
+        const startTime = new Date(block.metadata.startTime).getTime();
+        const endTime = new Date().getTime();
+        return endTime - startTime;
+      } catch (error) {
+        console.error(`[ResponseHandler] 计算工具执行时长失败:`, error);
+        return undefined;
+      }
+    },
+
+    /**
+     * 清理工具执行 - 参考 Cline 的清理机制
+     */
+    async cleanupToolExecution(toolId: string) {
+      try {
+        // 可以在这里添加工具执行完成后的清理逻辑
+        // 例如：清理临时文件、释放资源等
+        console.log(`[ResponseHandler] 清理工具执行: toolId: ${toolId}`);
+      } catch (error) {
+        console.error(`[ResponseHandler] 清理工具执行失败:`, error);
+      }
+    },
+
+    /**
+     * 处理工具调用完成事件 - 参考 Cline 的稳定性机制
+     */
+    async handleToolComplete(chunk: { type: 'mcp_tool_complete'; responses: any[] }) {
+      try {
+        console.log(`[ResponseHandler] 处理工具完成，工具数量: ${chunk.responses?.length || 0}`);
+
+        if (!chunk.responses || chunk.responses.length === 0) {
+          return;
+        }
+
+        // 🔥 修复：预先导入所需模块
+        // 注意：这里不需要导入，因为我们使用 atomicToolBlockUpdate 方法
+
+        // 参考 Cline 的顺序处理机制：逐个处理工具完成，确保稳定性
+        for (const toolResponse of chunk.responses) {
+          try {
+            // 参考 Cline：直接使用 toolResponse.id 查找对应的工具块ID
+            const existingBlockId = toolCallIdToBlockIdMap.get(toolResponse.id);
+
+            if (toolResponse.status === 'done' || toolResponse.status === 'error') {
+              if (!existingBlockId) {
+                console.error(`[ResponseHandler] 未找到工具调用 ${toolResponse.id} 对应的工具块ID`);
+                continue;
+              }
+
+              const finalStatus = toolResponse.status === 'done' ? MessageBlockStatus.SUCCESS : MessageBlockStatus.ERROR;
+              const changes: any = {
+                content: toolResponse.response,
+                status: finalStatus,
+                metadata: {
+                  rawMcpToolResponse: toolResponse,
+                  // 参考 Cline 添加完成时间
+                  endTime: new Date().toISOString(),
+                  duration: this.calculateToolDuration(toolResponse.id)
+                },
+                updatedAt: new Date().toISOString()
+              };
+
+              if (finalStatus === MessageBlockStatus.ERROR) {
+                changes.error = {
+                  message: `Tool execution failed/error`,
+                  details: toolResponse.response
+                };
+              }
+
+              console.log(`[ResponseHandler] 更新工具块 ${existingBlockId} (toolId: ${toolResponse.id}) 状态为 ${finalStatus}`);
+
+              // 🔥 修复：简化更新操作，避免复杂事务
+
+              // 1. 更新 Redux 状态
+              store.dispatch(updateOneBlock({
+                id: existingBlockId,
+                changes
+              }));
+
+              // 2. 更新数据库
+              await dexieStorage.updateMessageBlock(existingBlockId, changes);
+
+              // 参考 Cline：标记工具执行完成
+              globalToolTracker.completeTool(toolResponse.id, finalStatus === MessageBlockStatus.SUCCESS);
+
+              // 参考 Cline：工具完成后的清理工作
+              await this.cleanupToolExecution(toolResponse.id);
+
+            } else {
+              console.warn(`[ResponseHandler] 收到未处理的工具状态: ${toolResponse.status} for ID: ${toolResponse.id}`);
+            }
+          } catch (toolError) {
+            // 参考 Cline 的错误处理：单个工具失败不影响其他工具
+            console.error(`[ResponseHandler] 处理单个工具完成失败 (toolId: ${toolResponse.id}):`, toolError);
+
+            // 🔥 修复：即使处理失败也要标记工具完成，避免无限等待
+            globalToolTracker.completeTool(toolResponse.id, false);
+
+            await this.handleSingleToolError(toolResponse.id, toolError);
+          }
+        }
+      } catch (error) {
+        console.error(`[ResponseHandler] 处理工具完成事件失败:`, error);
+      }
+    },
+
+    /**
+     * 响应完成处理 - 参考 Cline 的稳定性机制
      * @param finalContent 最终内容
      * @returns 累计的响应内容
      */
     async complete(finalContent?: string) {
-      // 确保最终内容是最新的
-      if (finalContent && finalContent !== accumulatedContent) {
+      // 🔥 关键修复：不要覆盖 accumulatedContent，因为它已经通过流式回调正确累积了所有内容
+      // 在工具调用场景中，finalContent 只包含最后一次响应，会丢失之前的内容
+      console.log(`[ResponseHandler] 完成处理 - finalContent长度: ${finalContent?.length || 0}, accumulatedContent长度: ${accumulatedContent.length}`);
+
+      // 参考 Cline：等待所有工具执行完成
+      try {
+        console.log(`[ResponseHandler] 等待所有工具执行完成...`);
+        await globalToolTracker.waitForAllToolsComplete(60000); // 60秒超时
+        console.log(`[ResponseHandler] 所有工具执行完成`);
+      } catch (error) {
+        console.warn(`[ResponseHandler] 等待工具完成超时:`, error);
+        // 继续处理，不阻塞响应完成
+      }
+
+      // 只有在 accumulatedContent 为空时才使用 finalContent（非流式响应的情况）
+      if (!accumulatedContent.trim() && finalContent) {
         accumulatedContent = finalContent;
+        console.log(`[ResponseHandler] 使用 finalContent 作为最终内容`);
+      } else {
+        console.log(`[ResponseHandler] 保持 accumulatedContent 作为最终内容`);
+      }
+
+      // 🔥 关键：保留 XML 工具调用标签，让 MainTextBlock 处理原位置渲染
+      //
+      // 工具块处理流程：
+      // 1. ResponseHandler 保留原始内容（包含 <tool_use> 标签）
+      // 2. 工具块通过 mcp_tool_in_progress/complete 事件独立创建
+      // 3. MainTextBlock 解析 <tool_use> 标签并在原位置插入工具块
+      // 4. 这样实现了工具块的原位置渲染，而不是在消息末尾显示
+      console.log(`[ResponseHandler] 保留工具标签，支持原位置渲染`);
+
+      // 检查是否包含工具标签（仅用于日志）
+      try {
+        const hasTools = hasToolUseTags(accumulatedContent);
+        if (hasTools) {
+          console.log(`[ResponseHandler] 内容包含工具标签，将在原位置渲染工具块`);
+        }
+      } catch (error) {
+        console.error(`[ResponseHandler] 检查工具标签失败:`, error);
       }
 
       const now = new Date().toISOString();
@@ -449,7 +798,7 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
       });
 
       // 保存最终状态到数据库（根据转换后的块类型）
-      const blockUpdatePromises = [];
+      const blockUpdatePromises: Promise<void>[] = [];
 
       // 保存原始块（思考块或主文本块）
       if (lastBlockType === MessageBlockType.THINKING) {
@@ -481,20 +830,32 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         }));
       }
 
-      // 确保消息的 blocks 数组包含所有相关的块ID
-      const allBlockIds = [];
+      // 🔥 关键修复：确保消息的 blocks 数组包含所有相关的块ID，不覆盖现有的工具块
+      const currentMessage = store.getState().messages.entities[messageId];
+      const existingBlocks = currentMessage?.blocks || [];
+
+      // 收集当前响应处理器创建的块ID
+      const newBlockIds = [];
       if (lastBlockType === MessageBlockType.THINKING) {
-        allBlockIds.push(blockId); // 思考块
+        newBlockIds.push(blockId); // 思考块
         if (mainTextBlockId && mainTextBlockId !== blockId) {
-          allBlockIds.push(mainTextBlockId); // 主文本块
+          newBlockIds.push(mainTextBlockId); // 主文本块
         }
       } else {
-        allBlockIds.push(blockId); // 主文本块
+        newBlockIds.push(blockId); // 主文本块
       }
 
-      console.log(`[ResponseHandler] 完成时的所有块ID: [${allBlockIds.join(', ')}]`);
+      // 合并现有块和新块，避免重复
+      const allBlockIds = [...existingBlocks];
+      for (const newBlockId of newBlockIds) {
+        if (!allBlockIds.includes(newBlockId)) {
+          allBlockIds.push(newBlockId);
+        }
+      }
 
-      // 更新消息的 blocks 数组
+      console.log(`[ResponseHandler] 完成时的所有块ID: [${allBlockIds.join(', ')}]，现有块: [${existingBlocks.join(', ')}]，新块: [${newBlockIds.join(', ')}]`);
+
+      // 更新消息的 blocks 数组（保留现有的工具块等）
       store.dispatch(newMessagesActions.updateMessage({
         id: messageId,
         changes: {
@@ -504,75 +865,76 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         }
       }));
 
-      await Promise.all([
-        ...blockUpdatePromises,
-        (async () => {
-          // 获取当前消息的最新状态（包含所有块引用）
-          const currentMessage = store.getState().messages.entities[messageId];
-          if (currentMessage) {
-            // 如果消息没有版本历史，创建一个初始版本
-            if (!currentMessage.versions || currentMessage.versions.length === 0) {
-              // 使用VersionService创建初始版本
-              try {
-                await versionService.createInitialVersion(
-                  messageId,
-                  blockId,
-                  accumulatedContent,
-                  currentMessage.model
-                );
-              } catch (versionError) {
-                console.error(`[ResponseHandler] 创建初始版本失败:`, versionError);
-              }
+      // 关键修复：先等待所有块更新完成，然后在事务中保存消息状态
+      // 1. 等待所有消息块更新完成（在事务外）
+      await Promise.all(blockUpdatePromises);
+
+      // 2. 使用事务保存消息状态，确保原子性
+      await dexieStorage.transaction('rw', [
+        dexieStorage.messages,
+        dexieStorage.topics
+      ], async () => {
+        // 获取当前消息的最新状态（包含所有块引用）
+        const currentMessageState = store.getState().messages.entities[messageId];
+        if (currentMessageState) {
+          // 获取最新的消息状态（包含所有块引用）
+          const updatedMessage = {
+            ...currentMessageState,
+            blocks: allBlockIds, // 使用我们计算的完整块ID数组
+            status: AssistantMessageStatus.SUCCESS,
+            updatedAt: now
+          };
+
+          console.log(`[ResponseHandler] 保存消息状态，更新后的blocks: [${updatedMessage.blocks?.join(', ')}]`);
+
+          // 更新messages表中的消息（包含最新的blocks数组）
+          await dexieStorage.updateMessage(messageId, {
+            status: AssistantMessageStatus.SUCCESS,
+            updatedAt: now,
+            blocks: allBlockIds // 确保完整的blocks数组被保存
+          });
+
+          // 更新topic.messages数组中的消息
+          const topic = await dexieStorage.topics.get(topicId);
+          if (topic) {
+            // 确保messages数组存在
+            if (!topic.messages) {
+              topic.messages = [];
             }
 
-            // 获取最新的消息状态（包含所有块引用）
-            const updatedMessage = {
-              ...currentMessage,
-              blocks: allBlockIds, // 使用我们计算的完整块ID数组
-              status: AssistantMessageStatus.SUCCESS,
-              updatedAt: now
-            };
+            // 查找消息在数组中的位置
+            const messageIndex = topic.messages.findIndex(m => m.id === messageId);
 
-            console.log(`[ResponseHandler] 保存消息状态，更新后的blocks: [${updatedMessage.blocks?.join(', ')}]`);
+            // 更新或添加消息到话题的messages数组
+            if (messageIndex >= 0) {
+              topic.messages[messageIndex] = updatedMessage;
+            } else {
+              topic.messages.push(updatedMessage);
+            }
 
-            // 关键修复：同时更新messages表和topic.messages数组
-            await Promise.all([
-              // 1. 更新messages表中的消息（包含最新的blocks数组）
-              dexieStorage.updateMessage(messageId, {
-                status: AssistantMessageStatus.SUCCESS,
-                updatedAt: now,
-                blocks: allBlockIds // 确保完整的blocks数组被保存
-              }),
+            console.log(`[ResponseHandler] 保存到topic.messages，blocks: [${updatedMessage.blocks?.join(', ')}]`);
 
-              // 2. 更新topic.messages数组中的消息
-              (async () => {
-                const topic = await dexieStorage.topics.get(topicId);
-                if (topic) {
-                  // 确保messages数组存在
-                  if (!topic.messages) {
-                    topic.messages = [];
-                  }
-
-                  // 查找消息在数组中的位置
-                  const messageIndex = topic.messages.findIndex(m => m.id === messageId);
-
-                  // 更新或添加消息到话题的messages数组
-                  if (messageIndex >= 0) {
-                    topic.messages[messageIndex] = updatedMessage;
-                  } else {
-                    topic.messages.push(updatedMessage);
-                  }
-
-                  console.log(`[ResponseHandler] 保存到topic.messages，blocks: [${updatedMessage.blocks?.join(', ')}]`);
-
-                  // 保存更新后的话题
-                  await dexieStorage.topics.put(topic);
-                }
-              })()
-            ]);
+            // 保存更新后的话题
+            await dexieStorage.topics.put(topic);
           }
-        })()
-      ]);
+        }
+      });
+
+      // 在事务外处理版本创建（避免事务冲突）
+      const finalMessageState = store.getState().messages.entities[messageId];
+      if (finalMessageState && (!finalMessageState.versions || finalMessageState.versions.length === 0)) {
+        // 使用VersionService创建初始版本
+        try {
+          await versionService.createInitialVersion(
+            messageId,
+            blockId,
+            accumulatedContent,
+            finalMessageState.model
+          );
+        } catch (versionError) {
+          console.error(`[ResponseHandler] 创建初始版本失败:`, versionError);
+        }
+      }
 
       // 发送完成事件
       EventEmitter.emit(EVENT_NAMES.MESSAGE_COMPLETE, {
@@ -581,7 +943,7 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         status: 'success'
       });
 
-      // 触发话题自动命名 - 与电脑版保持一致
+      // 触发话题自动命名 - 与最佳实例保持一致
       try {
         // 异步执行话题命名，不阻塞主流程
         setTimeout(async () => {
@@ -601,6 +963,14 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         console.error('[ResponseHandler] 话题自动命名失败:', error);
       }
 
+      // 参考 Cline：清理工具跟踪器
+      try {
+        globalToolTracker.cleanup();
+        console.log(`[ResponseHandler] 工具跟踪器清理完成`);
+      } catch (error) {
+        console.error(`[ResponseHandler] 工具跟踪器清理失败:`, error);
+      }
+
       return accumulatedContent;
     },
 
@@ -610,6 +980,14 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
      */
     async fail(error: Error) {
       console.error(`[ResponseHandler] 响应失败 - 消息ID: ${messageId}, 错误: ${error.message}`);
+
+      // 🔥 新增：检测 API Key 问题并提供重试机制
+      const { checkAndHandleApiKeyError } = await import('../../utils/apiKeyErrorHandler');
+      const isApiKeyError = await checkAndHandleApiKeyError(error, messageId, topicId);
+      if (isApiKeyError) {
+        // API Key 错误已被处理，不需要继续执行错误处理流程
+        return;
+      }
 
       // 获取错误消息
       const errorMessage = error.message || '响应处理失败';
@@ -721,6 +1099,14 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         status: 'error',
         error: errorMessage
       });
+
+      // 参考 Cline：清理工具跟踪器（错误情况）
+      try {
+        globalToolTracker.reset(); // 错误时重置所有状态
+        console.log(`[ResponseHandler] 工具跟踪器重置完成（错误处理）`);
+      } catch (cleanupError) {
+        console.error(`[ResponseHandler] 工具跟踪器重置失败:`, cleanupError);
+      }
 
       throw error;
     }

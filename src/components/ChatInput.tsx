@@ -89,10 +89,59 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // 小于600px
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md')); // 600px-900px
 
-  const inputBgColor = isDarkMode ? alpha(theme.palette.background.paper, 0.5) : alpha(theme.palette.background.paper, 0.8);
-  const iconColor = theme.palette.mode === 'dark' ? theme.palette.primary.light : theme.palette.primary.main;
-  const textColor = isDarkMode ? '#E0E0E0' : '#000000';
-  const disabledColor = isDarkMode ? '#555' : '#ccc';
+  // 获取输入框风格设置
+  const inputBoxStyle = useSelector((state: RootState) =>
+    (state.settings as any).inputBoxStyle || 'default'
+  );
+
+  // 根据风格获取样式
+  const getInputStyles = () => {
+    const baseStyles = {
+      inputBgColor: isDarkMode ? alpha(theme.palette.background.paper, 0.5) : alpha(theme.palette.background.paper, 0.8),
+      iconColor: theme.palette.mode === 'dark' ? theme.palette.primary.light : theme.palette.primary.main,
+      textColor: isDarkMode ? '#E0E0E0' : '#000000',
+      disabledColor: isDarkMode ? '#555' : '#ccc',
+      borderRadius: '20px',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+      border: 'none'
+    };
+
+    switch (inputBoxStyle) {
+      case 'modern':
+        return {
+          ...baseStyles,
+          inputBgColor: isDarkMode
+            ? 'linear-gradient(135deg, rgba(45, 45, 45, 0.9) 0%, rgba(35, 35, 35, 0.9) 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%)',
+          borderRadius: '16px',
+          boxShadow: isDarkMode
+            ? '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2)'
+            : '0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05)',
+          border: isDarkMode
+            ? '1px solid rgba(255, 255, 255, 0.1)'
+            : '1px solid rgba(0, 0, 0, 0.05)',
+          iconColor: isDarkMode ? '#64B5F6' : '#1976D2'
+        };
+      case 'minimal':
+        return {
+          ...baseStyles,
+          inputBgColor: isDarkMode
+            ? 'rgba(40, 40, 40, 0.6)'
+            : 'rgba(255, 255, 255, 0.7)',
+          borderRadius: '12px',
+          boxShadow: 'none',
+          border: isDarkMode
+            ? '1px solid rgba(255, 255, 255, 0.08)'
+            : '1px solid rgba(0, 0, 0, 0.08)',
+          iconColor: isDarkMode ? '#9E9E9E' : '#757575'
+        };
+      default:
+        return baseStyles;
+    }
+  };
+
+  const styles = getInputStyles();
+  const { inputBgColor, iconColor, textColor, disabledColor, borderRadius, boxShadow, border } = styles;
 
   // 判断是否允许发送消息
   const canSendMessage = () => {
@@ -513,13 +562,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
           display: 'flex',
           alignItems: 'center',
         padding: isTablet ? '6px 12px' : isMobile ? '5px 8px' : '5px 8px',
-        borderRadius: '20px',
-        backgroundColor: inputBgColor,
-          border: 'none',
+        borderRadius: borderRadius,
+        background: inputBgColor,
+          border: border,
         minHeight: isTablet ? '48px' : '40px',
-        boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+        boxShadow: boxShadow,
         width: '100%',
-        maxWidth: '100%' // 使用100%宽度，与外部容器一致
+        maxWidth: '100%', // 使用100%宽度，与外部容器一致
+        backdropFilter: inputBoxStyle === 'modern' ? 'blur(10px)' : 'none',
+        WebkitBackdropFilter: inputBoxStyle === 'modern' ? 'blur(10px)' : 'none',
+        transition: 'all 0.3s ease'
       }}>
         {/* 语音图标 */}
           <IconButton

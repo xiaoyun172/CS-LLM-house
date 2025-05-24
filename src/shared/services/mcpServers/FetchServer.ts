@@ -1,5 +1,5 @@
 // Fetch MCP Server
-// 移植自电脑版的 Fetch 服务器
+// 移植自最佳实例的 Fetch 服务器
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -145,16 +145,18 @@ async function fetchResponse(url: string, headers?: Record<string, string>): Pro
     throw new Error('无效的 URL 格式');
   }
 
-  // 使用服务器端代理来避免 CORS 问题
-  const proxyUrl = `/api/fetch-proxy?url=${encodeURIComponent(url)}`;
-  const response = await fetch(proxyUrl, {
+  // 使用 universalFetch 自动选择最佳请求方式
+  const { universalFetch } = await import('../../utils/universalFetch');
+
+  console.log(`[FetchServer] 请求 URL: ${url}`);
+
+  const response = await universalFetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       ...headers
     },
-    // 设置超时
-    signal: AbortSignal.timeout(30000) // 30秒超时
+    timeout: 30000 // 30秒超时
   });
 
   if (!response.ok) {

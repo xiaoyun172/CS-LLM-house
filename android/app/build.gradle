@@ -40,6 +40,15 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    // 现代化WebView解决方案
+    implementation 'androidx.webkit:webkit:1.13.0'
+    implementation 'androidx.work:work-runtime-ktx:2.8.1'
+    implementation 'androidx.preference:preference-ktx:1.2.1'
+
+    // 网络和工具库
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 apply from: 'capacitor.build.gradle'

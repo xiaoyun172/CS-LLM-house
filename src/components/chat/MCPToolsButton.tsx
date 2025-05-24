@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -16,10 +15,11 @@ import {
   Avatar,
   alpha,
   Button,
-  Divider
+  Divider,
+  useTheme
 } from '@mui/material';
 import {
-  Extension as ExtensionIcon,
+  Build as BuildIcon,
   Settings as SettingsIcon,
   Cloud as CloudIcon,
   Storage as StorageIcon,
@@ -27,6 +27,8 @@ import {
   Add as AddIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../shared/store';
 import type { MCPServer, MCPServerType } from '../../shared/types';
 import { mcpService } from '../../shared/services/MCPService';
 
@@ -37,9 +39,67 @@ interface MCPToolsButtonProps {
 
 const MCPToolsButton: React.FC<MCPToolsButtonProps> = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
   const [open, setOpen] = useState(false);
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [activeServers, setActiveServers] = useState<MCPServer[]>([]);
+
+  // 获取输入框风格设置
+  const inputBoxStyle = useSelector((state: RootState) =>
+    (state.settings as any).inputBoxStyle || 'default'
+  );
+
+  // 获取工具栏显示样式设置
+  const toolbarDisplayStyle = useSelector((state: RootState) =>
+    (state.settings as any).toolbarDisplayStyle || 'both'
+  );
+
+  // 根据风格获取工具栏样式
+  const getToolbarStyles = () => {
+    const baseStyles = {
+      buttonBg: isDarkMode ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+      buttonBorder: isDarkMode ? 'rgba(60, 60, 60, 0.8)' : 'rgba(230, 230, 230, 0.8)',
+      buttonShadow: isDarkMode ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.07)',
+      hoverBg: isDarkMode ? 'rgba(40, 40, 40, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+      hoverShadow: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)',
+      borderRadius: '50px',
+      backdropFilter: 'blur(5px)'
+    };
+
+    switch (inputBoxStyle) {
+      case 'modern':
+        return {
+          ...baseStyles,
+          buttonBg: isDarkMode
+            ? 'linear-gradient(135deg, rgba(45, 45, 45, 0.9) 0%, rgba(35, 35, 35, 0.9) 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%)',
+          buttonBorder: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          buttonShadow: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.1)',
+          hoverBg: isDarkMode
+            ? 'linear-gradient(135deg, rgba(55, 55, 55, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%)',
+          hoverShadow: isDarkMode ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.15)',
+          borderRadius: '16px',
+          backdropFilter: 'blur(10px)'
+        };
+      case 'minimal':
+        return {
+          ...baseStyles,
+          buttonBg: isDarkMode ? 'rgba(40, 40, 40, 0.6)' : 'rgba(255, 255, 255, 0.7)',
+          buttonBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+          buttonShadow: 'none',
+          hoverBg: isDarkMode ? 'rgba(50, 50, 50, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+          hoverShadow: 'none',
+          borderRadius: '12px',
+          backdropFilter: 'none'
+        };
+      default:
+        return baseStyles;
+    }
+  };
+
+  const toolbarStyles = getToolbarStyles();
 
   useEffect(() => {
     loadServers();
@@ -105,20 +165,53 @@ const MCPToolsButton: React.FC<MCPToolsButtonProps> = () => {
 
   return (
     <>
-      <IconButton
+      <Box
         onClick={handleOpen}
-        size="small"
         sx={{
-          color: hasActiveServers ? '#10b981' : 'text.secondary',
-          bgcolor: hasActiveServers ? alpha('#10b981', 0.1) : 'transparent',
+          display: 'flex',
+          alignItems: 'center',
+          background: hasActiveServers
+            ? (isDarkMode ? '#424242' : '#10b981')
+            : toolbarStyles.buttonBg,
+          backdropFilter: toolbarStyles.backdropFilter,
+          WebkitBackdropFilter: toolbarStyles.backdropFilter,
+          color: hasActiveServers ? '#FFFFFF' : (isDarkMode ? '#9E9E9E' : '#10b981'),
+          border: `1px solid ${toolbarStyles.buttonBorder}`,
+          borderRadius: toolbarStyles.borderRadius,
+          padding: '6px 12px',
+          margin: '0 4px',
+          cursor: 'pointer',
+          boxShadow: toolbarStyles.buttonShadow ? `0 1px 3px ${toolbarStyles.buttonShadow}` : 'none',
+          transition: 'all 0.3s ease',
+          minWidth: 'max-content',
+          userSelect: 'none',
           '&:hover': {
-            bgcolor: hasActiveServers ? alpha('#10b981', 0.2) : alpha('#000', 0.04)
+            boxShadow: toolbarStyles.hoverShadow ? `0 2px 4px ${toolbarStyles.hoverShadow}` : 'none',
+            background: hasActiveServers
+              ? (isDarkMode ? '#525252' : '#059669')
+              : toolbarStyles.hoverBg,
+            transform: inputBoxStyle === 'modern' ? 'translateY(-1px)' : 'none'
+          },
+          '&:active': {
+            transform: 'scale(0.98)'
           }
         }}
         title="MCP 工具"
       >
-        <ExtensionIcon />
-      </IconButton>
+        {toolbarDisplayStyle !== 'text' && <BuildIcon sx={{ fontSize: '18px' }} />}
+        {toolbarDisplayStyle !== 'icon' && (
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 500,
+              fontSize: '13px',
+              ml: toolbarDisplayStyle === 'both' ? 0.5 : 0
+            }}
+          >
+            工具
+          </Typography>
+        )}
+      </Box>
 
       <Dialog
         open={open}
@@ -138,7 +231,7 @@ const MCPToolsButton: React.FC<MCPToolsButtonProps> = () => {
           gap: 1,
           pb: 1
         }}>
-          <ExtensionIcon sx={{ color: '#10b981' }} />
+          <BuildIcon sx={{ color: '#10b981' }} />
           MCP 工具服务器
           {hasActiveServers && (
             <Chip
@@ -153,7 +246,7 @@ const MCPToolsButton: React.FC<MCPToolsButtonProps> = () => {
         <DialogContent sx={{ p: 0 }}>
           {servers.length === 0 ? (
             <Box sx={{ p: 3, textAlign: 'center' }}>
-              <ExtensionIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+              <BuildIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" gutterBottom>
                 还没有配置 MCP 服务器
               </Typography>

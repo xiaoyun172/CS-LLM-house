@@ -12,6 +12,12 @@ Tool use is formatted using XML-style tags. The tool name is enclosed in opening
   <arguments>{json_arguments}</arguments>
 </tool_use>
 
+⚠️ **CRITICAL FORMAT REQUIREMENTS**:
+- Tool tags MUST be complete and unbroken - NO line breaks or spaces within tag names
+- WRONG: "<tool" + newline + "_use>" or "<tool _use>"
+- CORRECT: "<tool_use>"
+- Broken tag formatting will cause tool calls to FAIL completely!
+
 The tool name should be the exact name of the tool you are using, and the arguments should be a JSON object containing the parameters required by that tool. For example:
 <tool_use>
   <name>python_interpreter</name>
@@ -131,9 +137,11 @@ Assistant: The population of Shanghai is 26 million, while Guangzhou has a popul
 export const AvailableTools = (tools: MCPTool[]) => {
   const availableTools = tools
     .map((tool) => {
+      // 使用 tool.id，现在它会是一个合理的工具名称（如 _aether_fetch_html）
+      const toolName = tool.id || tool.name;
       return `
 <tool>
-  <name>${tool.id}</name>
+  <name>${toolName}</name>
   <description>${tool.description}</description>
   <arguments>
     ${tool.inputSchema ? JSON.stringify(tool.inputSchema) : ''}

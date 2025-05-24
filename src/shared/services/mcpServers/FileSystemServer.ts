@@ -1,5 +1,5 @@
 // FileSystem MCP Server
-// 移植自电脑版的 FileSystem 服务器（移动端版本）
+// 移植自最佳实例的 FileSystem 服务器（移动端版本）
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';

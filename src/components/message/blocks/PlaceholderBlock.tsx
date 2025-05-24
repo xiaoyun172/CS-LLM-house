@@ -8,7 +8,7 @@ interface PlaceholderBlockProps {
 }
 
 /**
- * 占位符块组件 - 参考电脑版实现
+ * 占位符块组件 - 参考最佳实例实现
  * 用于在流式输出开始时显示加载状态
  */
 const PlaceholderBlock: React.FC<PlaceholderBlockProps> = ({ block }) => {
