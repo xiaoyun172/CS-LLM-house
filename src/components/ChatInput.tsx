@@ -23,6 +23,9 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../shared/store';
 import { useTheme } from '@mui/material/styles';
 import { alpha } from '@mui/material/styles';
+import type { ShortcutPhrase, PhraseInsertOptions } from '../shared/types/shortcutLanguage';
+import { useShortcuts, useInputShortcuts } from '../shared/hooks/useShortcuts';
+import QuickAccessButton from './ShortcutPhrase/QuickAccessButton';
 
 interface ChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
@@ -100,6 +103,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const inputBoxStyle = useSelector((state: RootState) =>
     (state.settings as any).inputBoxStyle || 'default'
   );
+
+  // 使用快捷键Hook
+  useShortcuts();
+  useInputShortcuts(textareaRef as React.RefObject<HTMLTextAreaElement>, () => setMessage(''));
 
   // 根据风格获取样式
   const getInputStyles = () => {
@@ -313,6 +320,59 @@ const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
+  // 快捷短语插入处理
+  const handlePhraseInsert = (event: CustomEvent) => {
+    const { phrase, options } = event.detail as { phrase: ShortcutPhrase; options?: PhraseInsertOptions };
+
+    if (!textareaRef.current) return;
+
+    const textarea = textareaRef.current;
+    const currentValue = textarea.value;
+    const cursorPosition = textarea.selectionStart || 0;
+
+    let newValue = '';
+    let newCursorPosition = cursorPosition;
+
+    // 根据插入选项处理文本插入
+    switch (options?.position) {
+      case 'start':
+        newValue = phrase.content + (options.addNewline ? '\n' : '') + currentValue;
+        newCursorPosition = phrase.content.length + (options.addNewline ? 1 : 0);
+        break;
+      case 'end':
+        newValue = currentValue + (options.addNewline ? '\n' : '') + phrase.content;
+        newCursorPosition = newValue.length;
+        break;
+      case 'replace':
+        newValue = phrase.content;
+        newCursorPosition = phrase.content.length;
+        break;
+      case 'cursor':
+      default:
+        const beforeCursor = currentValue.substring(0, cursorPosition);
+        const afterCursor = currentValue.substring(cursorPosition);
+        newValue = beforeCursor + phrase.content + afterCursor;
+        newCursorPosition = cursorPosition + phrase.content.length;
+        break;
+    }
+
+    // 更新消息内容
+    setMessage(newValue);
+
+    // 设置光标位置
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPosition, newCursorPosition);
+
+        // 如果设置了自动发送
+        if (options?.autoSend && newValue.trim()) {
+          handleSubmit();
+        }
+      }
+    }, 0);
+  };
+
   // 添加焦点管理以确保复制粘贴功能正常工作，并处理键盘显示
   useEffect(() => {
     // 设置一个延迟以确保组件挂载后聚焦生效
@@ -333,10 +393,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
       setIsKeyboardVisible(false);
     };
 
+    // 添加快捷短语插入监听器
+    const handlePhraseInsertEvent = (event: Event) => {
+      handlePhraseInsert(event as CustomEvent);
+    };
+
     if (textareaRef.current) {
       textareaRef.current.addEventListener('focus', handleFocus);
       textareaRef.current.addEventListener('blur', handleBlur);
     }
+
+    // 监听全局快捷短语插入事件
+    window.addEventListener('phrase-insert', handlePhraseInsertEvent);
 
     return () => {
       clearTimeout(timer);
@@ -344,6 +412,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         textareaRef.current.removeEventListener('focus', handleFocus);
         textareaRef.current.removeEventListener('blur', handleBlur);
       }
+      window.removeEventListener('phrase-insert', handlePhraseInsertEvent);
     };
   }, []);
 
@@ -673,6 +742,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
             rows={1}
           />
         </div>
+
+        {/* 快捷短语按钮 */}
+        <QuickAccessButton
+          size={isTablet ? "large" : "medium"}
+          color={iconColor}
+        />
 
         {/* 添加按钮，打开上传菜单 */}
         <Tooltip title="添加图片或文件">

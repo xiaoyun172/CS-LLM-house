@@ -12,6 +12,8 @@ import assistantsReducer from './slices/assistantsSlice';
 import messageBlocksReducer from './slices/messageBlocksSlice';
 import uiReducer from './slices/uiSlice';
 import runtimeReducer from './slices/runtimeSlice';
+import shortcutsReducer from './slices/shortcutsSlice';
+import shortcutLanguageReducer from './slices/shortcutLanguageSlice';
 import { eventMiddleware } from './middleware/eventMiddleware';
 import { useDispatch, useSelector } from 'react-redux';
 import type { TypedUseSelectorHook } from 'react-redux';
@@ -27,7 +29,9 @@ const rootReducer = combineReducers({
   assistants: assistantsReducer,
   messageBlocks: messageBlocksReducer,
   ui: uiReducer,
-  runtime: runtimeReducer
+  runtime: runtimeReducer,
+  shortcuts: shortcutsReducer,
+  shortcutLanguage: shortcutLanguageReducer
 });
 
 // 配置Redux持久化
@@ -38,6 +42,7 @@ const persistConfig = {
   // 与电脑端保持一致，不持久化messages和messageBlocks
   // 同时排除assistants，因为它包含非序列化的React元素
   // 排除runtime，因为它包含运行时状态
+  // 确保shortcuts和shortcutLanguage被持久化以解决同步问题
   blacklist: ['messages', 'messageBlocks', 'assistants', 'runtime'],
 };
 

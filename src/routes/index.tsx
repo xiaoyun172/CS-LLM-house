@@ -28,6 +28,9 @@ const MCPServerSettings = lazy(() => import('../pages/Settings/MCPServerSettings
 const MCPServerDetail = lazy(() => import('../pages/Settings/MCPServerDetail'));
 // 导入模型组合页面
 const ModelComboSettings = lazy(() => import('../pages/Settings/ModelComboSettings'));
+// 导入快捷方式相关页面
+const ShortcutsPage = lazy(() => import('../pages/Settings/ShortcutsPage'));
+const ShortcutLanguagePage = lazy(() => import('../pages/Settings/ShortcutLanguagePage'));
 
 // 加载中组件
 const LoadingFallback = () => (
@@ -89,6 +92,8 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/mcp-server" element={<MCPServerSettings />} />
         <Route path="/settings/mcp-server/:serverId" element={<MCPServerDetail />} />
         <Route path="/settings/model-combo" element={<ModelComboSettings />} />
+        <Route path="/settings/shortcuts" element={<ShortcutsPage />} />
+        <Route path="/settings/shortcut-language" element={<ShortcutLanguagePage />} />
         <Route path="/devtools" element={<DevToolsPage />} />
         <Route path="/vue-demo" element={<VueDemoPage />} />
       </Routes>

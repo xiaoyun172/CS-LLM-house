@@ -17,6 +17,7 @@ import type { SiliconFlowImageFormat } from '../shared/types';
 import { EventEmitter, EVENT_NAMES } from '../shared/services/EventService';
 import { TopicService } from '../shared/services/TopicService';
 import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
+import type { ShortcutPhrase, PhraseInsertOptions } from '../shared/types/shortcutLanguage';
 
 interface CompactChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
@@ -101,6 +102,63 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     (state.settings as any).inputBoxStyle || 'default'
   );
 
+  // 快捷短语插入处理
+  const handlePhraseInsert = (event: CustomEvent) => {
+    console.log('[CompactChatInput] 收到phrase-insert事件:', event.detail);
+    const { phrase, options } = event.detail as { phrase: ShortcutPhrase; options?: PhraseInsertOptions };
+
+    if (!textareaRef.current) {
+      console.log('[CompactChatInput] textareaRef.current为空');
+      return;
+    }
+
+    const textarea = textareaRef.current;
+    const currentValue = textarea.value;
+    const cursorPosition = textarea.selectionStart || 0;
+
+    let newValue = '';
+    let newCursorPosition = cursorPosition;
+
+    // 根据插入选项处理文本插入
+    switch (options?.position) {
+      case 'start':
+        newValue = phrase.content + (options.addNewline ? '\n' : '') + currentValue;
+        newCursorPosition = phrase.content.length + (options.addNewline ? 1 : 0);
+        break;
+      case 'end':
+        newValue = currentValue + (options.addNewline ? '\n' : '') + phrase.content;
+        newCursorPosition = newValue.length;
+        break;
+      case 'replace':
+        newValue = phrase.content;
+        newCursorPosition = phrase.content.length;
+        break;
+      case 'cursor':
+      default:
+        const beforeCursor = currentValue.substring(0, cursorPosition);
+        const afterCursor = currentValue.substring(cursorPosition);
+        newValue = beforeCursor + phrase.content + afterCursor;
+        newCursorPosition = cursorPosition + phrase.content.length;
+        break;
+    }
+
+    // 更新消息内容
+    setMessage(newValue);
+
+    // 设置光标位置
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPosition, newCursorPosition);
+
+        // 如果设置了自动发送
+        if (options?.autoSend && newValue.trim()) {
+          handleSubmit();
+        }
+      }
+    }, 0);
+  };
+
   // 自动调整文本框高度
   useEffect(() => {
     if (textareaRef.current) {
@@ -108,6 +166,20 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [message]);
+
+  // 添加快捷短语监听器
+  useEffect(() => {
+    const handlePhraseInsertEvent = (event: Event) => {
+      handlePhraseInsert(event as CustomEvent);
+    };
+
+    // 监听全局快捷短语插入事件
+    window.addEventListener('phrase-insert', handlePhraseInsertEvent);
+
+    return () => {
+      window.removeEventListener('phrase-insert', handlePhraseInsertEvent);
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
