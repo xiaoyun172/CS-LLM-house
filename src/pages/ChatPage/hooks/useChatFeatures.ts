@@ -64,14 +64,15 @@ export const useChatFeatures = (
   };
 
   // 处理图像生成提示词
-  const handleImagePrompt = (prompt: string) => {
+  const handleImagePrompt = (prompt: string, images?: SiliconFlowImageFormat[], files?: any[]) => {
     if (!currentTopic || !prompt.trim() || !selectedModel) return;
 
     console.log(`[useChatFeatures] 处理图像生成提示词: ${prompt}`);
     console.log(`[useChatFeatures] 使用模型: ${selectedModel.id}`);
 
-    // 使用正常的消息发送流程，让messageThunk处理图像生成
-    handleSendMessage(prompt, undefined, false); // 禁用工具，因为图像生成不需要工具
+    // 直接使用正常的消息发送流程，让messageThunk处理图像生成
+    // 不再调用handleSendMessage，避免重复发送
+    handleSendMessage(prompt, images, false, files); // 禁用工具，因为图像生成不需要工具
   };
 
   // 处理网络搜索请求
@@ -265,7 +266,7 @@ export const useChatFeatures = (
   const handleMessageSend = async (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => {
     // 如果处于图像生成模式，则调用图像生成处理函数
     if (imageGenerationMode) {
-      handleImagePrompt(content);
+      handleImagePrompt(content, images, files);
       // 关闭图像生成模式
       setImageGenerationMode(false);
       return;

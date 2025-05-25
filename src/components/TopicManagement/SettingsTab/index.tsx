@@ -5,17 +5,16 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  ListItemSecondaryAction,
   Divider,
   Typography,
   Avatar,
   IconButton,
-  Tooltip,
-  ListItemButton
+  Tooltip
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import FaceIcon from '@mui/icons-material/Face';
 import TuneIcon from '@mui/icons-material/Tune';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useNavigate } from 'react-router-dom';
 import type { MathRendererType } from '../../../shared/types';
 import type { ThinkingOption } from '../../../shared/config/reasoningConfig';
@@ -25,6 +24,7 @@ import MCPSidebarControls from '../../chat/MCPSidebarControls';
 import ThrottleLevelSelector from './ThrottleLevelSelector';
 import ContextSettings from './ContextSettings';
 import CodeBlockSettings from './CodeBlockSettings';
+
 
 interface Setting {
   id: string;
@@ -90,8 +90,7 @@ export default function SettingsTab({
         if (appSettings.mathRenderer) setMathRenderer(appSettings.mathRenderer);
         if (appSettings.defaultThinkingEffort) setThinkingEffort(appSettings.defaultThinkingEffort);
 
-        // 加载流式输出设置
-        console.log(`[SettingsTab] 从localStorage加载的设置:`, appSettings);
+
       }
 
       // 加载用户头像
@@ -109,6 +108,7 @@ export default function SettingsTab({
     { id: 'streamOutput', name: '流式输出', defaultValue: true, description: '实时显示AI回答，打字机效果' },
     { id: 'showMessageDivider', name: '对话分割线', defaultValue: true, description: '在对话轮次之间显示分割线' },
     { id: 'copyableCodeBlocks', name: '代码块可复制', defaultValue: true, description: '允许复制代码块的内容' },
+    { id: 'renderUserInputAsMarkdown', name: '渲染用户输入', defaultValue: true, description: '是否渲染用户输入的Markdown格式（关闭后用户消息将显示为纯文本）' },
   ];
 
   // 处理头像上传
@@ -134,7 +134,11 @@ export default function SettingsTab({
         ...appSettings,
         [settingId]: value
       }));
-      console.log(`[SettingsTab] 设置已保存: ${settingId} = ${value}`);
+
+      // 触发自定义事件，通知其他组件设置已变化
+      window.dispatchEvent(new CustomEvent('appSettingsChanged', {
+        detail: { settingId, value }
+      }));
     } catch (error) {
       console.error('保存设置失败', error);
     }
@@ -164,6 +168,24 @@ export default function SettingsTab({
           secondary="设置助手行为和外观"
           primaryTypographyProps={{ fontWeight: 'medium' }}
         />
+        <ListItemSecondaryAction>
+          <Tooltip title="应用设置">
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => navigate('/settings')}
+              sx={{
+                bgcolor: 'rgba(25, 118, 210, 0.08)',
+                border: '1px solid rgba(25, 118, 210, 0.2)',
+                '&:hover': {
+                  bgcolor: 'rgba(25, 118, 210, 0.12)',
+                }
+              }}
+            >
+              <TuneIcon />
+            </IconButton>
+          </Tooltip>
+        </ListItemSecondaryAction>
       </ListItem>
 
       <Divider sx={{ my: 1 }} />
@@ -212,6 +234,8 @@ export default function SettingsTab({
           </IconButton>
         </Tooltip>
       </ListItem>
+
+      <Divider sx={{ my: 1 }} />
 
       {/* 使用SettingGroups渲染设置分组 */}
       <SettingGroups groups={settingGroups} onSettingChange={handleSettingChange} />
@@ -297,35 +321,6 @@ export default function SettingsTab({
           }
         }}
       />
-
-      <Divider sx={{ my: 1 }} />
-
-      {/* 应用设置入口 */}
-      <ListItemButton
-        onClick={() => navigate('/settings')}
-        sx={{
-          px: 2,
-          py: 1.5,
-          borderRadius: 1,
-          mx: 1,
-          mb: 1,
-          bgcolor: 'rgba(25, 118, 210, 0.08)',
-          border: '1px solid rgba(25, 118, 210, 0.2)',
-          '&:hover': {
-            bgcolor: 'rgba(25, 118, 210, 0.12)',
-          }
-        }}
-      >
-        <ListItemIcon sx={{ minWidth: '40px' }}>
-          <TuneIcon sx={{ color: 'primary.main' }} />
-        </ListItemIcon>
-        <ListItemText
-          primary="应用设置"
-          secondary="外观、行为、模型等设置"
-          primaryTypographyProps={{ fontWeight: 'medium' }}
-        />
-        <ChevronRightIcon sx={{ color: 'text.secondary' }} />
-      </ListItemButton>
 
       <Divider sx={{ my: 1 }} />
 

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Box, Typography, IconButton } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, IconButton, Chip, LinearProgress, Tooltip, useTheme } from '@mui/material';
 import CancelIcon from '@mui/icons-material/Cancel';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -8,99 +8,345 @@ import ImageIcon from '@mui/icons-material/Image';
 import AudioFileIcon from '@mui/icons-material/AudioFile';
 import VideoFileIcon from '@mui/icons-material/VideoFile';
 import TextSnippetIcon from '@mui/icons-material/TextSnippet';
+import CodeIcon from '@mui/icons-material/Code';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import type { FileContent } from '../shared/types';
 import { FileUploadService } from '../shared/services/FileUploadService';
+import { getFileTypeByExtension } from '../shared/utils/fileUtils';
+
+export type FileStatus = 'uploading' | 'success' | 'error' | 'validating';
 
 interface FilePreviewProps {
   file: FileContent;
   onRemove: () => void;
+  status?: FileStatus;
+  progress?: number;
+  error?: string;
+  compact?: boolean; // 紧凑模式，用于集成到输入框内部
+  draggable?: boolean; // 是否支持拖拽
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
 }
 
-const FilePreview: React.FC<FilePreviewProps> = ({ file, onRemove }) => {
-  // 获取文件图标
+const FilePreview: React.FC<FilePreviewProps> = ({
+  file,
+  onRemove,
+  status = 'success',
+  progress = 0,
+  error,
+  compact = false,
+  draggable = false,
+  onDragStart,
+  onDragEnd
+}) => {
+  const theme = useTheme();
+  const [isDragging, setIsDragging] = useState(false);
+
+  // 获取文件类型
+  const fileType = getFileTypeByExtension(file.name);
+
+  // 获取文件图标和颜色
   const getFileIcon = () => {
     const mimeType = file.mimeType.toLowerCase();
-    
+    const iconSize = compact ? 'small' : 'medium';
+
     if (mimeType.startsWith('image/')) {
-      return <ImageIcon color="primary" />;
+      return <ImageIcon color="primary" fontSize={iconSize} />;
     } else if (mimeType.startsWith('video/')) {
-      return <VideoFileIcon color="error" />;
+      return <VideoFileIcon color="error" fontSize={iconSize} />;
     } else if (mimeType.startsWith('audio/')) {
-      return <AudioFileIcon color="success" />;
+      return <AudioFileIcon color="success" fontSize={iconSize} />;
     } else if (mimeType.includes('pdf')) {
-      return <PictureAsPdfIcon sx={{ color: '#e53935' }} />;
+      return <PictureAsPdfIcon sx={{ color: '#e53935' }} fontSize={iconSize} />;
     } else if (mimeType.includes('word') || mimeType.includes('document')) {
-      return <DescriptionIcon sx={{ color: '#1565c0' }} />;
+      return <DescriptionIcon sx={{ color: '#1565c0' }} fontSize={iconSize} />;
+    } else if (fileType === 'code') {
+      return <CodeIcon sx={{ color: '#ff9800' }} fontSize={iconSize} />;
     } else if (mimeType.includes('text/')) {
-      return <TextSnippetIcon sx={{ color: '#757575' }} />;
+      return <TextSnippetIcon sx={{ color: '#757575' }} fontSize={iconSize} />;
     } else {
-      return <InsertDriveFileIcon color="action" />;
+      return <InsertDriveFileIcon color="action" fontSize={iconSize} />;
     }
   };
 
+  // 获取状态图标
+  const getStatusIcon = () => {
+    switch (status) {
+      case 'success':
+        return <CheckCircleIcon sx={{ color: '#4caf50', fontSize: 16 }} />;
+      case 'error':
+        return <ErrorIcon sx={{ color: '#f44336', fontSize: 16 }} />;
+      case 'uploading':
+      case 'validating':
+        return null; // 显示进度条
+      default:
+        return null;
+    }
+  };
+
+  // 获取文件类型标签颜色
+  const getTypeChipColor = () => {
+    switch (fileType) {
+      case 'image': return '#2196f3';
+      case 'video': return '#f44336';
+      case 'audio': return '#4caf50';
+      case 'code': return '#ff9800';
+      case 'text': return '#757575';
+      case 'document': return '#9c27b0';
+      default: return '#607d8b';
+    }
+  };
+
+  // 拖拽处理
+  const handleDragStart = (e: React.DragEvent) => {
+    setIsDragging(true);
+    onDragStart?.(e);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    setIsDragging(false);
+    onDragEnd?.(e);
+  };
+
+  if (compact) {
+    // 紧凑模式 - 集成到输入框内部
+    return (
+      <Tooltip title={error || `${file.name} (${FileUploadService.formatFileSize(file.size)})`}>
+        <Box
+          draggable={draggable}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '4px 8px',
+            margin: '2px',
+            borderRadius: '16px',
+            backgroundColor: status === 'error' ? 'rgba(244, 67, 54, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+            border: status === 'error' ? '1px solid rgba(244, 67, 54, 0.3)' : 'none',
+            position: 'relative',
+            cursor: draggable ? 'grab' : 'default',
+            opacity: isDragging ? 0.5 : 1,
+            transition: 'all 0.2s ease',
+            maxWidth: '200px',
+            '&:hover': {
+              backgroundColor: status === 'error' ? 'rgba(244, 67, 54, 0.15)' : 'rgba(0, 0, 0, 0.12)',
+            }
+          }}
+        >
+          {/* 拖拽指示器 */}
+          {draggable && (
+            <DragIndicatorIcon sx={{ fontSize: 12, color: 'rgba(0, 0, 0, 0.4)', marginRight: '4px' }} />
+          )}
+
+          {/* 文件图标 */}
+          <Box sx={{ marginRight: '6px', display: 'flex', alignItems: 'center' }}>
+            {getFileIcon()}
+          </Box>
+
+          {/* 文件名 */}
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 500,
+              textOverflow: 'ellipsis',
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              maxWidth: '100px',
+              marginRight: '6px'
+            }}
+          >
+            {file.name}
+          </Typography>
+
+          {/* 状态图标 */}
+          {getStatusIcon()}
+
+          {/* 删除按钮 */}
+          <IconButton
+            size="small"
+            onClick={onRemove}
+            sx={{
+              marginLeft: '4px',
+              padding: '2px',
+              width: '16px',
+              height: '16px',
+              color: 'rgba(0, 0, 0, 0.6)',
+              '&:hover': {
+                color: '#f44336',
+                backgroundColor: 'rgba(244, 67, 54, 0.1)',
+              },
+            }}
+          >
+            <CancelIcon sx={{ fontSize: 12 }} />
+          </IconButton>
+
+          {/* 进度条 */}
+          {(status === 'uploading' || status === 'validating') && (
+            <LinearProgress
+              variant={progress > 0 ? 'determinate' : 'indeterminate'}
+              value={progress}
+              sx={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: '2px',
+                borderRadius: '0 0 16px 16px',
+              }}
+            />
+          )}
+        </Box>
+      </Tooltip>
+    );
+  }
+
+  // 标准模式 - 独立显示
   return (
     <Box
+      draggable={draggable}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       sx={{
         display: 'flex',
         alignItems: 'center',
-        padding: '8px 12px',
-        borderRadius: '8px',
-        backgroundColor: 'rgba(0, 0, 0, 0.05)',
+        padding: '12px',
+        borderRadius: '12px',
+        backgroundColor: status === 'error'
+          ? 'rgba(244, 67, 54, 0.05)'
+          : theme.palette.mode === 'dark'
+            ? 'rgba(255, 255, 255, 0.05)'
+            : 'rgba(0, 0, 0, 0.03)',
+        border: status === 'error' ? '1px solid rgba(244, 67, 54, 0.3)' : '1px solid rgba(0, 0, 0, 0.08)',
         position: 'relative',
-        margin: '4px 0',
+        margin: '8px 0',
         maxWidth: '100%',
+        cursor: draggable ? 'grab' : 'default',
+        opacity: isDragging ? 0.5 : 1,
+        transition: 'all 0.2s ease',
+        '&:hover': {
+          backgroundColor: status === 'error'
+            ? 'rgba(244, 67, 54, 0.08)'
+            : theme.palette.mode === 'dark'
+              ? 'rgba(255, 255, 255, 0.08)'
+              : 'rgba(0, 0, 0, 0.06)',
+        }
       }}
     >
+      {/* 拖拽指示器 */}
+      {draggable && (
+        <Box sx={{ marginRight: '8px', display: 'flex', alignItems: 'center' }}>
+          <DragIndicatorIcon sx={{ color: 'rgba(0, 0, 0, 0.4)' }} />
+        </Box>
+      )}
+
       {/* 文件图标 */}
-      <Box sx={{ marginRight: '8px', display: 'flex', alignItems: 'center' }}>
+      <Box sx={{ marginRight: '12px', display: 'flex', alignItems: 'center' }}>
         {getFileIcon()}
       </Box>
-      
+
       {/* 文件信息 */}
-      <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-        <Typography
-          variant="body2"
-          sx={{
-            fontWeight: 500,
-            textOverflow: 'ellipsis',
-            overflow: 'hidden',
-            whiteSpace: 'nowrap',
-            maxWidth: '200px',
-          }}
-        >
-          {file.name}
-        </Typography>
-        <Typography
-          variant="caption"
-          color="textSecondary"
-          sx={{ display: 'block' }}
-        >
-          {FileUploadService.formatFileSize(file.size)}
-        </Typography>
+      <Box sx={{ flexGrow: 1, overflow: 'hidden', marginRight: '12px' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 500,
+              textOverflow: 'ellipsis',
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              maxWidth: '250px',
+              marginRight: '8px'
+            }}
+          >
+            {file.name}
+          </Typography>
+
+          {/* 文件类型标签 */}
+          <Chip
+            label={fileType.toUpperCase()}
+            size="small"
+            sx={{
+              height: '20px',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              backgroundColor: getTypeChipColor(),
+              color: 'white',
+              '& .MuiChip-label': {
+                padding: '0 6px'
+              }
+            }}
+          />
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Typography variant="caption" color="textSecondary">
+            {FileUploadService.formatFileSize(file.size)}
+          </Typography>
+
+          {/* 状态信息 */}
+          {status === 'uploading' && (
+            <Typography variant="caption" color="primary">
+              上传中... {progress > 0 && `${Math.round(progress)}%`}
+            </Typography>
+          )}
+          {status === 'validating' && (
+            <Typography variant="caption" color="warning.main">
+              验证中...
+            </Typography>
+          )}
+          {status === 'error' && error && (
+            <Typography variant="caption" color="error">
+              {error}
+            </Typography>
+          )}
+          {status === 'success' && (
+            <Typography variant="caption" color="success.main">
+              就绪
+            </Typography>
+          )}
+        </Box>
       </Box>
-      
+
+      {/* 状态图标 */}
+      <Box sx={{ marginRight: '8px' }}>
+        {getStatusIcon()}
+      </Box>
+
       {/* 删除按钮 */}
       <IconButton
         size="small"
         onClick={onRemove}
         sx={{
-          position: 'absolute',
-          top: -8,
-          right: -8,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          color: 'white',
-          padding: '2px',
-          width: '20px',
-          height: '20px',
+          color: 'rgba(0, 0, 0, 0.6)',
           '&:hover': {
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: '#f44336',
+            backgroundColor: 'rgba(244, 67, 54, 0.1)',
           },
         }}
       >
         <CancelIcon fontSize="small" />
       </IconButton>
+
+      {/* 进度条 */}
+      {(status === 'uploading' || status === 'validating') && (
+        <LinearProgress
+          variant={progress > 0 ? 'determinate' : 'indeterminate'}
+          value={progress}
+          sx={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '3px',
+            borderRadius: '0 0 12px 12px',
+          }}
+        />
+      )}
     </Box>
   );
 };
 
-export default FilePreview; 
+export default FilePreview;

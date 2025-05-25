@@ -6,7 +6,7 @@ import { getStorageItem, setStorageItem } from '../../utils/storage';
 // 存储键名
 const STORAGE_KEY = 'webSearchSettings';
 
-// 默认提供商配置 - 包含付费服务和本地搜索引擎
+// 默认提供商配置 - 仅包含付费API服务
 const getDefaultProviders = (): WebSearchProviderConfig[] => [
   {
     id: 'tavily',
@@ -38,16 +38,6 @@ const getDefaultProviders = (): WebSearchProviderConfig[] => [
     name: 'Firecrawl',
     apiHost: 'https://api.firecrawl.dev',
     apiKey: ''
-  },
-  {
-    id: 'local-google',
-    name: 'Google',
-    url: 'https://www.google.com/search?q=%s'
-  },
-  {
-    id: 'local-bing',
-    name: 'Bing',
-    url: 'https://cn.bing.com/search?q=%s&ensearch=1'
   }
 ];
 

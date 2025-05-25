@@ -73,6 +73,32 @@ const AddProviderPage: React.FC = () => {
     }
   };
 
+  // 获取供应商类型对应的默认baseURL
+  const getDefaultBaseUrl = (type: string): string => {
+    switch (type) {
+      case 'openai':
+        return 'https://api.openai.com/v1';
+      case 'azure-openai':
+        return ''; // Azure OpenAI需要用户自定义endpoint
+      case 'anthropic':
+        return 'https://api.anthropic.com/v1';
+      case 'gemini':
+        return 'https://generativelanguage.googleapis.com/v1';
+      case 'grok':
+        return 'https://api.x.ai/v1';
+      case 'deepseek':
+        return 'https://api.deepseek.com';
+      case 'zhipu':
+        return 'https://open.bigmodel.cn/api/paas/v4/';
+      case 'siliconflow':
+        return 'https://api.siliconflow.cn/v1';
+      case 'volcengine':
+        return 'https://ark.cn-beijing.volces.com/api/v3';
+      default:
+        return '';
+    }
+  };
+
   const handleSubmit = () => {
     // 获取一个随机颜色
     const colors = ['#10a37f', '#4285f4', '#b83280', '#8b5cf6', '#6366f1', '#ef4444', '#f59e0b', '#22c55e'];
@@ -86,15 +112,7 @@ const AddProviderPage: React.FC = () => {
       color: randomColor,
       isEnabled: true,
       apiKey: '',
-      baseUrl: providerType === 'openai' ? 'https://api.openai.com/v1' :
-               providerType === 'azure-openai' ? '' : // Azure OpenAI需要用户自定义endpoint
-               providerType === 'anthropic' ? 'https://api.anthropic.com/v1' :
-               providerType === 'gemini' ? 'https://generativelanguage.googleapis.com/v1' :
-               providerType === 'grok' ? 'https://api.x.ai/v1' :
-               providerType === 'deepseek' ? 'https://api.deepseek.com' :
-               providerType === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4/' :
-               providerType === 'siliconflow' ? 'https://api.siliconflow.cn/v1' :
-               providerType === 'volcengine' ? 'https://ark.cn-beijing.volces.com/api/v3/' : '',
+      baseUrl: getDefaultBaseUrl(providerType),
       models: [],
       providerType: providerType // 保存供应商类型以便后续判断API调用
     };

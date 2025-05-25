@@ -612,8 +612,8 @@ const prepareMessagesForApi = async (
         if (fileBlock.file) {
           const fileType = getFileTypeByExtension(fileBlock.file.name || fileBlock.file.origin_name || '');
 
-          // 只处理文本和文档类型的文件
-          if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+          // 处理文本、代码和文档类型的文件
+          if (fileType === FileTypes.TEXT || fileType === FileTypes.CODE || fileType === FileTypes.DOCUMENT) {
             try {
               const fileContent = await readFileContent(fileBlock.file);
               if (fileContent) {

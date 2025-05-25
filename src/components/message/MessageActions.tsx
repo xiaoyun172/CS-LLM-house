@@ -15,13 +15,20 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button
+  Button,
+  Tooltip
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import HistoryIcon from '@mui/icons-material/History';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
+import SendIcon from '@mui/icons-material/Send';
 import type { Message } from '../../shared/types/newMessage.ts';
 import MessageEditor from './MessageEditor';
 import { TTSService } from '../../shared/services/TTSService';
@@ -38,7 +45,7 @@ interface MessageActionsProps {
   onDelete?: (messageId: string) => void;
   onSwitchVersion?: (messageId: string) => void;
   onResend?: (messageId: string) => void; // 新增重新发送回调
-  renderMode?: 'full' | 'menuOnly'; // 新增渲染模式参数
+  renderMode?: 'full' | 'menuOnly' | 'toolbar'; // 新增渲染模式参数
 }
 
 const MessageActions: React.FC<MessageActionsProps> = ({
@@ -416,6 +423,156 @@ const MessageActions: React.FC<MessageActionsProps> = ({
         >
           <MoreVertIcon sx={{ fontSize: '0.9rem' }} />
         </IconButton>
+      )}
+
+      {/* 工具栏模式 - 显示操作按钮 */}
+      {renderMode === 'toolbar' && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {/* 复制按钮 */}
+          <Tooltip title="复制内容">
+            <IconButton
+              size="small"
+              onClick={handleCopyContent}
+              sx={{
+                padding: 0.5,
+                opacity: 0.7,
+                '&:hover': { opacity: 1 }
+              }}
+            >
+              <ContentCopyIcon sx={{ fontSize: '1rem' }} />
+            </IconButton>
+          </Tooltip>
+
+          {/* 编辑按钮 */}
+          <Tooltip title="编辑">
+            <IconButton
+              size="small"
+              onClick={handleEditClick}
+              sx={{
+                padding: 0.5,
+                opacity: 0.7,
+                '&:hover': { opacity: 1 }
+              }}
+            >
+              <EditIcon sx={{ fontSize: '1rem' }} />
+            </IconButton>
+          </Tooltip>
+
+          {/* 保存按钮 */}
+          <Tooltip title="保存内容">
+            <IconButton
+              size="small"
+              onClick={handleSaveContent}
+              sx={{
+                padding: 0.5,
+                opacity: 0.7,
+                '&:hover': { opacity: 1 }
+              }}
+            >
+              <SaveIcon sx={{ fontSize: '1rem' }} />
+            </IconButton>
+          </Tooltip>
+
+          {/* 用户消息：重新发送 */}
+          {isUser && (
+            <Tooltip title="重新发送">
+              <IconButton
+                size="small"
+                onClick={handleResendClick}
+                sx={{
+                  padding: 0.5,
+                  opacity: 0.7,
+                  '&:hover': { opacity: 1 }
+                }}
+              >
+                <SendIcon sx={{ fontSize: '1rem' }} />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {/* AI消息：重新生成 */}
+          {!isUser && (
+            <Tooltip title="重新生成">
+              <IconButton
+                size="small"
+                onClick={handleRegenerateClick}
+                sx={{
+                  padding: 0.5,
+                  opacity: 0.7,
+                  '&:hover': { opacity: 1 }
+                }}
+              >
+                <RefreshIcon sx={{ fontSize: '1rem' }} />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {/* AI消息：语音播放 */}
+          {!isUser && enableTTS && (
+            <Tooltip title={isPlaying ? "停止播放" : "语音播放"}>
+              <IconButton
+                size="small"
+                onClick={handleTextToSpeech}
+                sx={{
+                  padding: 0.5,
+                  opacity: isPlaying ? 1 : 0.7,
+                  color: isPlaying ? theme.palette.primary.main : 'inherit',
+                  '&:hover': { opacity: 1 }
+                }}
+              >
+                {isPlaying ? <VolumeUpIcon sx={{ fontSize: '1rem' }} /> : <VolumeOffIcon sx={{ fontSize: '1rem' }} />}
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {/* AI消息：版本历史 */}
+          {!isUser && hasMultipleVersions && (
+            <Tooltip title="版本历史">
+              <IconButton
+                size="small"
+                onClick={(e) => setVersionAnchorEl(e.currentTarget)}
+                sx={{
+                  padding: 0.5,
+                  opacity: 0.7,
+                  '&:hover': { opacity: 1 }
+                }}
+              >
+                <HistoryIcon sx={{ fontSize: '1rem' }} />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {/* 分支按钮 */}
+          <Tooltip title="创建分支">
+            <IconButton
+              size="small"
+              onClick={handleCreateBranch}
+              sx={{
+                padding: 0.5,
+                opacity: 0.7,
+                '&:hover': { opacity: 1 }
+              }}
+            >
+              <CallSplitIcon sx={{ fontSize: '1rem' }} />
+            </IconButton>
+          </Tooltip>
+
+          {/* 删除按钮 */}
+          <Tooltip title="删除">
+            <IconButton
+              size="small"
+              onClick={handleDeleteClick}
+              sx={{
+                padding: 0.5,
+                opacity: 0.7,
+                color: theme.palette.error.main,
+                '&:hover': { opacity: 1 }
+              }}
+            >
+              <DeleteIcon sx={{ fontSize: '1rem' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       )}
 
       {/* 版本切换弹出框 */}

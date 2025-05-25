@@ -93,21 +93,12 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
         return '🤖';
       case 'firecrawl':
         return '🔥';
-      case 'local-google':
-        return '🌍';
-      case 'local-bing':
-        return '🔎';
       default:
         return '🔍';
     }
   };
 
   const getProviderStatus = (provider: WebSearchProviderConfig) => {
-    // 本地搜索提供商不需要配置
-    if (provider.id === 'local-google' || provider.id === 'local-bing') {
-      return { available: true, label: '本地搜索' };
-    }
-
     // 检查API密钥
     if (provider.apiKey && provider.apiKey.trim()) {
       return { available: true, label: 'API密钥' };

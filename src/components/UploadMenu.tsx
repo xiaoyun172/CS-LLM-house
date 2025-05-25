@@ -1,8 +1,9 @@
 import React from 'react';
-import { Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Menu, MenuItem, ListItemIcon, ListItemText, Divider } from '@mui/material';
 import PhotoIcon from '@mui/icons-material/Photo';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 
 interface UploadMenuProps {
   anchorEl: HTMLElement | null;
@@ -10,6 +11,8 @@ interface UploadMenuProps {
   onClose: () => void;
   onImageUpload: (source: 'camera' | 'photos') => void;
   onFileUpload: () => void;
+  onMultiModelSend?: () => void;
+  showMultiModel?: boolean;
 }
 
 const UploadMenu: React.FC<UploadMenuProps> = ({
@@ -18,6 +21,8 @@ const UploadMenu: React.FC<UploadMenuProps> = ({
   onClose,
   onImageUpload,
   onFileUpload,
+  onMultiModelSend,
+  showMultiModel = false,
 }) => {
   return (
     <Menu
@@ -40,7 +45,7 @@ const UploadMenu: React.FC<UploadMenuProps> = ({
         },
       }}
     >
-      <MenuItem 
+      <MenuItem
         onClick={() => {
           onImageUpload('photos');
           onClose();
@@ -52,8 +57,8 @@ const UploadMenu: React.FC<UploadMenuProps> = ({
         </ListItemIcon>
         <ListItemText primary="从相册选择图片" />
       </MenuItem>
-      
-      <MenuItem 
+
+      <MenuItem
         onClick={() => {
           onImageUpload('camera');
           onClose();
@@ -65,8 +70,8 @@ const UploadMenu: React.FC<UploadMenuProps> = ({
         </ListItemIcon>
         <ListItemText primary="拍摄照片" />
       </MenuItem>
-      
-      <MenuItem 
+
+      <MenuItem
         onClick={() => {
           onFileUpload();
           onClose();
@@ -78,8 +83,36 @@ const UploadMenu: React.FC<UploadMenuProps> = ({
         </ListItemIcon>
         <ListItemText primary="上传文件" />
       </MenuItem>
+
+      {/* 多模型选项 */}
+      {showMultiModel && onMultiModelSend && (
+        <>
+          <Divider sx={{ my: 0.5 }} />
+          <MenuItem
+            onClick={() => {
+              onMultiModelSend();
+              onClose();
+            }}
+            sx={{ py: 1.5 }}
+          >
+            <ListItemIcon>
+              <CompareArrowsIcon sx={{ color: '#FF9800' }} />
+            </ListItemIcon>
+            <ListItemText
+              primary="发送到多个模型"
+              secondary="同时向多个AI模型发送消息"
+              sx={{
+                '& .MuiListItemText-secondary': {
+                  fontSize: '0.75rem',
+                  color: 'text.secondary'
+                }
+              }}
+            />
+          </MenuItem>
+        </>
+      )}
     </Menu>
   );
 };
 
-export default UploadMenu; 
+export default UploadMenu;

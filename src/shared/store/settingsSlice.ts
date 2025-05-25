@@ -42,6 +42,8 @@ interface SettingsState {
   showUserName: boolean; // 是否显示用户名称
   showModelAvatar: boolean; // 是否显示模型头像
   showModelName: boolean; // 是否显示模型名称
+  messageStyle: 'plain' | 'bubble'; // 消息样式：简洁或气泡
+  renderUserInputAsMarkdown: boolean; // 是否渲染用户输入的markdown
   // 顶部工具栏设置
   topToolbar: {
     showSettingsButton: boolean; // 是否显示设置按钮
@@ -100,10 +102,13 @@ const initialProviders: ModelProvider[] = [
     isEnabled: true,
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
+    providerType: 'openai',
     models: [
       { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', enabled: true, isDefault: true },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', enabled: true, isDefault: false },
       { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', enabled: true, isDefault: false },
-      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', enabled: true, isDefault: false },
+      { id: 'o1', name: 'o1', provider: 'openai', enabled: true, isDefault: false },
+      { id: 'o1-mini', name: 'o1-mini', provider: 'openai', enabled: true, isDefault: false },
     ]
   },
   {
@@ -114,9 +119,11 @@ const initialProviders: ModelProvider[] = [
     isEnabled: true,
     apiKey: '',
     baseUrl: 'https://generativelanguage.googleapis.com/v1',
+    providerType: 'gemini',
     models: [
-      { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro', provider: 'gemini', enabled: true, isDefault: false },
-      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini', enabled: true, isDefault: false },
+      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Experimental', provider: 'gemini', enabled: true, isDefault: false },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini', enabled: true, isDefault: false },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'gemini', enabled: true, isDefault: false },
     ]
   },
   {
@@ -127,9 +134,11 @@ const initialProviders: ModelProvider[] = [
     isEnabled: true,
     apiKey: '',
     baseUrl: 'https://api.anthropic.com/v1',
+    providerType: 'anthropic',
     models: [
-      { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'anthropic', enabled: true, isDefault: false },
-      { id: 'claude-3-opus', name: 'Claude 3 Opus', provider: 'anthropic', enabled: true, isDefault: false },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic', enabled: true, isDefault: false },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'anthropic', enabled: true, isDefault: false },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'anthropic', enabled: true, isDefault: false },
     ]
   },
   {
@@ -140,6 +149,7 @@ const initialProviders: ModelProvider[] = [
     isEnabled: true,
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
+    providerType: 'openai',
     models: [
       { id: 'deepseek-chat', name: 'DeepSeek-V3', provider: 'deepseek', enabled: true, isDefault: false },
       { id: 'deepseek-reasoner', name: 'DeepSeek-R1', provider: 'deepseek', enabled: true, isDefault: false },
@@ -152,7 +162,7 @@ const initialProviders: ModelProvider[] = [
     color: '#ff3d00',
     isEnabled: true,
     apiKey: '',
-    baseUrl: 'https://api.volcengine.com/v1',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     providerType: 'volcengine',
     models: [
       { id: 'doubao-1.5-pro', name: '豆包 1.5 Pro', provider: 'volcengine', enabled: true, isDefault: false, description: '豆包大模型专业版' },
@@ -224,6 +234,8 @@ const getInitialState = (): SettingsState => {
     showUserName: true, // 默认显示用户名称
     showModelAvatar: true, // 默认显示模型头像
     showModelName: true, // 默认显示模型名称
+    messageStyle: 'bubble' as 'plain' | 'bubble', // 默认使用气泡样式
+    renderUserInputAsMarkdown: true, // 默认渲染用户输入的markdown
     // 顶部工具栏默认设置
     topToolbar: {
       showSettingsButton: true, // 默认显示设置按钮
@@ -324,6 +336,11 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
       // 如果没有工具栏折叠设置，使用默认值
       if (savedSettings.toolbarCollapsed === undefined) {
         savedSettings.toolbarCollapsed = false;
+      }
+
+      // 如果没有消息样式设置，使用默认值
+      if (!savedSettings.messageStyle) {
+        savedSettings.messageStyle = 'bubble';
       }
 
       return {
@@ -556,6 +573,12 @@ const settingsSlice = createSlice({
     setTopicNamingModelId: (state, action: PayloadAction<string>) => {
       state.topicNamingModelId = action.payload;
     },
+    setMessageStyle: (state, action: PayloadAction<'plain' | 'bubble'>) => {
+      state.messageStyle = action.payload;
+    },
+    setRenderUserInputAsMarkdown: (state, action: PayloadAction<boolean>) => {
+      state.renderUserInputAsMarkdown = action.payload;
+    },
   },
   extraReducers: (builder) => {
     // 处理加载设置
@@ -618,6 +641,9 @@ export const {
   setEnableTopicNaming,
   setTopicNamingPrompt,
   setTopicNamingModelId,
+  // 消息样式相关的actions
+  setMessageStyle,
+  setRenderUserInputAsMarkdown,
 } = settingsSlice.actions;
 
 // 重用现有的action creators，但添加异步保存

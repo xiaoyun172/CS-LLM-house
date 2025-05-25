@@ -292,16 +292,12 @@ const WebSearchSettings: React.FC = () => {
               <MenuItem value="exa">Exa (神经搜索)</MenuItem>
               <MenuItem value="bocha">Bocha (AI搜索)</MenuItem>
               <MenuItem value="firecrawl">Firecrawl (网页抓取)</MenuItem>
-              <MenuItem value="local-google">Google (本地搜索)</MenuItem>
-              <MenuItem value="local-bing">Bing (本地搜索)</MenuItem>
               <MenuItem value="custom">自定义服务</MenuItem>
             </Select>
           </FormControl>
 
           {webSearchSettings.provider !== 'custom' &&
-           webSearchSettings.provider !== 'searxng' &&
-           webSearchSettings.provider !== 'local-google' &&
-           webSearchSettings.provider !== 'local-bing' && (
+           webSearchSettings.provider !== 'searxng' && (
             <>
               <TextField
                 fullWidth

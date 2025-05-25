@@ -349,7 +349,7 @@ async function handleClaudeMultimodal(
             text: `文件: ${block.file.origin_name}\n\n${fileContent}`
           });
         }
-      } else if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+      } else if (fileType === FileTypes.TEXT || fileType === FileTypes.CODE || fileType === FileTypes.DOCUMENT) {
         // 文本文件处理
         try {
           const fileContent = await readFileContent(block.file);
@@ -404,7 +404,7 @@ async function handleGeminiMultimodal(
     if (block.file) {
       const fileType = getFileTypeByExtension(block.file.origin_name || block.file.name || '');
 
-      if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+      if (fileType === FileTypes.TEXT || fileType === FileTypes.CODE || fileType === FileTypes.DOCUMENT) {
         try {
           const fileContent = await readFileContent(block.file);
           parts.push({
@@ -463,7 +463,7 @@ async function handleOpenAIMultimodal(
     if (block.file) {
       const fileType = getFileTypeByExtension(block.file.origin_name || block.file.name || '');
 
-      if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+      if (fileType === FileTypes.TEXT || fileType === FileTypes.CODE || fileType === FileTypes.DOCUMENT) {
         try {
           const fileContent = await readFileContent(block.file);
           parts.push({
@@ -496,7 +496,7 @@ async function handleTextWithFiles(
     if (block.file) {
       const fileType = getFileTypeByExtension(block.file.origin_name || block.file.name || '');
 
-      if (fileType === FileTypes.TEXT || fileType === FileTypes.DOCUMENT) {
+      if (fileType === FileTypes.TEXT || fileType === FileTypes.CODE || fileType === FileTypes.DOCUMENT) {
         try {
           const fileContent = await readFileContent(block.file);
           combinedContent += `文件: ${block.file.origin_name}\n\n${fileContent}\n\n`;
