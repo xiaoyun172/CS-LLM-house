@@ -27,6 +27,10 @@ const AppearanceSettings: React.FC = () => {
     navigate('/settings/appearance/chat-interface');
   };
 
+  const handleNavigateToTopToolbar = () => {
+    navigate('/settings/appearance/top-toolbar');
+  };
+
   return (
     <Box sx={{
       height: '100vh',
@@ -111,6 +115,29 @@ const AppearanceSettings: React.FC = () => {
           }}>
             <Typography variant="subtitle1">
               聊天界面设置
+            </Typography>
+            <ChevronRightIcon color="action" />
+          </Box>
+        </Paper>
+
+        {/* 顶部工具栏设置入口 */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            mb: 3,
+            border: '1px solid #eee',
+            cursor: 'pointer'
+          }}
+          onClick={handleNavigateToTopToolbar}
+        >
+          <Box sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <Typography variant="subtitle1">
+              顶部工具栏设置
             </Typography>
             <ChevronRightIcon color="action" />
           </Box>

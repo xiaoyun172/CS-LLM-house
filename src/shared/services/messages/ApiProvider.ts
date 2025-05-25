@@ -3,6 +3,7 @@ import { getActualProviderType, testConnection } from '../ProviderFactory';
 import { OpenAIProvider } from '../../api/openai';
 import { AnthropicProvider } from '../../api/anthropic';
 import { GeminiProvider } from '../../api/gemini';
+import { ModelComboProvider } from './ModelComboProvider';
 
 /**
  * API提供商注册表 - 修复版本，避免重复请求
@@ -19,6 +20,9 @@ export const ApiProviderRegistry = {
     const providerType = getActualProviderType(model);
 
     switch (providerType) {
+      case 'model-combo':
+        // 返回模型组合专用的Provider
+        return new ModelComboProvider(model);
       case 'anthropic':
         return new AnthropicProvider(model);
       case 'gemini':
@@ -28,6 +32,7 @@ export const ApiProviderRegistry = {
       case 'deepseek':
       case 'google':
       case 'grok':
+      case 'zhipu':
       case 'siliconflow':
       case 'volcengine':
       default:

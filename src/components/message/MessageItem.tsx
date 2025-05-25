@@ -63,6 +63,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
     (prev, next) => prev === next // 浅比较，因为providers数组引用应该是稳定的
   );
 
+  // 获取设置中的气泡宽度配置
+  const settings = useSelector((state: RootState) => state.settings);
+
+  // 获取头像和名称显示设置
+  const showUserAvatar = settings.showUserAvatar !== false;
+  const showUserName = settings.showUserName !== false;
+  const showModelAvatar = settings.showModelAvatar !== false;
+  const showModelName = settings.showModelName !== false;
+
   // 获取供应商友好名称的函数 - 使用useMemo进一步优化
   const getProviderName = useMemo(() => {
     const providerMap = new Map(providers.map(p => [p.id, p.name]));
@@ -102,6 +111,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
           for (const blockId of message.blocks) {
             const block = await dexieStorage.getMessageBlock(blockId);
             if (block) {
+              // 🔧 修复：验证对比分析块的数据完整性
+              if ('subType' in block && (block as any).subType === 'comparison') {
+                const comparisonBlock = block as any;
+                if (!comparisonBlock.comboResult || !comparisonBlock.comboResult.modelResults) {
+                  console.error(`[MessageItem] 对比分析块数据不完整: ${blockId}`);
+                  continue; // 跳过损坏的块
+                }
+                console.log(`[MessageItem] 成功加载对比分析块: ${blockId}`);
+              }
               messageBlocks.push(block);
             } else {
               console.warn(`[MessageItem] 数据库中找不到块: ID=${blockId}`);
@@ -228,8 +246,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
         alignItems: isUserMessage ? 'flex-end' : 'flex-start', // 用户消息靠右，AI消息靠左
       }}
     >
-      {/* 头像和模型信息放在气泡上方 */}
-      {showAvatar && (
+      {/* 头像和模型信息放在气泡上方 - 根据设置控制显示 */}
+      {showAvatar && (showUserAvatar || showUserName || showModelAvatar || showModelName) && (
         <Box
           sx={{
             display: 'flex',
@@ -242,123 +260,136 @@ const MessageItem: React.FC<MessageItemProps> = ({
           {/* 用户消息显示"用户"文字和时间，右侧显示头像 */}
           {isUserMessage ? (
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexDirection: 'row-reverse' }}>
-              {/* 用户头像 */}
-              {userAvatar ? (
-                <Avatar
-                  src={userAvatar}
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '20%', // 更接近方形的头像
-                  }}
-                />
-              ) : (
-                <Avatar
-                  sx={{
-                    bgcolor: '#00c853', // 绿色背景
-                    width: 36,
-                    height: 36,
-                    borderRadius: '20%', // 更接近方形的头像
-                  }}
-                >
-                  <PersonIcon sx={{ fontSize: 20, color: 'white' }} />
-                </Avatar>
+              {/* 用户头像 - 根据设置控制显示 */}
+              {showUserAvatar && (
+                userAvatar ? (
+                  <Avatar
+                    src={userAvatar}
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '20%', // 更接近方形的头像
+                    }}
+                  />
+                ) : (
+                  <Avatar
+                    sx={{
+                      bgcolor: '#00c853', // 绿色背景
+                      width: 36,
+                      height: 36,
+                      borderRadius: '20%', // 更接近方形的头像
+                    }}
+                  >
+                    <PersonIcon sx={{ fontSize: 20, color: 'white' }} />
+                  </Avatar>
+                )
               )}
 
-              {/* 用户名称和时间 */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                {/* 用户名称 */}
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontSize: '0.85rem',
-                    color: theme.palette.text.primary,
-                    fontWeight: 600,
-                    lineHeight: 1.2
-                  }}
-                >
-                  用户
-                </Typography>
-                {/* 时间显示 */}
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontSize: '0.7rem',
-                    color: theme.palette.text.secondary,
-                    lineHeight: 1,
-                    marginTop: '2px'
-                  }}
-                >
-                  {new Date(message.createdAt).toLocaleString('zh-CN', {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </Typography>
-              </Box>
+              {/* 用户名称和时间 - 根据设置控制名称显示 */}
+              {(showUserName || !showUserAvatar) && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  {/* 用户名称 - 根据设置控制显示 */}
+                  {showUserName && (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: '0.85rem',
+                        color: theme.palette.text.primary,
+                        fontWeight: 600,
+                        lineHeight: 1.2
+                      }}
+                    >
+                      用户
+                    </Typography>
+                  )}
+                  {/* 时间显示 - 当头像或名称被隐藏时仍然显示时间 */}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: '0.7rem',
+                      color: theme.palette.text.secondary,
+                      lineHeight: 1,
+                      marginTop: showUserName ? '2px' : '0'
+                    }}
+                  >
+                    {new Date(message.createdAt).toLocaleString('zh-CN', {
+                      month: 'numeric',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Typography>
+                </Box>
+              )}
             </Box>
           ) : (
             // AI消息显示头像和模型信息
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-              {/* 模型头像 */}
-              {modelAvatar ? (
-                <Avatar
-                  src={modelAvatar}
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '20%', // 更接近方形的头像
-                  }}
-                />
-              ) : (
-                <Avatar
-                  sx={{
-                    bgcolor: 'secondary.main',
-                    width: 36,
-                    height: 36,
-                    borderRadius: '20%', // 更接近方形的头像
-                  }}
-                >
-                  {message.model?.name ? message.model.name.charAt(0).toUpperCase() :
-                   <SmartToyOutlinedIcon sx={{ fontSize: 20 }} />}
-                </Avatar>
+              {/* 模型头像 - 根据设置控制显示 */}
+              {showModelAvatar && (
+                modelAvatar ? (
+                  <Avatar
+                    src={modelAvatar}
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '20%', // 更接近方形的头像
+                    }}
+                  />
+                ) : (
+                  <Avatar
+                    sx={{
+                      bgcolor: 'secondary.main',
+                      width: 36,
+                      height: 36,
+                      borderRadius: '20%', // 更接近方形的头像
+                    }}
+                  >
+                    {message.model?.name ? message.model.name.charAt(0).toUpperCase() :
+                     <SmartToyOutlinedIcon sx={{ fontSize: 20 }} />}
+                  </Avatar>
+                )
               )}
 
-              {/* 模型名称和供应商名称 */}
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontSize: '0.85rem',
-                    color: theme.palette.text.primary,
-                    fontWeight: 600,
-                    lineHeight: 1.2
-                  }}
-                >
-                  {/* 模型名 + 供应商名称 */}
-                  {message.model ?
-                    `${message.model.name}${message.model.provider ? ' | ' + getProviderName(message.model.provider) : ''}`
-                    : (message.modelId || 'AI')}
-                </Typography>
-                {/* 时间显示 */}
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontSize: '0.7rem',
-                    color: theme.palette.text.secondary,
-                    lineHeight: 1,
-                    marginTop: '2px'
-                  }}
-                >
-                  {new Date(message.createdAt).toLocaleString('zh-CN', {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </Typography>
-              </Box>
+              {/* 模型名称和供应商名称 - 根据设置控制名称显示 */}
+              {(showModelName || !showModelAvatar) && (
+                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                  {/* 模型名称 - 根据设置控制显示 */}
+                  {showModelName && (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: '0.85rem',
+                        color: theme.palette.text.primary,
+                        fontWeight: 600,
+                        lineHeight: 1.2
+                      }}
+                    >
+                      {/* 模型名 + 供应商名称 */}
+                      {message.model ?
+                        `${message.model.name}${message.model.provider ? ' | ' + getProviderName(message.model.provider) : ''}`
+                        : (message.modelId || 'AI')}
+                    </Typography>
+                  )}
+                  {/* 时间显示 - 当头像或名称被隐藏时仍然显示时间 */}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: '0.7rem',
+                      color: theme.palette.text.secondary,
+                      lineHeight: 1,
+                      marginTop: showModelName ? '2px' : '0'
+                    }}
+                  >
+                    {new Date(message.createdAt).toLocaleString('zh-CN', {
+                      month: 'numeric',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
         </Box>
@@ -366,8 +397,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
       <Box sx={{
         position: 'relative',
-        maxWidth: '80%', // 限制气泡最大宽度
-        minWidth: '50%', // 最小宽度占据屏幕50%
+        maxWidth: isUserMessage
+          ? `${settings.userMessageMaxWidth || 80}%`
+          : `${settings.messageBubbleMaxWidth || 99}%`, // 使用设置中的宽度值
+        minWidth: `${settings.messageBubbleMinWidth || 50}%`, // 使用设置中的最小宽度
         width: 'auto',   // 宽度自适应内容
         alignSelf: isUserMessage ? 'flex-end' : 'flex-start', // 用户消息靠右，AI消息靠左
       }}>

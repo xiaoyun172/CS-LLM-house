@@ -9,7 +9,8 @@ import {
   isGeminiReasoningModel,
   isQwenReasoningModel,
   isGrokReasoningModel,
-  isDeepSeekReasoningModel
+  isDeepSeekReasoningModel,
+  isZhipuReasoningModel
 } from '../utils/modelDetection';
 
 /**
@@ -65,6 +66,13 @@ export const DEEPSEEK_REASONING_TAGS: ReasoningTag[] = [
 ];
 
 /**
+ * 智谱AI模型思考标签
+ */
+export const ZHIPU_REASONING_TAGS: ReasoningTag[] = [
+  { openingTag: '<think>', closingTag: '</think>', separator: '\n' }
+];
+
+/**
  * 默认思考标签
  */
 export const DEFAULT_REASONING_TAGS: ReasoningTag[] = [
@@ -105,6 +113,10 @@ export function getAppropriateTag(model: Model): ReasoningTag {
 
   if (isDeepSeekReasoningModel(model)) {
     return DEEPSEEK_REASONING_TAGS[0];
+  }
+
+  if (isZhipuReasoningModel(model)) {
+    return ZHIPU_REASONING_TAGS[0];
   }
 
   // 默认使用第一个标签

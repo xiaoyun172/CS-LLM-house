@@ -12,13 +12,14 @@ import { MessageBlockType, MessageBlockStatus } from '../../shared/types/newMess
 import MainTextBlock from './blocks/MainTextBlock';
 import ThinkingBlock from './blocks/ThinkingBlock';
 import ImageBlock from './blocks/ImageBlock';
-import CodeBlock from './blocks/CodeBlock';
+import CodeRenderer from './blocks/CodeRenderer';
 import CitationBlock from './blocks/CitationBlock';
 import ErrorBlock from './blocks/ErrorBlock';
 import TranslationBlock from './blocks/TranslationBlock';
 import TableBlock from './blocks/TableBlock';
 import MathBlock from './blocks/MathBlock';
 import MultiModelBlock from './blocks/MultiModelBlock';
+import ModelComparisonBlock from './blocks/ModelComparisonBlock';
 import ChartBlock from './blocks/ChartBlock';
 import FileBlock from './blocks/FileBlock';
 import PlaceholderBlock from './blocks/PlaceholderBlock';
@@ -190,7 +191,7 @@ const MessageBlockRenderer: React.FC<Props> = ({
                 blockComponent = <ImageBlock key={block.id} block={block} />;
                 break;
               case MessageBlockType.CODE:
-                blockComponent = <CodeBlock key={block.id} block={block} />;
+                blockComponent = <CodeRenderer key={block.id} block={block} />;
                 break;
               case MessageBlockType.CITATION:
                 blockComponent = <CitationBlock key={block.id} block={block} />;
@@ -208,7 +209,12 @@ const MessageBlockRenderer: React.FC<Props> = ({
                 blockComponent = <MathBlock key={block.id} block={block} />;
                 break;
               case MessageBlockType.MULTI_MODEL:
-                blockComponent = <MultiModelBlock key={block.id} block={block} />;
+                // 检查是否是对比分析块
+                if ('subType' in block && (block as any).subType === 'comparison') {
+                  blockComponent = <ModelComparisonBlock key={block.id} block={block as any} />;
+                } else {
+                  blockComponent = <MultiModelBlock key={block.id} block={block as any} />;
+                }
                 break;
               case MessageBlockType.CHART:
                 blockComponent = <ChartBlock key={block.id} block={block} />;

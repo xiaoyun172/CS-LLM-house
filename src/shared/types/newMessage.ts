@@ -177,6 +177,16 @@ export interface MultiModelMessageBlock extends BaseMessageBlock {
   displayStyle?: 'horizontal' | 'vertical' | 'fold' | 'grid';
 }
 
+// 模型对比消息块 - 专门用于对比分析策略
+export interface ModelComparisonMessageBlock extends BaseMessageBlock {
+  type: typeof MessageBlockType.MULTI_MODEL;
+  subType: 'comparison'; // 子类型标识
+  comboResult: import('../types/ModelCombo').ModelComboResult;
+  selectedModelId?: string; // 用户选择的模型ID
+  selectedContent?: string; // 用户选择的内容
+  isSelectionPending?: boolean; // 是否等待用户选择
+}
+
 // 图表块
 export interface ChartMessageBlock extends BaseMessageBlock {
   type: typeof MessageBlockType.CHART;
@@ -206,6 +216,7 @@ export type MessageBlock =
   | TranslationMessageBlock
   | TableMessageBlock
   | MultiModelMessageBlock
+  | ModelComparisonMessageBlock
   | ChartMessageBlock
   | MathMessageBlock;
 

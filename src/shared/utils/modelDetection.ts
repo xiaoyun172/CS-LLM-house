@@ -94,6 +94,22 @@ export function isDeepSeekReasoningModel(model?: Model): boolean {
 }
 
 /**
+ * 检查模型是否支持智谱AI风格的推理
+ * @param model 模型对象
+ * @returns 是否支持智谱AI风格的推理
+ */
+export function isZhipuReasoningModel(model?: Model): boolean {
+  if (!model) return false;
+
+  return model.id.includes('glm-z1') ||
+         model.id.includes('glm-4') ||
+         (model.provider === 'zhipu' && (
+           model.id.includes('glm-z1') ||
+           model.id.includes('glm-4')
+         ));
+}
+
+/**
  * 检查模型是否支持推理努力程度参数
  * @param model 模型对象
  * @returns 是否支持推理努力程度参数
@@ -149,7 +165,7 @@ export function isReasoningModel(model?: Model): boolean {
     isQwenReasoningModel(model) ||
     isGrokReasoningModel(model) ||
     isDeepSeekReasoningModel(model) ||
-    model.id.includes('glm-z1')
+    isZhipuReasoningModel(model)
   ) {
     return true;
   }

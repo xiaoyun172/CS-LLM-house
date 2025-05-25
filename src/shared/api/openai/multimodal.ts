@@ -13,6 +13,7 @@ import {
   isGeminiModel,
   isGemmaModel
 } from '../../utils/modelUtils';
+import { mobileFileStorage } from '../../services/MobileFileStorageService';
 
 // 定义消息参数类型，避免使用OpenAI类型
 export interface ChatCompletionMessageParam {
@@ -329,8 +330,7 @@ async function handleClaudeMultimodal(
       // PDF文件特殊处理
       if (block.file.ext === '.pdf' && block.file.size < 32 * 1024 * 1024) {
         try {
-          const fileInfo = await import('../../services/MobileFileStorageService');
-          const result = await fileInfo.mobileFileStorage.getFileBase64(block.file.id);
+          const result = await mobileFileStorage.getFileBase64(block.file.id);
           const cleanBase64 = result.data.includes(',') ? result.data.split(',')[1] : result.data;
           parts.push({
             type: 'document',

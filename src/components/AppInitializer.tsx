@@ -7,6 +7,7 @@ import { AssistantService } from '../shared/services/assistant';
 import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
 import { setCurrentAssistant } from '../shared/store/slices/assistantsSlice';
 import { initGroups } from '../shared/store/slices/groupsSlice';
+import { useModelComboSync } from '../shared/hooks/useModelComboSync';
 
 /**
  * 应用初始化组件
@@ -21,6 +22,9 @@ const AppInitializer = () => {
   const currentAssistant = useSelector((state: RootState) => state.assistants.currentAssistant);
   const currentTopicId = useSelector((state: RootState) => state.messages.currentTopicId);
   const assistants = useSelector((state: RootState) => state.assistants.assistants);
+
+  // 初始化模型组合同步
+  useModelComboSync();
 
   // 应用初始化逻辑
   useEffect(() => {

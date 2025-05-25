@@ -8,6 +8,7 @@ const SettingsPage = lazy(() => import('../pages/Settings'));
 const AppearanceSettings = lazy(() => import('../pages/Settings/AppearanceSettings.tsx'));
 const BehaviorSettings = lazy(() => import('../pages/Settings/BehaviorSettings'));
 const ChatInterfaceSettings = lazy(() => import('../pages/Settings/ChatInterfaceSettings'));
+const TopToolbarSettings = lazy(() => import('../pages/Settings/TopToolbarSettings'));
 const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSettings'));
 
 const DefaultModelSettingsPage = lazy(() => import('../pages/Settings/DefaultModelSettings/index'));
@@ -25,6 +26,8 @@ const AdvancedBackupPage = lazy(() => import('../pages/Settings/DataSettings/Adv
 // 导入 MCP 相关页面
 const MCPServerSettings = lazy(() => import('../pages/Settings/MCPServerSettings'));
 const MCPServerDetail = lazy(() => import('../pages/Settings/MCPServerDetail'));
+// 导入模型组合页面
+const ModelComboSettings = lazy(() => import('../pages/Settings/ModelComboSettings'));
 
 // 加载中组件
 const LoadingFallback = () => (
@@ -71,6 +74,7 @@ const AppRouter: React.FC = () => {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/appearance" element={<AppearanceSettings />} />
         <Route path="/settings/appearance/chat-interface" element={<ChatInterfaceSettings />} />
+        <Route path="/settings/appearance/top-toolbar" element={<TopToolbarSettings />} />
         <Route path="/settings/behavior" element={<BehaviorSettings />} />
         <Route path="/settings/default-model" element={<DefaultModelSettings />} />
         <Route path="/settings/default-model-settings" element={<DefaultModelSettingsPage />} />
@@ -84,6 +88,7 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/web-search" element={<WebSearchSettings />} />
         <Route path="/settings/mcp-server" element={<MCPServerSettings />} />
         <Route path="/settings/mcp-server/:serverId" element={<MCPServerDetail />} />
+        <Route path="/settings/model-combo" element={<ModelComboSettings />} />
         <Route path="/devtools" element={<DevToolsPage />} />
         <Route path="/vue-demo" element={<VueDemoPage />} />
       </Routes>

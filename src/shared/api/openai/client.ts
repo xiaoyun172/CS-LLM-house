@@ -24,13 +24,27 @@ export function createClient(model: Model): OpenAI {
     // 处理基础URL
     let baseURL = model.baseUrl || 'https://api.openai.com/v1';
 
+    // 检查是否需要特殊处理（在移除斜杠之前）
+    const forceUseOriginalHost = () => {
+      if (baseURL.endsWith('/')) {
+        return true;
+      }
+      // 火山引擎特殊处理
+      if (baseURL.endsWith('volces.com/api/v3')) {
+        return true;
+      }
+      return false;
+    };
+
+    const shouldUseOriginal = forceUseOriginalHost();
+
     // 确保baseURL格式正确
     if (baseURL.endsWith('/')) {
       baseURL = baseURL.slice(0, -1);
     }
 
-    // 确保baseURL包含/v1
-    if (!baseURL.includes('/v1')) {
+    // 确保baseURL包含/v1（特殊情况除外）
+    if (!baseURL.includes('/v1') && !shouldUseOriginal) {
       baseURL = `${baseURL}/v1`;
     }
 

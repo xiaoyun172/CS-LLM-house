@@ -64,6 +64,15 @@ export const EVENT_NAMES = {
   API_KEY_RETRY: 'api_key:retry',
   SHOW_API_KEY_CONFIG: 'api_key:show_config',
 
+  // 模型组合相关事件
+  MODEL_COMBO_CREATED: 'model_combo:created',
+  MODEL_COMBO_UPDATED: 'model_combo:updated',
+  MODEL_COMBO_DELETED: 'model_combo:deleted',
+  MODEL_COMBO_EXECUTED: 'model_combo:executed',
+  MODEL_COMBO_EXECUTION_STARTED: 'model_combo:execution_started',
+  MODEL_COMBO_EXECUTION_COMPLETED: 'model_combo:execution_completed',
+  MODEL_COMBO_EXECUTION_ERROR: 'model_combo:execution_error',
+
   // 最佳实例兼容事件
   NEW_BRANCH: 'NEW_BRANCH',
   NEW_CONTEXT: 'NEW_CONTEXT',

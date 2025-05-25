@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkMath from 'remark-math';
 import { Box, Link, useTheme } from '@mui/material';
-import CodeBlock from './blocks/CodeBlock';
+import CodeRenderer from './blocks/CodeRenderer';
 import 'katex/dist/katex.min.css';
 
 // 🔥 参考最佳实例：工具函数
@@ -68,9 +68,25 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
 
     let processedContent = removeSvgEmptyLines(escapeBrackets(content));
 
-    // 🔥 强化换行处理：确保单个换行符被保持
-    // 将单个换行符转换为双换行符，这样 Markdown 会正确识别为段落分隔
+    // 🔥 强化换行处理：确保单个换行符被保持，但不影响代码块
+    // 先保护代码块内容，避免被换行处理影响
+    const codeBlockRegex = /```[\s\S]*?```/g;
+    const codeBlocks: string[] = [];
+    let codeBlockIndex = 0;
+
+    // 提取代码块并用占位符替换
+    processedContent = processedContent.replace(codeBlockRegex, (match) => {
+      codeBlocks.push(match);
+      return `__CODE_BLOCK_${codeBlockIndex++}__`;
+    });
+
+    // 对非代码块内容进行换行处理
     processedContent = processedContent.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
+
+    // 恢复代码块内容
+    codeBlocks.forEach((codeBlock, index) => {
+      processedContent = processedContent.replace(`__CODE_BLOCK_${index}__`, codeBlock);
+    });
 
     return processedContent;
   }, [content]);
@@ -266,7 +282,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
                 {children}
               </code>
             ) : (
-              <CodeBlock
+              <CodeRenderer
                 code={String(children).replace(/\n$/, '')}
                 language={language || 'text'}
               />

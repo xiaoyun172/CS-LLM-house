@@ -6,6 +6,7 @@ import type { Model } from '../types';
 import * as openaiApi from '../api/openai';
 import * as anthropicApi from '../api/anthropic';
 import * as geminiApi from '../api/gemini';
+import { modelComboService } from './ModelComboService';
 
 
 /**
@@ -14,6 +15,12 @@ import * as geminiApi from '../api/gemini';
  * @returns 提供商类型
  */
 export function getActualProviderType(model: Model): string {
+  // 检查是否为模型组合
+  if (model.provider === 'model-combo' || (model as any).isCombo) {
+    console.log(`[ProviderFactory] 检测到模型组合: ${model.id}`);
+    return 'model-combo';
+  }
+
   // 优先使用providerType字段(如果存在)，否则回退到provider字段
   let providerType = (model as any).providerType || model.provider;
 
@@ -84,8 +91,16 @@ function isAzureOpenAI(model: Model): boolean {
 export function getProviderApi(model: Model): any {
   const providerType = getActualProviderType(model);
 
-  // 扩展的Provider选择逻辑，支持Azure OpenAI
+  // 扩展的Provider选择逻辑，支持Azure OpenAI和模型组合
   switch (providerType) {
+    case 'model-combo':
+      // 返回模型组合API
+      console.log(`[ProviderFactory] 使用模型组合API`);
+      return {
+        sendChatRequest: async (messages: any[], model: Model, onUpdate?: (content: string) => void) => {
+          return await handleModelComboRequest(messages, model, onUpdate);
+        }
+      };
     case 'anthropic':
       return anthropicApi;
     case 'gemini':
@@ -265,5 +280,56 @@ export async function fetchModels(provider: any): Promise<any[]> {
   } catch (error) {
     console.error('获取模型列表失败:', error);
     throw error;
+  }
+}
+
+/**
+ * 处理模型组合请求
+ * @param messages 消息数组
+ * @param model 模型配置（包含组合信息）
+ * @param onUpdate 更新回调函数
+ * @returns 响应内容
+ */
+async function handleModelComboRequest(
+  messages: any[],
+  model: Model,
+  onUpdate?: (content: string) => void
+): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
+  try {
+    console.log(`[handleModelComboRequest] 开始处理模型组合请求: ${model.id}`);
+
+    // 从模型配置中获取组合配置
+    const comboConfig = (model as any).comboConfig;
+    if (!comboConfig) {
+      throw new Error(`模型组合 ${model.id} 的配置信息不存在`);
+    }
+
+    // 将消息转换为简单的提示词格式
+    const prompt = messages
+      .filter(msg => msg.role === 'user')
+      .map(msg => msg.content)
+      .join('\n');
+
+    console.log(`[handleModelComboRequest] 提取的提示词: ${prompt.substring(0, 100)}...`);
+
+    // 调用模型组合服务执行
+    const result = await modelComboService.executeCombo(comboConfig.id, prompt);
+
+    console.log(`[handleModelComboRequest] 模型组合执行完成:`, result);
+
+    // 如果有更新回调，发送最终结果
+    if (onUpdate && result.finalResult?.content) {
+      onUpdate(result.finalResult.content);
+    }
+
+    // 返回最终结果
+    return {
+      content: result.finalResult?.content || '模型组合执行完成，但没有返回内容',
+      reasoning: result.finalResult?.reasoning,
+      reasoningTime: result.stats?.totalLatency
+    };
+  } catch (error) {
+    console.error('[handleModelComboRequest] 模型组合请求失败:', error);
+    throw new Error(`模型组合执行失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

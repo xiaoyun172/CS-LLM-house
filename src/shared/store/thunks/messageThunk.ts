@@ -510,8 +510,9 @@ const prepareMessagesForApi = async (
   assistantMessageId: string,
   _mcpTools?: MCPTool[] // 添加下划线前缀表示未使用的参数
 ) => {
-  // 获取主题的所有消息
-  const messages = await dexieStorage.getMessagesByTopicId(topicId);
+  // 🔥 关键修复：使用getTopicMessages获取包含content字段的消息
+  // 这样可以获取到多模型对比选择后保存的内容
+  const messages = await dexieStorage.getTopicMessages(topicId);
 
   // 按创建时间排序消息，确保顺序正确
   const sortedMessages = [...messages].sort((a, b) => {

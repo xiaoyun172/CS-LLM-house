@@ -6,11 +6,16 @@ import {
   IconButton,
   Collapse,
   useTheme,
-  Chip
+  Chip,
+  Avatar,
+  Tooltip
 } from '@mui/material';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PsychologyIcon from '@mui/icons-material/Psychology';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import TimelineIcon from '@mui/icons-material/Timeline';
 import { styled } from '@mui/material/styles';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../shared/store';
@@ -20,15 +25,21 @@ import Markdown from '../Markdown';
 import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventEmitter';
 import { useDeepMemo } from '../../../hooks/useMemoization';
 import { formatThinkingTimeSeconds } from '../../../shared/utils/thinkingUtils';
+import { getThinkingScrollbarStyles, getCompactScrollbarStyles } from '../../../shared/utils/scrollbarStyles';
 
 // 思考过程显示样式类型
-export type ThinkingDisplayStyle = 'compact' | 'full' | 'hidden';
+export type ThinkingDisplayStyle = 'compact' | 'full' | 'hidden' | 'minimal' | 'bubble' | 'timeline' | 'card' | 'inline';
 
 // 思考过程显示样式常量
 export const ThinkingDisplayStyle = {
   COMPACT: 'compact' as ThinkingDisplayStyle,
   FULL: 'full' as ThinkingDisplayStyle,
-  HIDDEN: 'hidden' as ThinkingDisplayStyle
+  HIDDEN: 'hidden' as ThinkingDisplayStyle,
+  MINIMAL: 'minimal' as ThinkingDisplayStyle,
+  BUBBLE: 'bubble' as ThinkingDisplayStyle,
+  TIMELINE: 'timeline' as ThinkingDisplayStyle,
+  CARD: 'card' as ThinkingDisplayStyle,
+  INLINE: 'inline' as ThinkingDisplayStyle
 };
 
 interface Props {
@@ -230,7 +241,7 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
           maxWidth: '100%',
           minWidth: 0,
           boxSizing: 'border-box',
-          overflow: 'hidden' // 防止内容溢出导致重排
+          ...getThinkingScrollbarStyles(theme)
         }}>
           <Markdown content={memoizedContent} allowHtml={false} />
         </Box>
@@ -292,14 +303,441 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
         maxWidth: '100%',
         minWidth: 0,
         boxSizing: 'border-box',
-        overflow: 'hidden' // 防止内容溢出导致重排
+        ...getThinkingScrollbarStyles(theme)
       }} key={`thinking-content-${updateCounter}`}>
         <Markdown content={memoizedContent} allowHtml={false} />
       </Box>
     </StyledPaper>
   );
 
-  return thinkingDisplayStyle === 'full' ? renderFullStyle() : renderCompactStyle();
+  // 极简模式 - 只显示一个小图标
+  const renderMinimalStyle = () => (
+    <Box sx={{ position: 'relative', display: 'inline-block', mb: 1 }}>
+      <Tooltip title={`思考过程 (${formattedThinkingTime}s)`} placement="top">
+        <Box
+          onClick={toggleExpanded}
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: 'pointer',
+            p: 0.5,
+            borderRadius: '50%',
+            backgroundColor: isThinking ? theme.palette.warning.light : theme.palette.grey[200],
+            transition: 'all 0.2s ease',
+            '&:hover': {
+              backgroundColor: isThinking ? theme.palette.warning.main : theme.palette.grey[300],
+            }
+          }}
+        >
+          <LightbulbIcon
+            sx={{
+              fontSize: 16,
+              color: isThinking ? theme.palette.warning.contrastText : theme.palette.text.secondary,
+              animation: isThinking ? 'pulse 1.5s infinite' : 'none',
+              '@keyframes pulse': {
+                '0%': { opacity: 0.6 },
+                '50%': { opacity: 1 },
+                '100%': { opacity: 0.6 }
+              }
+            }}
+          />
+        </Box>
+      </Tooltip>
+      {expanded && (
+        <Box sx={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          mt: 1,
+          zIndex: 1000,
+          minWidth: 300,
+          maxWidth: 500
+        }}>
+          <Paper
+            elevation={4}
+            sx={{
+              borderRadius: '18px 18px 18px 4px',
+              overflow: 'hidden',
+              backgroundColor: theme.palette.mode === 'dark'
+                ? 'rgba(255, 255, 255, 0.95)'
+                : 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(10px)'
+            }}
+          >
+            <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="body2" color="text.secondary">
+                  思考过程 ({formattedThinkingTime}s)
+                </Typography>
+                <IconButton
+                  size="small"
+                  onClick={handleCopy}
+                  color={copied ? "success" : "default"}
+                >
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Box>
+            <Box sx={{
+              p: 2,
+              ...getThinkingScrollbarStyles(theme)
+            }}>
+              <Markdown content={memoizedContent} allowHtml={false} />
+            </Box>
+          </Paper>
+        </Box>
+      )}
+    </Box>
+  );
+
+  // 气泡模式 - 类似聊天气泡
+  const renderBubbleStyle = () => (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
+      <Avatar
+        sx={{
+          width: 32,
+          height: 32,
+          mr: 1,
+          backgroundColor: isThinking ? theme.palette.warning.main : theme.palette.primary.main
+        }}
+      >
+        <PsychologyIcon sx={{ fontSize: 18 }} />
+      </Avatar>
+      <Box
+        onClick={toggleExpanded}
+        sx={{
+          backgroundColor: theme.palette.mode === 'dark'
+            ? 'rgba(255, 255, 255, 0.08)'
+            : 'rgba(0, 0, 0, 0.04)',
+          borderRadius: '18px 18px 18px 4px',
+          p: 1.5,
+          cursor: 'pointer',
+          maxWidth: '80%',
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            backgroundColor: theme.palette.mode === 'dark'
+              ? 'rgba(255, 255, 255, 0.12)'
+              : 'rgba(0, 0, 0, 0.08)',
+          }
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 1 : 0 }}>
+          <Typography variant="body2" sx={{ flexGrow: 1, fontWeight: 500 }}>
+            💭 {isThinking ? '思考中...' : '思考完成'}
+          </Typography>
+          <Chip
+            label={`${formattedThinkingTime}s`}
+            size="small"
+            variant="outlined"
+            sx={{ ml: 1, height: 18, fontSize: '0.7rem' }}
+          />
+          <IconButton
+            size="small"
+            onClick={handleCopy}
+            sx={{ ml: 1, p: 0.5 }}
+            color={copied ? "success" : "default"}
+          >
+            <ContentCopyIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Box>
+        <Collapse in={expanded}>
+          <Box sx={{
+            mt: 1,
+            ...getThinkingScrollbarStyles(theme)
+          }}>
+            <Markdown content={memoizedContent} allowHtml={false} />
+          </Box>
+        </Collapse>
+      </Box>
+    </Box>
+  );
+
+  // 时间线模式 - 左侧有时间线指示器
+  const renderTimelineStyle = () => (
+    <Box sx={{ display: 'flex', mb: 2 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 2 }}>
+        <Box
+          sx={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            backgroundColor: isThinking ? theme.palette.warning.main : theme.palette.success.main,
+            animation: isThinking ? 'pulse 1.5s infinite' : 'none',
+            '@keyframes pulse': {
+              '0%': { transform: 'scale(1)' },
+              '50%': { transform: 'scale(1.2)' },
+              '100%': { transform: 'scale(1)' }
+            }
+          }}
+        />
+        <Box
+          sx={{
+            width: 2,
+            flex: 1,
+            backgroundColor: theme.palette.divider,
+            mt: 1
+          }}
+        />
+      </Box>
+      <Box sx={{ flex: 1 }}>
+        <Box
+          onClick={toggleExpanded}
+          sx={{
+            cursor: 'pointer',
+            p: 1.5,
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 2,
+            backgroundColor: theme.palette.background.paper,
+            transition: 'all 0.2s ease',
+            '&:hover': {
+              borderColor: theme.palette.primary.main,
+              boxShadow: `0 0 0 1px ${theme.palette.primary.main}20`
+            }
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 1 : 0 }}>
+            <TimelineIcon sx={{ mr: 1, color: theme.palette.text.secondary }} />
+            <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+              {isThinking ? '正在思考...' : '思考过程'}
+            </Typography>
+            <Chip
+              label={`${formattedThinkingTime}s`}
+              size="small"
+              color={isThinking ? "warning" : "default"}
+              sx={{ mr: 1 }}
+            />
+            <IconButton
+              size="small"
+              onClick={handleCopy}
+              color={copied ? "success" : "default"}
+            >
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+            <ExpandMoreIcon
+              sx={{
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s'
+              }}
+            />
+          </Box>
+          <Collapse in={expanded}>
+            <Box sx={{
+              pl: 4,
+              ...getThinkingScrollbarStyles(theme)
+            }}>
+              <Markdown content={memoizedContent} allowHtml={false} />
+            </Box>
+          </Collapse>
+        </Box>
+      </Box>
+    </Box>
+  );
+
+  // 卡片模式 - 更突出的卡片设计
+  const renderCardStyle = () => (
+    <Box
+      sx={{
+        mb: 2,
+        borderRadius: 3,
+        background: `linear-gradient(135deg, ${theme.palette.primary.main}10, ${theme.palette.secondary.main}10)`,
+        border: `2px solid ${theme.palette.primary.main}20`,
+        overflow: 'hidden',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: `0 8px 25px ${theme.palette.primary.main}20`,
+          border: `2px solid ${theme.palette.primary.main}40`,
+        }
+      }}
+    >
+      <Box
+        onClick={toggleExpanded}
+        sx={{
+          cursor: 'pointer',
+          p: 2,
+          background: `linear-gradient(90deg, ${theme.palette.primary.main}05, transparent)`,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 1.5 : 0 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              backgroundColor: isThinking ? theme.palette.warning.main : theme.palette.primary.main,
+              mr: 2,
+              animation: isThinking ? 'glow 2s infinite' : 'none',
+              '@keyframes glow': {
+                '0%': { boxShadow: `0 0 5px ${theme.palette.warning.main}` },
+                '50%': { boxShadow: `0 0 20px ${theme.palette.warning.main}` },
+                '100%': { boxShadow: `0 0 5px ${theme.palette.warning.main}` }
+              }
+            }}
+          >
+            <AutoAwesomeIcon sx={{ color: 'white', fontSize: 20 }} />
+          </Box>
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+              {isThinking ? '🧠 AI 正在深度思考' : '✨ 思考过程完成'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              耗时 {formattedThinkingTime} 秒
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              size="small"
+              onClick={handleCopy}
+              color={copied ? "success" : "primary"}
+              sx={{
+                backgroundColor: theme.palette.background.paper,
+                '&:hover': { backgroundColor: theme.palette.action.hover }
+              }}
+            >
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+            <ExpandMoreIcon
+              sx={{
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.3s',
+                color: theme.palette.primary.main
+              }}
+            />
+          </Box>
+        </Box>
+        <Collapse in={expanded}>
+          <Box
+            sx={{
+              p: 2,
+              backgroundColor: theme.palette.background.paper,
+              borderRadius: 2,
+              border: `1px solid ${theme.palette.divider}`,
+              ...getThinkingScrollbarStyles(theme)
+            }}
+          >
+            <Markdown content={memoizedContent} allowHtml={false} />
+          </Box>
+        </Collapse>
+      </Box>
+    </Box>
+  );
+
+  // 内联模式 - 嵌入在消息中
+  const renderInlineStyle = () => (
+    <Box sx={{ position: 'relative', width: '100%', mb: 1 }}>
+      <Box
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          backgroundColor: theme.palette.mode === 'dark'
+            ? 'rgba(255, 255, 255, 0.05)'
+            : 'rgba(0, 0, 0, 0.03)',
+          borderRadius: 1,
+          p: 0.5,
+          border: `1px dashed ${theme.palette.divider}`,
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            backgroundColor: theme.palette.mode === 'dark'
+              ? 'rgba(255, 255, 255, 0.08)'
+              : 'rgba(0, 0, 0, 0.06)',
+          }
+        }}
+        onClick={toggleExpanded}
+      >
+        <LightbulbIcon
+          sx={{
+            fontSize: 14,
+            mr: 0.5,
+            color: isThinking ? theme.palette.warning.main : theme.palette.text.secondary,
+            animation: isThinking ? 'pulse 1.5s infinite' : 'none',
+            '@keyframes pulse': {
+              '0%': { opacity: 0.6 },
+              '50%': { opacity: 1 },
+              '100%': { opacity: 0.6 }
+            }
+          }}
+        />
+        <Typography variant="caption" sx={{ mr: 0.5 }}>
+          {isThinking ? '思考中' : '思考'}
+        </Typography>
+        <Chip
+          label={`${formattedThinkingTime}s`}
+          size="small"
+          variant="outlined"
+          sx={{ height: 16, fontSize: '0.6rem', mr: 0.5 }}
+        />
+        <IconButton
+          size="small"
+          onClick={handleCopy}
+          sx={{ p: 0.25 }}
+          color={copied ? "success" : "default"}
+        >
+          <ContentCopyIcon sx={{ fontSize: 12 }} />
+        </IconButton>
+      </Box>
+      {expanded && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: '100%',
+            left: 0,
+            right: 0, // 使气泡占满整个容器宽度
+            mb: 0.5,
+            zIndex: 1000,
+            width: '100%' // 使用100%宽度，自适应父容器
+          }}
+        >
+          <Paper
+            elevation={6}
+            sx={{
+              borderRadius: '18px 18px 18px 4px',
+              overflow: 'hidden',
+              backgroundColor: theme.palette.mode === 'dark'
+                ? 'rgba(255, 255, 255, 0.95)'
+                : 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(10px)',
+              width: '100%' // 确保Paper也占满宽度
+            }}
+          >
+            <Box sx={{ p: 1.5, borderBottom: `1px solid ${theme.palette.divider}` }}>
+              <Typography variant="caption" color="text.secondary">
+                思考内容:
+              </Typography>
+            </Box>
+            <Box sx={{
+              p: 1.5,
+              ...getCompactScrollbarStyles(theme)
+            }}>
+              <Markdown content={memoizedContent} allowHtml={false} />
+            </Box>
+          </Paper>
+        </Box>
+      )}
+    </Box>
+  );
+
+  // 根据样式选择渲染方法
+  switch (thinkingDisplayStyle) {
+    case 'full':
+      return renderFullStyle();
+    case 'minimal':
+      return renderMinimalStyle();
+    case 'bubble':
+      return renderBubbleStyle();
+    case 'timeline':
+      return renderTimelineStyle();
+    case 'card':
+      return renderCardStyle();
+    case 'inline':
+      return renderInlineStyle();
+    case 'compact':
+    default:
+      return renderCompactStyle();
+  }
 };
 
 // 样式化组件
