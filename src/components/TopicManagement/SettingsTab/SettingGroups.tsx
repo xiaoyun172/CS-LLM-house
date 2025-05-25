@@ -17,7 +17,9 @@ interface Setting {
   id: string;
   name: string;
   description: string;
-  defaultValue: boolean;
+  defaultValue: boolean | string;
+  type?: 'switch' | 'select';
+  options?: Array<{ value: string; label: string }>;
 }
 
 interface SettingGroup {
@@ -28,7 +30,7 @@ interface SettingGroup {
 
 interface SettingGroupsProps {
   groups: SettingGroup[];
-  onSettingChange: (settingId: string, value: boolean) => void;
+  onSettingChange: (settingId: string, value: boolean | string) => void;
 }
 
 /**

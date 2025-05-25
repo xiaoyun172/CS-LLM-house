@@ -25,14 +25,14 @@ export default defineConfig({
         }
       }
     }),
-    // 超快并行类型检查 - 仅在开发模式启用
-    process.env.NODE_ENV === 'development' && checker({
-      typescript: {
-        buildMode: false, // 开发时立即显示错误
-        tsconfigPath: './tsconfig.app.json'
-      },
-      enableBuild: false // 生产构建时禁用，完全依赖SWC
-    })
+    // 超快并行类型检查 - 暂时禁用以解决缓存问题
+    // process.env.NODE_ENV === 'development' && checker({
+    //   typescript: {
+    //     buildMode: false, // 开发时立即显示错误
+    //     tsconfigPath: './tsconfig.app.json'
+    //   },
+    //   enableBuild: false // 生产构建时禁用，完全依赖SWC
+    // })
   ],
 
   // 开发服务器配置

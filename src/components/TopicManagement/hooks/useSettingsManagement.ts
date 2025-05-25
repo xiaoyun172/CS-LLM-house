@@ -30,16 +30,19 @@ export function useSettingsManagement() {
   });
 
   // 转换设置对象为SettingsTab组件需要的格式
+  // 创建非readonly的options数组
+  const messageStyleOptions = [
+    { value: 'plain', label: '简洁' },
+    { value: 'bubble', label: '气泡' }
+  ];
+
   const settingsArray = [
     { id: 'streamOutput', name: '流式输出', defaultValue: settings.streamOutput, description: '实时显示AI回答，打字机效果' },
     { id: 'highPerformanceStreaming', name: '高性能流式输出', defaultValue: settings.highPerformanceStreaming, description: '启用超高性能渲染模式：虚拟化、Canvas或最小化渲染，大幅提升流式输出性能' },
     { id: 'showMessageDivider', name: '消息分割线', defaultValue: settings.showMessageDivider, description: '在消息之间显示分割线' },
     { id: 'copyableCodeBlocks', name: '代码块可复制', defaultValue: settings.copyableCodeBlocks, description: '允许复制代码块的内容' },
     { id: 'renderUserInputAsMarkdown', name: '渲染用户输入', defaultValue: settings.renderUserInputAsMarkdown, description: '是否渲染用户输入的Markdown格式（关闭后用户消息将显示为纯文本）' },
-    { id: 'messageStyle', name: '消息样式', defaultValue: settings.messageStyle, description: '选择聊天消息的显示样式', type: 'select' as const, options: [
-      { value: 'plain', label: '简洁' },
-      { value: 'bubble', label: '气泡' }
-    ] as const},
+    { id: 'messageStyle', name: '消息样式', defaultValue: settings.messageStyle, description: '选择聊天消息的显示样式', type: 'select' as const, options: messageStyleOptions},
   ];
 
   // 设置相关函数

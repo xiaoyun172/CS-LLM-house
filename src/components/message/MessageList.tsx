@@ -150,11 +150,12 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
       );
 
       if (hasStreamingBlock) {
-        // 导入性能设置（动态导入避免循环依赖）
+        // 使用同步方式获取性能设置，避免async问题
         try {
-          const { getHighPerformanceScrollThrottle, shouldUseHighPerformanceMode } = require('../../shared/utils/performanceSettings');
-          if (shouldUseHighPerformanceMode(true)) {
-            return getHighPerformanceScrollThrottle(); // 高性能模式：300ms
+          // 直接从localStorage读取高性能设置
+          const highPerformanceStreaming = localStorage.getItem('highPerformanceStreaming') === 'true';
+          if (highPerformanceStreaming) {
+            return 300; // 高性能模式：300ms
           }
         } catch (error) {
           console.warn('无法加载性能设置，使用默认值');

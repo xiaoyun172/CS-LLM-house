@@ -30,12 +30,14 @@ interface Setting {
   id: string;
   name: string;
   description: string;
-  defaultValue: boolean;
+  defaultValue: boolean | string;
+  type?: 'switch' | 'select';
+  options?: Array<{ value: string; label: string }>;
 }
 
 interface SettingsTabProps {
   settings?: Setting[];
-  onSettingChange?: (settingId: string, value: boolean) => void;
+  onSettingChange?: (settingId: string, value: boolean | string) => void;
   onContextLengthChange?: (value: number) => void;
   onContextCountChange?: (value: number) => void;
   onMathRendererChange?: (value: MathRendererType) => void;
@@ -125,7 +127,7 @@ export default function SettingsTab({
     localStorage.setItem('user_avatar', avatarDataUrl);
   };
 
-  const handleSettingChange = (settingId: string, value: boolean) => {
+  const handleSettingChange = (settingId: string, value: boolean | string) => {
     // 保存到localStorage
     try {
       const appSettingsJSON = localStorage.getItem('appSettings');

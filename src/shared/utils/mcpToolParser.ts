@@ -170,7 +170,7 @@ export function parseToolUse(content: string, mcpTools: MCPTool[]): MCPToolRespo
     const toolName = mcpTool.id || mcpTool.name;
     // 转义特殊字符以避免正则表达式错误
     const escapedToolName = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const directPattern = new RegExp(`<${escapedToolName}>([\s\S]*?)<\/${escapedToolName}>`, 'g');
+    const directPattern = new RegExp(`<${escapedToolName}>([\\s\\S]*?)</${escapedToolName}>`, 'g');
     let directMatch;
 
     while ((directMatch = directPattern.exec(fixedContent)) !== null) {
@@ -474,7 +474,7 @@ export function hasToolUseTags(content: string, mcpTools: MCPTool[] = []): boole
     for (const tool of mcpTools) {
       const toolName = tool.id || tool.name;
       const escapedToolName = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const directPattern = new RegExp(`<${escapedToolName}>([\s\S]*?)<\/${escapedToolName}>`, 'g');
+      const directPattern = new RegExp(`<${escapedToolName}>([\\s\\S]*?)</${escapedToolName}>`, 'g');
       if (directPattern.test(content)) {
         return true;
       }

@@ -37,14 +37,6 @@ const CitationBlock: React.FC<Props> = ({ block }) => {
   const memoizedContent = useDeepMemo(() => block.content, [block.content]);
   const memoizedSources = useDeepMemo(() => block.sources, [block.sources]);
 
-  const isProcessing = block.status === MessageBlockStatus.STREAMING ||
-                       block.status === MessageBlockStatus.PROCESSING;
-
-  // 如果没有引用内容，不渲染任何内容
-  if (!block.sources || block.sources.length === 0) {
-    return null;
-  }
-
   // 复制引用内容到剪贴板
   const handleCopy = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); // 防止触发折叠/展开
@@ -87,6 +79,14 @@ const CitationBlock: React.FC<Props> = ({ block }) => {
     }
     return `https://${url}`;
   }, []);
+
+  const isProcessing = block.status === MessageBlockStatus.STREAMING ||
+                       block.status === MessageBlockStatus.PROCESSING;
+
+  // 如果没有引用内容，不渲染任何内容
+  if (!block.sources || block.sources.length === 0) {
+    return null;
+  }
 
   return (
     <StyledPaper
