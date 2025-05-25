@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'  // 使用SWC版本
 import vue from '@vitejs/plugin-vue'
 // import { muiIconsPlugin } from './scripts/vite-mui-icons-plugin'
-import checker from 'vite-plugin-checker'
+import checker from 'vite-plugin-checker' // 保留检查器用于开发模式
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -13,7 +13,10 @@ export default defineConfig({
     //   enableCache: true,
     //   verbose: true
     // }),
-    react(),
+    react({
+      // SWC 优化配置
+      devTarget: 'es2022'
+    }),
     vue({
       template: {
         compilerOptions: {
@@ -22,12 +25,13 @@ export default defineConfig({
         }
       }
     }),
-    // 并行类型检查，不阻塞构建
-    checker({
+    // 超快并行类型检查 - 仅在开发模式启用
+    process.env.NODE_ENV === 'development' && checker({
       typescript: {
-        buildMode: true,
+        buildMode: false, // 开发时立即显示错误
         tsconfigPath: './tsconfig.app.json'
-      }
+      },
+      enableBuild: false // 生产构建时禁用，完全依赖SWC
     })
   ],
 
