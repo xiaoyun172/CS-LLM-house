@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:parallel": "concurrently \"tsc --noEmit\" \"vite build\" --kill-others-on-fail",
+    "build:incremental": "tsc -b --incremental && vite build",
+    "build:fast": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "build:android": "npm run build && npx cap sync android",
@@ -28,6 +31,7 @@
     "@capacitor-community/file-opener": "^7.0.1",
     "@capacitor/android": "^7.2.0",
     "@capacitor/app": "^7.0.1",
+    "@capacitor/browser": "^7.0.1",
     "@capacitor/camera": "^7.0.1",
     "@capacitor/cli": "^7.2.0",
     "@capacitor/clipboard": "^7.0.1",
@@ -110,12 +114,15 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
+    "@swc/core": "^1.11.29",
     "@types/dompurify": "^3.0.5",
     "@types/marked": "^5.0.2",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@types/react-katex": "^3.0.4",
     "@vitejs/plugin-react": "^4.4.1",
+    "@vitejs/plugin-react-swc": "^3.10.0",
+    "concurrently": "^9.1.2",
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
@@ -123,6 +130,7 @@
     "terser": "^5.39.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vite-plugin-checker": "^0.9.3"
   }
 }

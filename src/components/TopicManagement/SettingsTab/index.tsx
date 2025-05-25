@@ -9,10 +9,14 @@ import {
   Typography,
   Avatar,
   IconButton,
-  Tooltip
+  Tooltip,
+  ListItemButton
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import FaceIcon from '@mui/icons-material/Face';
+import TuneIcon from '@mui/icons-material/Tune';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import { useNavigate } from 'react-router-dom';
 import type { MathRendererType } from '../../../shared/types';
 import type { ThinkingOption } from '../../../shared/config/reasoningConfig';
 import SettingGroups from './SettingGroups';
@@ -65,6 +69,8 @@ export default function SettingsTab({
   onMCPModeChange,
   onToolsToggle
 }: SettingsTabProps) {
+  const navigate = useNavigate();
+
   // 本地状态
   const [contextLength, setContextLength] = useState<number>(initialContextLength);
   const [contextCount, setContextCount] = useState<number>(initialContextCount);
@@ -291,6 +297,35 @@ export default function SettingsTab({
           }
         }}
       />
+
+      <Divider sx={{ my: 1 }} />
+
+      {/* 应用设置入口 */}
+      <ListItemButton
+        onClick={() => navigate('/settings')}
+        sx={{
+          px: 2,
+          py: 1.5,
+          borderRadius: 1,
+          mx: 1,
+          mb: 1,
+          bgcolor: 'rgba(25, 118, 210, 0.08)',
+          border: '1px solid rgba(25, 118, 210, 0.2)',
+          '&:hover': {
+            bgcolor: 'rgba(25, 118, 210, 0.12)',
+          }
+        }}
+      >
+        <ListItemIcon sx={{ minWidth: '40px' }}>
+          <TuneIcon sx={{ color: 'primary.main' }} />
+        </ListItemIcon>
+        <ListItemText
+          primary="应用设置"
+          secondary="外观、行为、模型等设置"
+          primaryTypographyProps={{ fontWeight: 'medium' }}
+        />
+        <ChevronRightIcon sx={{ color: 'text.secondary' }} />
+      </ListItemButton>
 
       <Divider sx={{ my: 1 }} />
 

@@ -1,10 +1,18 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react-swc'  // 使用SWC版本
 import vue from '@vitejs/plugin-vue'
+// import { muiIconsPlugin } from './scripts/vite-mui-icons-plugin'
+import checker from 'vite-plugin-checker'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    // MUI图标动态分析插件（暂时注释，保持SWC构建纯净）
+    // muiIconsPlugin({
+    //   scanDirs: ['src'],
+    //   enableCache: true,
+    //   verbose: true
+    // }),
     react(),
     vue({
       template: {
@@ -12,6 +20,13 @@ export default defineConfig({
           // 将所有带vue-前缀的标签视为自定义元素
           isCustomElement: tag => tag.startsWith('vue-')
         }
+      }
+    }),
+    // 并行类型检查，不阻塞构建
+    checker({
+      typescript: {
+        buildMode: true,
+        tsconfigPath: './tsconfig.app.json'
       }
     })
   ],
@@ -434,12 +449,20 @@ export default defineConfig({
         manualChunks: {
           // 将React相关库拆分到单独的chunk
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          // 将UI库拆分到单独的chunk（移除icons-material以启用tree-shaking）
-          'mui-vendor': ['@mui/material'],
+          // 将UI库拆分到单独的chunk
+          'mui-vendor': ['@mui/material', '@mui/system', '@mui/utils'],
+          // MUI图标会由muiIconsPlugin动态添加
+          'mui-icons': [],
           // 将工具库拆分到单独的chunk
-          'utils-vendor': ['redux', '@reduxjs/toolkit'],
+          'utils-vendor': ['redux', '@reduxjs/toolkit', 'lodash'],
           // Vue相关库
-          'vue-vendor': ['vue']
+          'vue-vendor': ['vue'],
+          // 语法高亮相关
+          'syntax-vendor': ['react-syntax-highlighter'],
+          // 日期处理相关
+          'date-vendor': ['date-fns'],
+          // 动画相关
+          'animation-vendor': ['framer-motion']
         },
         // 限制chunk大小
         chunkFileNames: 'assets/js/[name]-[hash].js',
@@ -452,11 +475,32 @@ export default defineConfig({
   },
   // 优化依赖预构建
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@mui/material', '@reduxjs/toolkit', 'vue'],
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@mui/material',
+      '@mui/system',
+      '@mui/utils',
+      '@reduxjs/toolkit',
+      'vue'
+      // MUI图标会由muiIconsPlugin动态添加
+    ],
+    // 强制预构建这些依赖，即使它们没有被直接导入
+    force: true
   },
   // 启用esbuild优化
   esbuild: {
     pure: ['console.log', 'console.debug', 'console.trace'],
     legalComments: 'none',
+  },
+
+  // 缓存配置
+  cacheDir: 'node_modules/.vite',
+
+  // 定义全局常量
+  define: {
+    __DEV__: JSON.stringify(process.env.NODE_ENV === 'development'),
+    __PROD__: JSON.stringify(process.env.NODE_ENV === 'production'),
   },
 })

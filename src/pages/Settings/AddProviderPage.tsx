@@ -29,6 +29,7 @@ const providerTypes = [
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'grok', label: 'xAI (Grok)' },
   { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'zhipu', label: '智谱AI' },
   { value: 'siliconflow', label: '硅基流动 (SiliconFlow)' },
   { value: 'volcengine', label: '火山引擎' },
   { value: 'custom', label: '其他' },
@@ -91,6 +92,7 @@ const AddProviderPage: React.FC = () => {
                providerType === 'gemini' ? 'https://generativelanguage.googleapis.com/v1' :
                providerType === 'grok' ? 'https://api.x.ai/v1' :
                providerType === 'deepseek' ? 'https://api.deepseek.com' :
+               providerType === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4/' :
                providerType === 'siliconflow' ? 'https://api.siliconflow.cn/v1' :
                providerType === 'volcengine' ? 'https://ark.cn-beijing.volces.com/api/v3/' : '',
       models: [],
@@ -278,6 +280,7 @@ const AddProviderPage: React.FC = () => {
                  providerType === 'gemini' ? '添加Google Gemini API服务' :
                  providerType === 'grok' ? '添加xAI (Grok) API服务' :
                  providerType === 'deepseek' ? '添加DeepSeek API服务（使用OpenAI兼容格式）' :
+                 providerType === 'zhipu' ? '添加智谱AI (GLM) API服务（使用OpenAI兼容格式）' :
                  providerType === 'siliconflow' ? '添加硅基流动 (SiliconFlow) API服务' :
                  providerType === 'volcengine' ? '添加火山引擎 (豆包/DeepSeek) API服务' :
                  '添加自定义API服务'}

@@ -165,13 +165,42 @@ export function findCitationBlocks(message: Message): CitationMessageBlock[] {
  * @returns 主文本内容
  */
 export function getMainTextContent(message: Message): string {
-  if (!message || !message.blocks || message.blocks.length === 0) {
+  if (!message) {
     return '';
   }
 
   try {
+    // 🔥 优先检查是否有保存的content字段（多模型对比选择后的内容）
+    if (typeof (message as any).content === 'string' && (message as any).content.trim()) {
+      console.log(`[blockUtils.getMainTextContent] 使用保存的content字段，内容长度: ${(message as any).content.length}`);
+      return (message as any).content;
+    }
+
+    if (!message.blocks || message.blocks.length === 0) {
+      return '';
+    }
+
     // 从Redux状态获取所有块
     const state = store.getState();
+
+    // 🔥 首先检查是否有模型对比块，并且有选中的内容
+    for (const blockId of message.blocks) {
+      try {
+        const block = messageBlocksSelectors.selectById(state, blockId);
+        if (block && block.type === MessageBlockType.MULTI_MODEL) {
+          // 检查是否是对比块且有选中内容
+          const comparisonBlock = block as any;
+          if (comparisonBlock.subType === 'comparison' && comparisonBlock.selectedContent) {
+            console.log(`[blockUtils.getMainTextContent] 使用对比块选中内容，内容长度: ${comparisonBlock.selectedContent.length}`);
+            return comparisonBlock.selectedContent;
+          }
+        }
+      } catch (error) {
+        console.error(`[blockUtils.getMainTextContent] 检查对比块 ${blockId} 失败:`, error);
+      }
+    }
+
+    // 如果没有对比块选中内容，继续查找普通文本块
     const blocks = message.blocks
       .map(blockId => messageBlocksSelectors.selectById(state, blockId))
       .filter(Boolean) as MessageBlock[];
@@ -188,7 +217,7 @@ export function getMainTextContent(message: Message): string {
 
     return '';
   } catch (error) {
-    console.error('[getMainTextContent] 获取消息内容失败:', error);
+    console.error('[blockUtils.getMainTextContent] 获取消息内容失败:', error);
     return '';
   }
 }

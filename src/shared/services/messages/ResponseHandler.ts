@@ -15,6 +15,7 @@ import { v4 as uuid } from 'uuid';
 import { globalToolTracker } from '../../utils/toolExecutionSync';
 import { createToolBlock } from '../../utils/messageUtils';
 import { hasToolUseTags } from '../../utils/mcpToolParser';
+import { parseComparisonResult, createModelComparisonBlock } from '../../utils/modelComparisonUtils';
 
 /**
  * 响应处理器配置类型
@@ -319,6 +320,13 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
      * @param reasoning 推理内容（可选）
      */
     handleChunk(chunk: string, reasoning?: string) {
+      // 检查是否是对比结果
+      if (chunk === '__COMPARISON_RESULT__' && reasoning) {
+        console.log(`[ResponseHandler] 检测到对比结果`);
+        this.handleComparisonResult(reasoning);
+        return;
+      }
+
       // 检查是否有推理内容
       let isThinking = false;
       let thinkingContent = '';
@@ -357,6 +365,72 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
 
       // 返回当前累积的内容
       return accumulatedContent;
+    },
+
+    /**
+     * 处理对比结果
+     * @param reasoningData 对比结果的JSON字符串
+     */
+    async handleComparisonResult(reasoningData: string) {
+      try {
+        console.log(`[ResponseHandler] 处理对比结果，数据长度: ${reasoningData.length}`);
+
+        // 解析对比结果
+        const comboResult = parseComparisonResult(reasoningData);
+
+        if (!comboResult) {
+          console.error(`[ResponseHandler] 解析对比结果失败`);
+          return;
+        }
+
+        console.log(`[ResponseHandler] 成功解析对比结果，模型数量: ${comboResult.modelResults.length}`);
+
+        // 创建对比消息块
+        const comparisonBlock = createModelComparisonBlock(comboResult, messageId);
+
+        // 添加到Redux状态
+        store.dispatch(addOneBlock(comparisonBlock));
+
+        // 保存到数据库
+        await dexieStorage.saveMessageBlock(comparisonBlock);
+
+        // 将块添加到消息的blocks数组（使用最常用的方式）
+        const currentMessage = store.getState().messages.entities[messageId];
+        if (currentMessage) {
+          const updatedBlocks = [...(currentMessage.blocks || []), comparisonBlock.id];
+
+          // 🔧 修复：同时更新 Redux 和数据库
+          store.dispatch(newMessagesActions.updateMessage({
+            id: messageId,
+            changes: {
+              blocks: updatedBlocks
+            }
+          }));
+
+          // 🔧 关键修复：同步更新数据库中的消息blocks数组
+          await dexieStorage.updateMessage(messageId, {
+            blocks: updatedBlocks
+          });
+
+          console.log(`[ResponseHandler] 已更新消息 ${messageId} 的blocks数组: [${updatedBlocks.join(', ')}]`);
+        } else {
+          console.error(`[ResponseHandler] 找不到消息: ${messageId}`);
+        }
+
+        console.log(`[ResponseHandler] 对比块创建完成: ${comparisonBlock.id}`);
+
+        // 更新消息状态为成功
+        store.dispatch(newMessagesActions.updateMessage({
+          id: messageId,
+          changes: {
+            status: AssistantMessageStatus.SUCCESS,
+            updatedAt: new Date().toISOString()
+          }
+        }));
+
+      } catch (error) {
+        console.error(`[ResponseHandler] 处理对比结果失败:`, error);
+      }
     },
 
     /**
@@ -501,13 +575,10 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
     },
 
     /**
-     * 原子性工具块更新 - 修复事务中的动态导入问题
+     * 原子性工具块更新 - 使用静态导入
      */
     async atomicToolBlockUpdate(blockId: string, changes: any) {
       try {
-        // 🔥 修复：在事务外预先导入所需模块
-        const { updateOneBlock } = await import('../../store/slices/messageBlocksSlice');
-
         await dexieStorage.transaction('rw', [
           dexieStorage.message_blocks
         ], async () => {
@@ -653,6 +724,12 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
       // 🔥 关键修复：不要覆盖 accumulatedContent，因为它已经通过流式回调正确累积了所有内容
       // 在工具调用场景中，finalContent 只包含最后一次响应，会丢失之前的内容
       console.log(`[ResponseHandler] 完成处理 - finalContent长度: ${finalContent?.length || 0}, accumulatedContent长度: ${accumulatedContent.length}`);
+
+      // 检查是否是对比结果，如果是则不进行常规的完成处理
+      if (finalContent === '__COMPARISON_RESULT__' || accumulatedContent === '__COMPARISON_RESULT__') {
+        console.log(`[ResponseHandler] 检测到对比结果，跳过常规完成处理`);
+        return accumulatedContent;
+      }
 
       // 参考 Cline：等待所有工具执行完成
       try {

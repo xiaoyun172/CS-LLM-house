@@ -64,6 +64,8 @@ class DexieStorageService extends Dexie {
       [DB_CONFIG.STORES.MESSAGES]: 'id, topicId, assistantId',
       files: 'id, name, origin_name, size, ext, type, created_at, count, hash',
     }).upgrade(() => this.upgradeToV6());
+
+
   }
 
   /**
@@ -451,11 +453,51 @@ class DexieStorageService extends Dexie {
     if (!block.id) {
       block.id = uuid();
     }
+
+    // 🔧 修复：对比分析块的特殊处理
+    if ('subType' in block && (block as any).subType === 'comparison') {
+      console.log(`[DexieStorageService] 保存对比分析块: ${block.id}`);
+      // 确保 comboResult 被正确序列化
+      const comparisonBlock = block as any;
+      if (comparisonBlock.comboResult) {
+        // 深拷贝确保数据完整性
+        const blockToSave = {
+          ...block,
+          comboResult: JSON.parse(JSON.stringify(comparisonBlock.comboResult))
+        };
+        await this.message_blocks.put(blockToSave);
+        return;
+      }
+    }
+
     await this.message_blocks.put(block);
   }
 
   async getMessageBlock(id: string): Promise<MessageBlock | null> {
-    return await this.message_blocks.get(id) || null;
+    const block = await this.message_blocks.get(id);
+    if (!block) return null;
+
+    // 🔧 修复：对比分析块的特殊处理
+    if ('subType' in block && (block as any).subType === 'comparison') {
+      console.log(`[DexieStorageService] 加载对比分析块: ${id}`);
+      const comparisonBlock = block as any;
+
+      // 验证 comboResult 数据完整性
+      if (comparisonBlock.comboResult) {
+        // 确保 comboResult 具有正确的结构
+        if (!comparisonBlock.comboResult.modelResults || !Array.isArray(comparisonBlock.comboResult.modelResults)) {
+          console.error(`[DexieStorageService] 对比分析块数据损坏: ${id}`);
+          return null;
+        }
+
+        console.log(`[DexieStorageService] 对比分析块加载成功，模型数量: ${comparisonBlock.comboResult.modelResults.length}`);
+      } else {
+        console.error(`[DexieStorageService] 对比分析块缺少 comboResult: ${id}`);
+        return null;
+      }
+    }
+
+    return block;
   }
 
   async getMessageBlocksByMessageId(messageId: string): Promise<MessageBlock[]> {
@@ -1031,6 +1073,63 @@ class DexieStorageService extends Dexie {
     },
     150 // 150ms节流时间 - 与最佳实例保持一致
   );
+
+  /**
+   * 模型组合相关方法
+   */
+
+  // 获取所有模型组合
+  async getAllModelCombos(): Promise<any[]> {
+    try {
+      const combosData = await this.getMetadata('model_combos');
+      return combosData || [];
+    } catch (error) {
+      console.error('[DexieStorageService] 获取模型组合失败:', error);
+      return [];
+    }
+  }
+
+  // 获取单个模型组合
+  async getModelCombo(id: string): Promise<any | null> {
+    try {
+      const combos = await this.getAllModelCombos();
+      return combos.find(combo => combo.id === id) || null;
+    } catch (error) {
+      console.error('[DexieStorageService] 获取模型组合失败:', error);
+      return null;
+    }
+  }
+
+  // 保存模型组合
+  async saveModelCombo(combo: any): Promise<void> {
+    try {
+      const combos = await this.getAllModelCombos();
+      const existingIndex = combos.findIndex(c => c.id === combo.id);
+
+      if (existingIndex >= 0) {
+        combos[existingIndex] = combo;
+      } else {
+        combos.push(combo);
+      }
+
+      await this.saveMetadata('model_combos', combos);
+    } catch (error) {
+      console.error('[DexieStorageService] 保存模型组合失败:', error);
+      throw error;
+    }
+  }
+
+  // 删除模型组合
+  async deleteModelCombo(id: string): Promise<void> {
+    try {
+      const combos = await this.getAllModelCombos();
+      const filteredCombos = combos.filter(combo => combo.id !== id);
+      await this.saveMetadata('model_combos', filteredCombos);
+    } catch (error) {
+      console.error('[DexieStorageService] 删除模型组合失败:', error);
+      throw error;
+    }
+  }
 }
 
 export const dexieStorage = DexieStorageService.getInstance();

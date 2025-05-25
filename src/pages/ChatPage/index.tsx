@@ -122,7 +122,8 @@ const ChatPage: React.FC = () => {
     toggleToolsEnabled,
     handleMCPModeChange,
     handleStopResponseClick,
-    handleMessageSend
+    handleMessageSend,
+    handleMultiModelSend
   } = useChatFeatures(currentTopic, currentMessages, selectedModel, handleSendMessage);
 
   // 在主题切换时加载消息
@@ -263,6 +264,7 @@ const ChatPage: React.FC = () => {
       toggleToolsEnabled={toggleToolsEnabled}
       handleMCPModeChange={handleMCPModeChange}
       handleMessageSend={handleMessageSend}
+      handleMultiModelSend={handleMultiModelSend}
       handleStopResponseClick={handleStopResponseClick}
     />
   );

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
-
+import { multiModelService } from '../../../shared/services/MultiModelService';
+import { ApiProviderRegistry } from '../../../shared/services/messages/ApiProvider';
+import { dexieStorage } from '../../../shared/services/DexieStorageService';
 import {
   createUserMessage,
   createAssistantMessage
@@ -166,7 +168,6 @@ export const useChatFeatures = (
         };
 
         // 保存引用块到消息中
-        const { dexieStorage } = await import('../../../shared/services/DexieStorageService');
         const updatedMessage = await dexieStorage.getMessage(searchingMessage.id);
         if (updatedMessage) {
           const updatedBlocks = [...(updatedMessage.blocks || []), citationBlock.id];
@@ -293,6 +294,185 @@ export const useChatFeatures = (
     localStorage.setItem('mcp-mode', mode);
   };
 
+  // 处理多模型发送
+  const handleMultiModelSend = async (content: string, models: any[], images?: any[], _toolsEnabled?: boolean, files?: any[]) => {
+    if (!currentTopic || !selectedModel) return;
+
+    try {
+      console.log(`[useChatFeatures] 开始多模型发送，模型数量: ${models.length}`);
+      console.log(`[useChatFeatures] 选中的模型:`, models.map(m => `${m.provider || m.providerType}:${m.id}`));
+
+      // 使用静态导入的服务
+
+      // 创建用户消息
+      const { message: userMessage, blocks: userBlocks } = createUserMessage({
+        content,
+        assistantId: currentTopic.assistantId,
+        topicId: currentTopic.id,
+        modelId: selectedModel.id,
+        model: selectedModel,
+        images: images?.map(img => ({ url: img.image_url?.url || '' })),
+        files: files?.map(file => file.fileRecord).filter(Boolean)
+      });
+
+      // 创建助手消息
+      const { message: assistantMessage, blocks: assistantBlocks } = createAssistantMessage({
+        assistantId: currentTopic.assistantId,
+        topicId: currentTopic.id,
+        askId: userMessage.id,
+        modelId: selectedModel.id,
+        model: selectedModel
+      });
+
+      // 保存消息到数据库
+      await dexieStorage.saveMessage(userMessage);
+      await dexieStorage.saveMessage(assistantMessage);
+
+      // 保存消息块
+      for (const block of [...userBlocks, ...assistantBlocks]) {
+        await dexieStorage.saveMessageBlock(block);
+      }
+
+      // 更新Redux状态
+      dispatch(newMessagesActions.addMessage({ topicId: currentTopic.id, message: userMessage }));
+      dispatch(newMessagesActions.addMessage({ topicId: currentTopic.id, message: assistantMessage }));
+
+      // 创建多模型响应块
+      const blockId = await multiModelService.createMultiModelBlock(
+        assistantMessage.id,
+        models,
+        'vertical' // 默认垂直布局
+      );
+
+      console.log(`[useChatFeatures] 创建多模型块: ${blockId}`);
+
+      // 并行调用所有模型
+      models.map(async (model) => {
+        try {
+          const modelKey = `${model.provider || model.providerType}:${model.id}`;
+          console.log(`[useChatFeatures] 调用模型: ${modelKey}`);
+
+          // 实际调用模型API
+          await callSingleModelForMultiModel(model, content, blockId);
+
+        } catch (error) {
+          console.error(`[useChatFeatures] 模型 ${model.id} 调用失败:`, error);
+          await multiModelService.updateModelResponse(blockId, model.id, `模型调用失败: ${error}`, 'error');
+        }
+      });
+
+    } catch (error) {
+      console.error('[useChatFeatures] 多模型发送失败:', error);
+    }
+  };
+
+  // 为多模型调用单个模型
+  const callSingleModelForMultiModel = async (
+    model: any,
+    content: string,
+    blockId: string
+  ) => {
+    try {
+      console.log(`[useChatFeatures] 开始调用单个模型: ${model.id}`);
+
+      // 使用静态导入的API和服务
+
+      // 获取当前话题的消息历史
+      const topicMessages = await dexieStorage.getTopicMessages(currentTopic.id);
+
+      // 按创建时间排序消息
+      const sortedMessages = [...topicMessages].sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        return timeA - timeB;
+      });
+
+      // 构建API消息数组
+      const chatMessages: any[] = [];
+
+      // 添加历史消息
+      for (const message of sortedMessages) {
+        if (message.role === 'system') continue; // 跳过系统消息
+
+        // 获取消息的主要文本内容
+        const messageBlocks = await dexieStorage.getMessageBlocksByMessageId(message.id);
+        const mainTextBlock = messageBlocks.find((block: any) => block.type === 'main_text');
+        const messageContent = (mainTextBlock as any)?.content || '';
+
+        if (messageContent.trim()) {
+          // 创建符合Message接口的对象
+          chatMessages.push({
+            id: message.id,
+            role: message.role,
+            content: messageContent,
+            assistantId: message.assistantId,
+            topicId: message.topicId,
+            createdAt: message.createdAt,
+            status: message.status,
+            blocks: message.blocks
+          });
+        }
+      }
+
+      // 添加用户的新消息
+      chatMessages.push({
+        id: `temp-${Date.now()}`,
+        role: 'user' as const,
+        content: content,
+        assistantId: currentTopic.assistantId,
+        topicId: currentTopic.id,
+        createdAt: new Date().toISOString(),
+        status: 'success',
+        blocks: []
+      });
+
+      console.log(`[useChatFeatures] 为模型 ${model.id} 准备消息历史，消息数量: ${chatMessages.length}`);
+
+      // 获取API提供商
+      const provider = ApiProviderRegistry.get(model);
+      if (!provider) {
+        throw new Error(`无法获取模型 ${model.id} 的API提供商`);
+      }
+
+      // 初始化响应状态
+      await multiModelService.updateModelResponse(blockId, model.id, '', 'streaming');
+
+      // 调用模型API，使用流式更新
+      const response = await provider.sendChatMessage(chatMessages, {
+        onUpdate: async (content: string) => {
+          // 实时更新响应内容
+          await multiModelService.updateModelResponse(blockId, model.id, content, 'streaming');
+        },
+        enableTools: true,
+        // 其他选项...
+      });
+
+      // 处理最终响应
+      let finalContent = '';
+      if (typeof response === 'string') {
+        finalContent = response;
+      } else if (response && typeof response === 'object' && 'content' in response) {
+        finalContent = response.content;
+      }
+
+      // 完成响应
+      await multiModelService.completeModelResponse(blockId, model.id, finalContent);
+
+      console.log(`[useChatFeatures] 模型 ${model.id} 调用完成`);
+
+    } catch (error) {
+      console.error(`[useChatFeatures] 模型 ${model.id} 调用失败:`, error);
+
+      // 使用静态导入的服务
+      await multiModelService.updateModelResponse(
+        blockId,
+        model.id,
+        `调用失败: ${error instanceof Error ? error.message : String(error)}`,
+        'error'
+      );
+    }
+  };
+
   return {
     webSearchActive,
     imageGenerationMode,
@@ -305,6 +485,7 @@ export const useChatFeatures = (
     handleWebSearch,
     handleImagePrompt,
     handleStopResponseClick,
-    handleMessageSend
+    handleMessageSend,
+    handleMultiModelSend
   };
 };

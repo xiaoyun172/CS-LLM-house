@@ -295,7 +295,7 @@ export interface Settings {
 }
 
 // 预设模型提供商
-export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'grok' | 'deepseek' | 'siliconflow' | 'volcengine' | 'azure-openai' | 'custom';
+export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'grok' | 'deepseek' | 'zhipu' | 'siliconflow' | 'volcengine' | 'azure-openai' | 'custom';
 
 // 预设模型信息
 export interface PresetModel {

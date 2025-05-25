@@ -100,8 +100,19 @@ export class MultiModelService {
       throw new Error(`块 ${blockId} 不是多模型响应块`);
     }
 
+    // 检查是否是对比块，对比块有不同的结构
+    if ('subType' in block && (block as any).subType === 'comparison') {
+      console.warn(`[MultiModelService] 跳过对比块的更新: ${blockId}`);
+      return;
+    }
+
+    // 确保块有 responses 属性
+    if (!('responses' in block) || !Array.isArray((block as any).responses)) {
+      throw new Error(`块 ${blockId} 没有 responses 属性`);
+    }
+
     // 更新响应
-    const updatedResponses = block.responses.map(response => {
+    const updatedResponses = (block as any).responses.map((response: any) => {
       if (response.modelId === modelId) {
         return {
           ...response,
@@ -116,17 +127,17 @@ export class MultiModelService {
     let blockStatus: MessageBlockStatus = MessageBlockStatus.SUCCESS;
 
     // 如果有任何一个响应正在流式传输，则块状态为流式传输
-    if (updatedResponses.some(r => r.status === MessageBlockStatus.STREAMING)) {
+    if (updatedResponses.some((r: any) => r.status === MessageBlockStatus.STREAMING)) {
       blockStatus = MessageBlockStatus.STREAMING;
     }
 
     // 如果有任何一个响应处于待处理状态，则块状态为待处理
-    if (updatedResponses.some(r => r.status === MessageBlockStatus.PENDING)) {
+    if (updatedResponses.some((r: any) => r.status === MessageBlockStatus.PENDING)) {
       blockStatus = MessageBlockStatus.PENDING;
     }
 
     // 如果有任何一个响应出错，则块状态为错误
-    if (updatedResponses.some(r => r.status === MessageBlockStatus.ERROR)) {
+    if (updatedResponses.some((r: any) => r.status === MessageBlockStatus.ERROR)) {
       blockStatus = MessageBlockStatus.ERROR;
     }
 

@@ -15,6 +15,7 @@ export interface ModelProvider {
   baseUrl?: string;
   models: Model[];
   providerType?: string;
+  isSystem?: boolean; // 标记是否为系统供应商
 }
 
 interface SettingsState {
@@ -35,7 +36,26 @@ interface SettingsState {
   thinkingDisplayStyle: string;
   toolbarDisplayStyle: 'icon' | 'text' | 'both'; // 工具栏显示样式：仅图标、仅文字、图标+文字
   inputBoxStyle: 'default' | 'modern' | 'minimal'; // 输入框风格：默认、现代、简约
+  inputLayoutStyle: 'default' | 'compact'; // 输入框布局样式：默认（分离）或聚合
   showSystemPromptBubble: boolean; // 是否显示系统提示词气泡
+  showUserAvatar: boolean; // 是否显示用户头像
+  showUserName: boolean; // 是否显示用户名称
+  showModelAvatar: boolean; // 是否显示模型头像
+  showModelName: boolean; // 是否显示模型名称
+  // 顶部工具栏设置
+  topToolbar: {
+    showSettingsButton: boolean; // 是否显示设置按钮
+    showModelSelector: boolean; // 是否显示模型选择器
+    modelSelectorStyle: 'full' | 'icon'; // 模型选择器样式：完整显示或图标
+    showChatTitle: boolean; // 是否显示"对话"标题
+    showTopicName: boolean; // 是否显示话题名称
+    showNewTopicButton: boolean; // 是否显示新建话题按钮
+    showClearButton: boolean; // 是否显示清空按钮
+    showMenuButton: boolean; // 是否显示菜单按钮
+    // 组件顺序配置
+    leftComponents: string[]; // 左侧组件顺序
+    rightComponents: string[]; // 右侧组件顺序
+  };
   isLoading: boolean; // 添加加载状态以处理异步操作
 
   // 思考过程自动折叠
@@ -49,10 +69,29 @@ interface SettingsState {
 
   // 引用显示详情
   showCitationDetails?: boolean;
+
+  // 消息气泡宽度设置
+  messageBubbleMinWidth?: number; // 最小宽度百分比 (10-90)
+  messageBubbleMaxWidth?: number; // 最大宽度百分比 (50-100)
+  userMessageMaxWidth?: number;   // 用户消息最大宽度百分比 (50-100)
+
+  // 工具栏折叠状态
+  toolbarCollapsed?: boolean; // 工具栏是否折叠
 }
 
 // 初始预设供应商
 const initialProviders: ModelProvider[] = [
+  {
+    id: 'model-combo',
+    name: '模型组合',
+    avatar: '🧠',
+    color: '#f43f5e',
+    isEnabled: true,
+    apiKey: '',
+    baseUrl: '',
+    isSystem: true, // 标记为系统供应商
+    models: [] // 动态从模型组合服务加载
+  },
   {
     id: 'openai',
     name: 'OpenAI',
@@ -121,6 +160,29 @@ const initialProviders: ModelProvider[] = [
       { id: 'doubao-1.5-thinking-pro', name: '豆包 1.5 Thinking Pro', provider: 'volcengine', enabled: true, isDefault: false, description: '豆包大模型思考专业版' },
       { id: 'deepseek-r1', name: 'DeepSeek R1', provider: 'volcengine', enabled: true, isDefault: false, description: 'DeepSeek R1大模型' }
     ]
+  },
+  {
+    id: 'zhipu',
+    name: '智谱AI',
+    avatar: '智',
+    color: '#4f46e5',
+    isEnabled: true,
+    apiKey: '',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4/',
+    providerType: 'zhipu',
+    models: [
+      { id: 'glm-4-0520', name: 'GLM-4-0520', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4最新版本，性能优化' },
+      { id: 'glm-4-plus', name: 'GLM-4-Plus', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4增强版，更强推理能力' },
+      { id: 'glm-4-long', name: 'GLM-4-Long', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4长文本版，支持超长上下文' },
+      { id: 'glm-4-air', name: 'GLM-4-Air', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4轻量版，快速响应' },
+      { id: 'glm-4-airx', name: 'GLM-4-AirX', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4轻量增强版' },
+      { id: 'glm-4-flash', name: 'GLM-4-Flash', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4极速版，超快响应' },
+      { id: 'glm-4-flashx', name: 'GLM-4-FlashX', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4极速增强版' },
+      { id: 'glm-4v', name: 'GLM-4V', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4视觉版，支持图像理解' },
+      { id: 'glm-4v-flash', name: 'GLM-4V-Flash', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4V极速版' },
+      { id: 'glm-4v-plus', name: 'GLM-4V-Plus', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4V增强版' },
+      { id: 'glm-4-alltools', name: 'GLM-4-AllTools', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4全工具版，支持网络搜索等工具' }
+    ]
   }
 ];
 
@@ -156,8 +218,35 @@ const getInitialState = (): SettingsState => {
     thinkingDisplayStyle: ThinkingDisplayStyle.COMPACT,
     toolbarDisplayStyle: 'both' as 'icon' | 'text' | 'both',
     inputBoxStyle: 'default' as 'default' | 'modern' | 'minimal', // 默认输入框风格
+    inputLayoutStyle: 'default' as 'default' | 'compact', // 输入框布局样式：默认（分离）或聚合
     showSystemPromptBubble: true, // 默认显示系统提示词气泡
-    isLoading: true // 初始时设为加载中状态
+    showUserAvatar: true, // 默认显示用户头像
+    showUserName: true, // 默认显示用户名称
+    showModelAvatar: true, // 默认显示模型头像
+    showModelName: true, // 默认显示模型名称
+    // 顶部工具栏默认设置
+    topToolbar: {
+      showSettingsButton: true, // 默认显示设置按钮
+      showModelSelector: true, // 默认显示模型选择器
+      modelSelectorStyle: 'full', // 默认完整显示模型选择器
+      showChatTitle: true, // 默认显示"对话"标题
+      showTopicName: false, // 默认不显示话题名称
+      showNewTopicButton: false, // 默认不显示新建话题按钮
+      showClearButton: false, // 默认不显示清空按钮
+      showMenuButton: true, // 默认显示菜单按钮
+      // 默认组件顺序
+      leftComponents: ['menuButton', 'chatTitle', 'topicName', 'newTopicButton', 'clearButton'],
+      rightComponents: ['modelSelector', 'settingsButton'],
+    },
+    isLoading: true, // 初始时设为加载中状态
+
+    // 消息气泡宽度默认设置
+    messageBubbleMinWidth: 50, // 默认最小宽度50%
+    messageBubbleMaxWidth: 99, // 默认AI消息最大宽度99%
+    userMessageMaxWidth: 80,   // 默认用户消息最大宽度80%
+
+    // 工具栏默认设置
+    toolbarCollapsed: false    // 默认工具栏不折叠
   };
 
   // 设置默认模型
@@ -174,7 +263,17 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
   try {
     const savedSettings = await getStorageItem<SettingsState>('settings');
     if (savedSettings) {
-      const providers = savedSettings.providers || initialProviders;
+      let providers = savedSettings.providers || initialProviders;
+
+      // 确保模型组合供应商始终存在
+      const hasModelComboProvider = providers.some(p => p.id === 'model-combo');
+      if (!hasModelComboProvider) {
+        // 如果没有模型组合供应商，添加到列表开头
+        const modelComboProvider = initialProviders.find(p => p.id === 'model-combo');
+        if (modelComboProvider) {
+          providers = [modelComboProvider, ...providers];
+        }
+      }
 
       // 如果没有存储当前模型ID，使用默认模型ID
       if (!savedSettings.currentModelId) {
@@ -196,6 +295,11 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
         savedSettings.inputBoxStyle = 'default';
       }
 
+      // 如果没有输入框布局样式设置，使用默认值
+      if (!savedSettings.inputLayoutStyle) {
+        savedSettings.inputLayoutStyle = 'default';
+      }
+
       // 如果没有系统提示词气泡显示设置，使用默认值
       if (savedSettings.showSystemPromptBubble === undefined) {
         savedSettings.showSystemPromptBubble = true;
@@ -204,6 +308,22 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
       // 如果没有模型选择器样式设置，使用默认值
       if (!savedSettings.modelSelectorStyle) {
         savedSettings.modelSelectorStyle = 'dialog';
+      }
+
+      // 如果没有消息气泡宽度设置，使用默认值
+      if (savedSettings.messageBubbleMinWidth === undefined) {
+        savedSettings.messageBubbleMinWidth = 50;
+      }
+      if (savedSettings.messageBubbleMaxWidth === undefined) {
+        savedSettings.messageBubbleMaxWidth = 99;
+      }
+      if (savedSettings.userMessageMaxWidth === undefined) {
+        savedSettings.userMessageMaxWidth = 80;
+      }
+
+      // 如果没有工具栏折叠设置，使用默认值
+      if (savedSettings.toolbarCollapsed === undefined) {
+        savedSettings.toolbarCollapsed = false;
       }
 
       return {
@@ -418,6 +538,14 @@ const settingsSlice = createSlice({
     setModelSelectorStyle: (state, action: PayloadAction<'dialog' | 'dropdown'>) => {
       state.modelSelectorStyle = action.payload;
     },
+
+    // 更新模型组合供应商的模型列表
+    updateModelComboModels: (state, action: PayloadAction<any[]>) => {
+      const comboProvider = state.providers.find(p => p.id === 'model-combo');
+      if (comboProvider) {
+        comboProvider.models = action.payload;
+      }
+    },
     // 话题命名相关的action creators
     setEnableTopicNaming: (state, action: PayloadAction<boolean>) => {
       state.enableTopicNaming = action.payload;
@@ -485,6 +613,7 @@ export const {
   clearGeneratedImages,
   updateSettings,
   setModelSelectorStyle,
+  updateModelComboModels,
   // 话题命名相关的actions
   setEnableTopicNaming,
   setTopicNamingPrompt,

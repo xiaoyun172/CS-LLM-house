@@ -745,7 +745,6 @@ export class OpenAIProvider extends BaseOpenAIProvider {
         if (xmlToolResults.length > 0) {
           // 🔥 修复：保留 XML 标签，让 MainTextBlock 在原位置渲染工具块
           // 但是对话历史中需要清理后的内容，避免重复处理
-          const { removeToolUseTags } = await import('../../utils/mcpToolParser');
           const cleanContent = removeToolUseTags(content);
           console.log(`[OpenAIProvider] 流式：对话历史使用清理后的内容，长度: ${cleanContent.length}`);
 

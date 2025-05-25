@@ -2,6 +2,7 @@
  * 文件处理工具
  * 提供文件处理相关的工具函数
  */
+import { mobileFileStorage } from '../services/MobileFileStorageService';
 
 /**
  * 文件类型接口
@@ -188,8 +189,7 @@ export function getFileMimeType(file: FileType): string {
  */
 export async function readFileContent(file: FileType): Promise<string> {
   try {
-    // 动态导入文件存储服务以避免循环依赖
-    const { mobileFileStorage } = await import('../services/MobileFileStorageService');
+    // 使用静态导入的文件存储服务
 
     // 使用文件存储服务读取文件内容
     return await mobileFileStorage.readFile(file.id);
@@ -208,8 +208,7 @@ export async function readFileContent(file: FileType): Promise<string> {
  */
 export async function fileToBase64(file: FileType): Promise<string> {
   try {
-    // 动态导入文件存储服务以避免循环依赖
-    const { mobileFileStorage } = await import('../services/MobileFileStorageService');
+    // 使用静态导入的文件存储服务
 
     // 使用文件存储服务获取base64数据
     const result = await mobileFileStorage.getFileBase64(file.id);

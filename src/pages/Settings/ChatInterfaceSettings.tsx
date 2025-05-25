@@ -11,7 +11,8 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
-  IconButton
+  IconButton,
+  Slider
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import InfoIcon from '@mui/icons-material/Info';
@@ -33,7 +34,15 @@ const ChatInterfaceSettings: React.FC = () => {
   const showCitationDetails = (settings as any).showCitationDetails !== false;
   const toolbarDisplayStyle = settings.toolbarDisplayStyle || 'both';
   const inputBoxStyle = settings.inputBoxStyle || 'default';
+  const inputLayoutStyle = (settings as any).inputLayoutStyle || 'default';
   const showSystemPromptBubble = settings.showSystemPromptBubble !== false;
+  const showUserAvatar = settings.showUserAvatar !== false;
+  const showUserName = settings.showUserName !== false;
+  const showModelAvatar = settings.showModelAvatar !== false;
+  const showModelName = settings.showModelName !== false;
+  const messageBubbleMinWidth = settings.messageBubbleMinWidth || 50;
+  const messageBubbleMaxWidth = settings.messageBubbleMaxWidth || 99;
+  const userMessageMaxWidth = settings.userMessageMaxWidth || 80;
 
   const handleBack = () => {
     navigate('/settings/appearance');
@@ -82,9 +91,58 @@ const ChatInterfaceSettings: React.FC = () => {
     }));
   };
 
+  const handleInputLayoutStyleChange = (event: { target: { value: any } }) => {
+    dispatch(updateSettings({
+      inputLayoutStyle: event.target.value
+    }));
+  };
+
   const handleSystemPromptBubbleChange = (event: { target: { value: any } }) => {
     dispatch(updateSettings({
       showSystemPromptBubble: event.target.value === 'show'
+    }));
+  };
+
+  const handleMessageBubbleMinWidthChange = (_event: Event, newValue: number | number[]) => {
+    dispatch(updateSettings({
+      messageBubbleMinWidth: newValue as number
+    }));
+  };
+
+  const handleMessageBubbleMaxWidthChange = (_event: Event, newValue: number | number[]) => {
+    dispatch(updateSettings({
+      messageBubbleMaxWidth: newValue as number
+    }));
+  };
+
+  const handleUserMessageMaxWidthChange = (_event: Event, newValue: number | number[]) => {
+    dispatch(updateSettings({
+      userMessageMaxWidth: newValue as number
+    }));
+  };
+
+  // 头像和名称显示设置的事件处理函数
+  const handleShowUserAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(updateSettings({
+      showUserAvatar: event.target.checked
+    }));
+  };
+
+  const handleShowUserNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(updateSettings({
+      showUserName: event.target.checked
+    }));
+  };
+
+  const handleShowModelAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(updateSettings({
+      showModelAvatar: event.target.checked
+    }));
+  };
+
+  const handleShowModelNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(updateSettings({
+      showModelName: event.target.checked
     }));
   };
 
@@ -155,6 +213,11 @@ const ChatInterfaceSettings: React.FC = () => {
             >
               <MenuItem value={ThinkingDisplayStyle.COMPACT}>紧凑模式（可折叠）</MenuItem>
               <MenuItem value={ThinkingDisplayStyle.FULL}>完整模式（始终展开）</MenuItem>
+              <MenuItem value={ThinkingDisplayStyle.MINIMAL}>极简模式（小图标）</MenuItem>
+              <MenuItem value={ThinkingDisplayStyle.BUBBLE}>气泡模式（聊天气泡）</MenuItem>
+              <MenuItem value={ThinkingDisplayStyle.TIMELINE}>时间线模式（左侧指示器）</MenuItem>
+              <MenuItem value={ThinkingDisplayStyle.CARD}>卡片模式（突出显示）</MenuItem>
+              <MenuItem value={ThinkingDisplayStyle.INLINE}>内联模式（嵌入消息）</MenuItem>
               <MenuItem value={ThinkingDisplayStyle.HIDDEN}>隐藏（不显示思考过程）</MenuItem>
             </Select>
           </FormControl>
@@ -173,7 +236,15 @@ const ChatInterfaceSettings: React.FC = () => {
           </FormGroup>
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            设置AI助手思考过程的显示方式。紧凑模式仅显示一行可点击展开，完整模式会显示思考过程的标题和按钮，隐藏则不显示思考过程。
+            设置AI助手思考过程的显示方式：
+            <br />• 紧凑模式：标准卡片样式，可折叠展开
+            <br />• 完整模式：始终展开显示全部内容
+            <br />• 极简模式：只显示小图标，悬停查看内容
+            <br />• 气泡模式：类似聊天气泡的圆润设计
+            <br />• 时间线模式：左侧带时间线指示器
+            <br />• 卡片模式：突出的渐变卡片设计
+            <br />• 内联模式：嵌入在消息中的紧凑显示
+            <br />• 隐藏：完全不显示思考过程
           </Typography>
         </Paper>
 
@@ -254,6 +325,31 @@ const ChatInterfaceSettings: React.FC = () => {
           </Typography>
         </Paper>
 
+        {/* 输入框布局样式设置 */}
+        <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            输入框布局样式
+          </Typography>
+
+          <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+            <InputLabel>布局样式</InputLabel>
+            <Select
+              value={inputLayoutStyle}
+              onChange={handleInputLayoutStyleChange}
+              label="布局样式"
+            >
+              <MenuItem value="default">默认样式（工具栏+输入框分离）</MenuItem>
+              <MenuItem value="compact">聚合样式（输入框+功能图标集成）</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            选择聊天输入区域的布局方式：
+            <br />• 默认样式：工具栏和输入框分别显示，功能清晰分离
+            <br />• 聚合样式：输入框上方，下方为功能图标行，点击+号可展开更多功能
+          </Typography>
+        </Paper>
+
         {/* 工具调用设置 */}
         <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -312,6 +408,65 @@ const ChatInterfaceSettings: React.FC = () => {
           </Typography>
         </Paper>
 
+        {/* 头像和名称显示设置 */}
+        <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1">头像和名称显示</Typography>
+            <Tooltip title="自定义聊天界面中用户和模型的头像及名称显示">
+              <IconButton size="small" sx={{ ml: 1 }}>
+                <InfoIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          <FormGroup>
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={showUserAvatar}
+                  onChange={handleShowUserAvatarChange}
+                />
+              }
+              label="显示用户头像"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={showUserName}
+                  onChange={handleShowUserNameChange}
+                />
+              }
+              label="显示用户名称"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={showModelAvatar}
+                  onChange={handleShowModelAvatarChange}
+                />
+              }
+              label="显示模型头像"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={showModelName}
+                  onChange={handleShowModelNameChange}
+                />
+              }
+              label="显示模型名称"
+            />
+          </FormGroup>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            控制聊天界面中用户和AI模型的头像及名称显示。可以根据个人喜好选择性隐藏这些元素，获得更简洁的聊天体验。
+          </Typography>
+        </Paper>
+
         <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
           <Typography variant="subtitle1" sx={{ mb: 2 }}>
             系统提示词气泡设置
@@ -332,6 +487,91 @@ const ChatInterfaceSettings: React.FC = () => {
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             控制是否在聊天界面顶部显示系统提示词气泡。系统提示词气泡可以帮助您查看和编辑当前会话的系统提示词。
+          </Typography>
+        </Paper>
+
+        {/* 消息气泡宽度设置 */}
+        <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid #eee' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1">消息气泡宽度设置</Typography>
+            <Tooltip title="自定义聊天界面中消息气泡的宽度范围，适配不同设备屏幕">
+              <IconButton size="small" sx={{ ml: 1 }}>
+                <InfoIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          {/* AI消息最大宽度 */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" gutterBottom>
+              AI消息最大宽度: {messageBubbleMaxWidth}%
+            </Typography>
+            <Slider
+              value={messageBubbleMaxWidth}
+              onChange={handleMessageBubbleMaxWidthChange}
+              min={50}
+              max={100}
+              step={5}
+              marks={[
+                { value: 50, label: '50%' },
+                { value: 75, label: '75%' },
+                { value: 100, label: '100%' }
+              ]}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `${value}%`}
+            />
+          </Box>
+
+          {/* 用户消息最大宽度 */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" gutterBottom>
+              用户消息最大宽度: {userMessageMaxWidth}%
+            </Typography>
+            <Slider
+              value={userMessageMaxWidth}
+              onChange={handleUserMessageMaxWidthChange}
+              min={50}
+              max={100}
+              step={5}
+              marks={[
+                { value: 50, label: '50%' },
+                { value: 75, label: '75%' },
+                { value: 100, label: '100%' }
+              ]}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `${value}%`}
+            />
+          </Box>
+
+          {/* 消息最小宽度 */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" gutterBottom>
+              消息最小宽度: {messageBubbleMinWidth}%
+            </Typography>
+            <Slider
+              value={messageBubbleMinWidth}
+              onChange={handleMessageBubbleMinWidthChange}
+              min={10}
+              max={90}
+              step={5}
+              marks={[
+                { value: 10, label: '10%' },
+                { value: 30, label: '30%' },
+                { value: 50, label: '50%' },
+                { value: 70, label: '70%' },
+                { value: 90, label: '90%' }
+              ]}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `${value}%`}
+            />
+          </Box>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            调整消息气泡的宽度范围以适配不同设备：
+            <br />• AI消息最大宽度：控制AI回复的最大显示宽度
+            <br />• 用户消息最大宽度：控制用户消息的最大显示宽度
+            <br />• 消息最小宽度：所有消息的最小显示宽度，避免过窄影响阅读
+            <br />• 较小的宽度适合手机等窄屏设备，较大的宽度适合平板和电脑
           </Typography>
         </Paper>
 

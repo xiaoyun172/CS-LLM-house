@@ -6,7 +6,9 @@ import KeyboardVoiceIcon from '@mui/icons-material/KeyboardVoice';
 import CancelIcon from '@mui/icons-material/Cancel';
 import LinkIcon from '@mui/icons-material/Link';
 import StopIcon from '@mui/icons-material/Stop';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import { ImageUploadService } from '../shared/services/ImageUploadService';
+import MultiModelSelector from './MultiModelSelector';
 import { FileUploadService } from '../shared/services/FileUploadService';
 import type { ImageContent, SiliconFlowImageFormat, FileContent } from '../shared/types';
 import ImageIcon from '@mui/icons-material/Image';
@@ -24,6 +26,7 @@ import { alpha } from '@mui/material/styles';
 
 interface ChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
+  onSendMultiModelMessage?: (message: string, models: any[], images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void; // 多模型发送回调
   isLoading?: boolean;
   allowConsecutiveMessages?: boolean; // 允许连续发送消息，即使AI尚未回复
   imageGenerationMode?: boolean; // 是否处于图像生成模式
@@ -33,10 +36,12 @@ interface ChatInputProps {
   onStopResponse?: () => void; // 停止AI回复的回调
   isStreaming?: boolean; // 是否正在流式响应中
   toolsEnabled?: boolean; // 工具开关状态
+  availableModels?: any[]; // 可用模型列表
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
+  onSendMultiModelMessage,
   isLoading = false,
   allowConsecutiveMessages = true, // 默认允许连续发送
   imageGenerationMode = false, // 默认不是图像生成模式
@@ -45,7 +50,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onDetectUrl,
   onStopResponse,
   isStreaming = false,
-  toolsEnabled = true // 默认启用工具
+  toolsEnabled = true, // 默认启用工具
+  availableModels = [] // 默认空数组
 }) => {
   const [message, setMessage] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -54,6 +60,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [files, setFiles] = useState<FileContent[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [uploadMenuAnchorEl, setUploadMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [multiModelSelectorOpen, setMultiModelSelectorOpen] = useState(false);
 
   // URL解析状态
   const [detectedUrl, setDetectedUrl] = useState<string>('');
@@ -97,7 +104,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // 根据风格获取样式
   const getInputStyles = () => {
     const baseStyles = {
-      inputBgColor: isDarkMode ? alpha(theme.palette.background.paper, 0.5) : alpha(theme.palette.background.paper, 0.8),
+      inputBgColor: isDarkMode ? alpha(theme.palette.background.paper, 0.5) : alpha(theme.palette.background.paper, 0.95), // 浅色模式使用更高的透明度
       iconColor: theme.palette.mode === 'dark' ? theme.palette.primary.light : theme.palette.primary.main,
       textColor: isDarkMode ? '#E0E0E0' : '#000000',
       disabledColor: isDarkMode ? '#555' : '#ccc',
@@ -198,6 +205,53 @@ const ChatInput: React.FC<ChatInputProps> = ({
       toolsEnabled: toolsEnabled
     });
     onSendMessage(processedMessage, formattedImages.length > 0 ? formattedImages : undefined, toolsEnabled, files);
+
+    // 重置状态
+    setMessage('');
+    setImages([]);
+    setFiles([]);
+    setUploadingMedia(false);
+  };
+
+  // 处理多模型发送
+  const handleMultiModelSend = (selectedModels: any[]) => {
+    if (!message.trim() && images.length === 0 && files.length === 0) return;
+    if (!onSendMultiModelMessage) return;
+
+    let processedMessage = message.trim();
+
+    // 如果有解析的内容，添加到消息中
+    if (parsedContent && urlScraperStatus === 'success') {
+      processedMessage = `${processedMessage}\n\n${parsedContent}`;
+      // 重置URL解析状态
+      setDetectedUrl('');
+      setParsedContent('');
+      setUrlScraperStatus('idle');
+    }
+
+    // 创建正确的图片格式
+    const formattedImages: SiliconFlowImageFormat[] = [...images, ...files.filter(f => f.mimeType.startsWith('image/'))].map(img => ({
+      type: 'image_url',
+      image_url: {
+        url: img.base64Data || img.url
+      }
+    }));
+
+    console.log('发送多模型消息:', {
+      message: processedMessage,
+      models: selectedModels.map(m => `${m.provider || m.providerType}:${m.id}`),
+      images: formattedImages.length,
+      files: files.length,
+      toolsEnabled: toolsEnabled
+    });
+
+    onSendMultiModelMessage(
+      processedMessage,
+      selectedModels,
+      formattedImages.length > 0 ? formattedImages : undefined,
+      toolsEnabled,
+      files
+    );
 
     // 重置状态
     setMessage('');
@@ -431,21 +485,21 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const getResponsiveStyles = () => {
     if (isMobile) {
       return {
-        padding: '0px 8px 8px 8px',
+        padding: '0px 8px 8px 8px', // 保留底部padding用于间距
         maxWidth: '100%',
         margin: '0'
       };
     } else if (isTablet) {
       return {
-        padding: '0px 16px 12px 16px',
-        maxWidth: '700px',
-        margin: '0 auto'
+        padding: '0px 16px 12px 16px', // 保留底部padding用于间距
+        maxWidth: '100%', // 改为100%，由外部容器控制最大宽度
+        margin: '0'
       };
     } else {
       return {
-        padding: '0px 10px 10px 10px',
-        maxWidth: '800px',
-        margin: '0 auto'
+        padding: '0px 10px 10px 10px', // 保留底部padding用于间距
+        maxWidth: '100%', // 改为100%，由外部容器控制最大宽度
+        margin: '0'
       };
     }
   };
@@ -464,7 +518,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
       zIndex: 1000,
       boxShadow: 'none',
       transition: 'all 0.3s ease',
-      marginBottom: isKeyboardVisible ? '0' : '0'
+      marginBottom: isKeyboardVisible ? '0' : '0',
+      // 确保没有任何背景色或边框
+      border: 'none',
+      outline: 'none'
     }}>
       {/* URL解析状态显示 */}
       {urlScraperStatus !== 'idle' && (
@@ -640,6 +697,24 @@ const ChatInput: React.FC<ChatInputProps> = ({
           </IconButton>
         </Tooltip>
 
+        {/* 多模型按钮 */}
+        {onSendMultiModelMessage && availableModels.length > 1 && !isStreaming && (
+          <Tooltip title="发送到多个模型">
+            <IconButton
+              onClick={() => setMultiModelSelectorOpen(true)}
+              disabled={!canSendMessage() || (isLoading && !allowConsecutiveMessages)}
+              size={isTablet ? "large" : "medium"}
+              style={{
+                color: !canSendMessage() || (isLoading && !allowConsecutiveMessages) ? disabledColor : '#FF9800',
+                padding: isTablet ? '10px' : '8px',
+                marginRight: isTablet ? '4px' : '2px'
+              }}
+            >
+              <CompareArrowsIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
         {/* 发送按钮或停止按钮 */}
         <IconButton
           onClick={isStreaming && onStopResponse ? onStopResponse : handleSubmit}
@@ -681,6 +756,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
         onClose={handleCloseUploadMenu}
         onImageUpload={handleImageUpload}
         onFileUpload={handleFileUpload}
+      />
+
+      {/* 多模型选择器 */}
+      <MultiModelSelector
+        open={multiModelSelectorOpen}
+        onClose={() => setMultiModelSelectorOpen(false)}
+        availableModels={availableModels}
+        onConfirm={handleMultiModelSend}
+        maxSelection={5}
       />
     </div>
   );
