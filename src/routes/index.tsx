@@ -9,6 +9,8 @@ const AppearanceSettings = lazy(() => import('../pages/Settings/AppearanceSettin
 const BehaviorSettings = lazy(() => import('../pages/Settings/BehaviorSettings'));
 const ChatInterfaceSettings = lazy(() => import('../pages/Settings/ChatInterfaceSettings'));
 const TopToolbarSettings = lazy(() => import('../pages/Settings/TopToolbarSettings'));
+const TopToolbarDIYSettings = lazy(() => import('../pages/Settings/TopToolbarDIYSettings'));
+const TopToolbarTestPage = lazy(() => import('../pages/Settings/TopToolbarTestPage'));
 const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSettings'));
 
 const DefaultModelSettingsPage = lazy(() => import('../pages/Settings/DefaultModelSettings/index'));
@@ -28,6 +30,9 @@ const MCPServerSettings = lazy(() => import('../pages/Settings/MCPServerSettings
 const MCPServerDetail = lazy(() => import('../pages/Settings/MCPServerDetail'));
 // 导入模型组合页面
 const ModelComboSettings = lazy(() => import('../pages/Settings/ModelComboSettings'));
+// 导入AI辩论设置页面
+const AIDebateSettings = lazy(() => import('../pages/Settings/AIDebateSettings'));
+import MessageBubbleSettings from "../pages/Settings/MessageBubbleSettings";
 
 // 加载中组件
 const LoadingFallback = () => (
@@ -74,11 +79,15 @@ const AppRouter: React.FC = () => {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/appearance" element={<AppearanceSettings />} />
         <Route path="/settings/appearance/chat-interface" element={<ChatInterfaceSettings />} />
+        <Route path="/settings/appearance/message-bubble" element={<MessageBubbleSettings />} />
         <Route path="/settings/appearance/top-toolbar" element={<TopToolbarSettings />} />
+        <Route path="/settings/appearance/top-toolbar-diy" element={<TopToolbarDIYSettings />} />
+        <Route path="/settings/appearance/top-toolbar-test" element={<TopToolbarTestPage />} />
         <Route path="/settings/behavior" element={<BehaviorSettings />} />
         <Route path="/settings/default-model" element={<DefaultModelSettings />} />
         <Route path="/settings/default-model-settings" element={<DefaultModelSettingsPage />} />
         <Route path="/settings/system-prompts" element={<SystemPromptSettings />} />
+        <Route path="/settings/ai-debate" element={<AIDebateSettings />} />
         <Route path="/settings/model-provider/:providerId" element={<ModelProviderSettings />} />
         <Route path="/settings/add-provider" element={<AddProviderPage />} />
         <Route path="/settings/about" element={<AboutPage />} />

@@ -2,6 +2,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { ChatTopic } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
+import {
+  convertDesktopBackup,
+  isDesktopBackupFormat,
+  validateDesktopBackupData
+} from './desktopBackupUtils';
 
 /**
  * Chatboxai备份数据结构
@@ -30,10 +35,10 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
   try {
     const sessionsList = backupData['chat-sessions-list'] || [];
     console.log(`找到 ${sessionsList.length} 个Chatboxai会话`);
-    
+
     const convertedTopics: ChatTopic[] = [];
     const assistantIdForImportedTopics = uuidv4(); // 生成将要创建的助手的 ID
-    
+
     for (const session of sessionsList) {
       const sessionId = session.id;
       const sessionKey = `session:${sessionId}`;
@@ -42,7 +47,7 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
         console.warn(`未找到会话 ${sessionId} 的详情数据`);
         continue;
       }
-      
+
       const newTopic: ChatTopic = {
         id: uuidv4(),
         name: session.name || '导入的对话',
@@ -56,7 +61,7 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
         assistantId: assistantIdForImportedTopics, // 使用预先生成的助手 ID
         isNameManuallyEdited: false
       };
-      
+
       // 提取消息
       if (Array.isArray(sessionData.messages)) {
         for (const chatboxMsg of sessionData.messages) {
@@ -64,7 +69,7 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
             newTopic.prompt = chatboxMsg.contentParts[0].text;
             continue;
           }
-          
+
           const newMsg = {
             id: chatboxMsg.id || uuidv4(),
             role: chatboxMsg.role === 'user' ? 'user' : 'assistant',
@@ -81,11 +86,11 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
               status: 'success'
             }]
           } as any; // 使用类型断言避免类型检查错误
-          
+
           if (chatboxMsg.model) {
             newMsg.modelId = chatboxMsg.model;
           }
-          
+
           // 确保messages是数组
           if (!newTopic.messages) {
             newTopic.messages = [];
@@ -93,7 +98,7 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
           newTopic.messages.push(newMsg);
         }
       }
-      
+
       // 添加安全检查，确保messages是数组
       if (newTopic.messages && newTopic.messages.length > 0) {
         const lastMsg = newTopic.messages[newTopic.messages.length - 1];
@@ -103,16 +108,16 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
         convertedTopics.push(newTopic);
       }
     }
-    
+
     const importedAssistant: Assistant = {
-      id: assistantIdForImportedTopics, 
+      id: assistantIdForImportedTopics,
       name: 'ChatboxAI 导入助手',
       description: '从ChatboxAI导入的对话助手',
       systemPrompt: '你是一个从ChatboxAI导入的助手，我已经将你的所有聊天记录都导入到AetherLink中了',
       icon: null,
       isSystem: false,
       topicIds: convertedTopics.map(topic => topic.id),
-      topics: convertedTopics, 
+      topics: convertedTopics,
       avatar: undefined,
       tags: [],
       engine: undefined,
@@ -122,7 +127,7 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
       topP: undefined,
       frequencyPenalty: undefined,
       presencePenalty: undefined,
-      prompt: undefined, 
+      prompt: undefined,
       maxMessagesInContext: undefined,
       isDefault: undefined,
       archived: undefined,
@@ -143,7 +148,7 @@ export async function convertChatboxaiBackup(backupData: ChatboxaiBackup): Promi
       localModelType: undefined,
       file_ids: [],
     };
-    
+
     return {
       topics: convertedTopics,
       assistants: [importedAssistant]
@@ -161,9 +166,34 @@ export async function importExternalBackup(jsonData: any): Promise<{
   topics: ChatTopic[];
   assistants: Assistant[];
   source: string;
+  messageBlocks?: MessageBlock[];
 }> {
   try {
-    // 检测备份类型
+    // 检测电脑版备份格式
+    if (isDesktopBackupFormat(jsonData)) {
+      console.log('检测到电脑版备份格式');
+
+      // 验证数据完整性
+      const validation = validateDesktopBackupData(jsonData);
+      if (!validation.isValid) {
+        throw new Error(`电脑版备份数据验证失败: ${validation.errors.join(', ')}`);
+      }
+
+      if (validation.warnings.length > 0) {
+        console.warn('电脑版备份数据警告:', validation.warnings);
+      }
+
+      // 转换电脑版备份数据
+      const converted = await convertDesktopBackup(jsonData);
+      return {
+        topics: converted.topics,
+        assistants: converted.assistants,
+        messageBlocks: converted.messageBlocks,
+        source: 'desktop'
+      };
+    }
+
+    // 检测 ChatboxAI 格式
     if (jsonData['chat-sessions-list'] || jsonData['__exported_items']?.includes('conversations')) {
       // ChatboxAI 格式
       const converted = await convertChatboxaiBackup(jsonData);
@@ -172,13 +202,13 @@ export async function importExternalBackup(jsonData: any): Promise<{
         source: 'chatboxai'
       };
     }
-    
+
     // 如果需要支持其他格式，可以在这里添加
-    
+
     // 未识别的格式
     throw new Error('无法识别的外部备份格式');
   } catch (error) {
     console.error('导入外部备份失败:', error);
     throw new Error('导入外部备份失败: ' + (error instanceof Error ? error.message : '未知错误'));
   }
-} 
+}

@@ -27,6 +27,7 @@ import SettingsApplicationsIcon from '@mui/icons-material/SettingsApplications';
 import TuneIcon from '@mui/icons-material/Tune';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CodeIcon from '@mui/icons-material/Code';
+import ForumIcon from '@mui/icons-material/Forum';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -54,6 +55,7 @@ const SettingsPage: React.FC = () => {
         { id: 'default-model', title: '配置模型', description: '管理AI模型和API密钥', icon: <SmartToyIcon />, path: '/settings/default-model', color: '#ec4899' },
         { id: 'default-model-settings', title: '默认模型', description: '选择默认模型和自动化选项', icon: <TuneIcon />, path: '/settings/default-model-settings', color: '#4f46e5' },
         { id: 'system-prompts', title: '系统提示词', description: '管理全局系统提示词和提示词模板', icon: <AutoFixHighIcon />, path: '/settings/system-prompts', color: '#0ea5e9' },
+        { id: 'ai-debate', title: 'AI辩论设置', description: '配置AI互相辩论讨论功能', icon: <ForumIcon />, path: '/settings/ai-debate', color: '#e11d48' },
         { id: 'model-combo', title: '模型组合', description: '创建和管理多模型组合', icon: <SmartToyIcon />, path: '/settings/model-combo', color: '#f43f5e' },
         { id: 'web-search', title: '网络搜索', description: '配置网络搜索和相关服务', icon: <LanguageIcon />, path: '/settings/web-search', color: '#3b82f6' },
         { id: 'mcp-server', title: 'MCP 服务器', description: '高级服务器配置', icon: <SettingsIcon />, path: '/settings/mcp-server', color: '#10b981' },

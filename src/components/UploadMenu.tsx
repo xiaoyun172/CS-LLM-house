@@ -85,32 +85,31 @@ const UploadMenu: React.FC<UploadMenuProps> = ({
       </MenuItem>
 
       {/* 多模型选项 */}
-      {showMultiModel && onMultiModelSend && (
-        <>
-          <Divider sx={{ my: 0.5 }} />
-          <MenuItem
-            onClick={() => {
-              onMultiModelSend();
-              onClose();
+      {showMultiModel && onMultiModelSend && [
+        <Divider key="divider" sx={{ my: 0.5 }} />,
+        <MenuItem
+          key="multi-model"
+          onClick={() => {
+            onMultiModelSend();
+            onClose();
+          }}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <CompareArrowsIcon sx={{ color: '#FF9800' }} />
+          </ListItemIcon>
+          <ListItemText
+            primary="发送到多个模型"
+            secondary="同时向多个AI模型发送消息"
+            sx={{
+              '& .MuiListItemText-secondary': {
+                fontSize: '0.75rem',
+                color: 'text.secondary'
+              }
             }}
-            sx={{ py: 1.5 }}
-          >
-            <ListItemIcon>
-              <CompareArrowsIcon sx={{ color: '#FF9800' }} />
-            </ListItemIcon>
-            <ListItemText
-              primary="发送到多个模型"
-              secondary="同时向多个AI模型发送消息"
-              sx={{
-                '& .MuiListItemText-secondary': {
-                  fontSize: '0.75rem',
-                  color: 'text.secondary'
-                }
-              }}
-            />
-          </MenuItem>
-        </>
-      )}
+          />
+        </MenuItem>
+      ]}
     </Menu>
   );
 };

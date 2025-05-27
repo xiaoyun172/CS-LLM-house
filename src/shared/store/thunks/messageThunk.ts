@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import { DataRepository } from '../../services/DataRepository';
 import { dexieStorage } from '../../services/DexieStorageService'; // 保持兼容性，逐步迁移
+import { versionService } from '../../services/VersionService';
 import { createUserMessage, createAssistantMessage } from '../../utils/messageUtils';
 import { getMainTextContent, findImageBlocks, findFileBlocks } from '../../utils/blockUtils';
 import { newMessagesActions } from '../slices/newMessagesSlice';
@@ -463,6 +464,7 @@ const processAssistantResponse = async (
       // 处理不同类型的响应
       let finalContent: string;
       let reasoning: string | undefined;
+      let isInterrupted = false;
 
       if (typeof response === 'string') {
         finalContent = response;
@@ -470,6 +472,8 @@ const processAssistantResponse = async (
         finalContent = response.content;
         // 提取思考过程
         reasoning = response.reasoning || response.reasoning_content;
+        // 检查是否被中断
+        isInterrupted = response.interrupted === true;
       } else {
         finalContent = '';
       }
@@ -480,10 +484,22 @@ const processAssistantResponse = async (
 
       // 对于非流式响应，onUpdate回调已经在Provider层正确处理了思考过程和普通文本
       // 不需要重复处理，避免重复调用导致的问题
-      console.log(`[processAssistantResponse] 非流式响应处理完成，内容长度: ${finalContent.length}, 思考过程长度: ${reasoning?.length || 0}`);
+      console.log(`[processAssistantResponse] 非流式响应处理完成，内容长度: ${finalContent.length}, 思考过程长度: ${reasoning?.length || 0}, 是否被中断: ${isInterrupted}`);
+
+      // 如果响应被中断，使用中断处理方法
+      if (isInterrupted) {
+        return await responseHandler.completeWithInterruption();
+      }
 
       return await responseHandler.complete(finalContent);
-    } catch (error) {
+    } catch (error: any) {
+      // 检查是否为中断错误
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('[processAssistantResponse] 请求被用户中断');
+        // 对于中断错误，完成响应并标记为被中断
+        return await responseHandler.completeWithInterruption();
+      }
+
       return await responseHandler.fail(error as Error);
     } finally {
       // 清理AbortController
@@ -750,53 +766,35 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
     const blocks = await dexieStorage.getMessageBlocksByMessageId(messageId);
     const blockIds = blocks.map(block => block.id);
 
-    // 4. 创建版本历史记录 - 保存当前版本
-    // 初始化versions数组，如果不存在则创建
-    const versions = message.versions || [];
+    // 4. 基于 Chatbox 原理的版本管理 - 保存当前内容为版本
+    let updatedMessage = message;
+    try {
+      const currentContent = getMainTextContent(message);
+      if (currentContent.trim()) {
+        // 传入具体内容，确保版本保存正确的内容
+        // 增加modelId参数，确保版本记录正确的模型信息
+        await versionService.saveCurrentAsVersion(
+          messageId, 
+          currentContent, 
+          { 
+            ...model, 
+            id: model.id || message.modelId 
+          }, 
+          'regenerate'
+        );
+        console.log(`[regenerateMessage] 当前内容已保存为版本，内容长度: ${currentContent.length}`);
 
-    // 创建新版本ID
-    const currentVersionId = uuid();
-
-    // 深拷贝块数据，确保版本历史中保存完整的块数据
-    const blocksForVersion = [];
-    for (const block of blocks) {
-      // 创建块的深拷贝
-      const blockCopy = { ...block };
-      // 生成新的ID，避免ID冲突
-      blockCopy.id = uuid();
-      // 在metadata中存储版本信息
-      if (!blockCopy.metadata) blockCopy.metadata = {};
-      blockCopy.metadata.versionId = currentVersionId;
-      // 保存到数据库
-      await dexieStorage.saveMessageBlock(blockCopy);
-      // 添加到版本块列表
-      blocksForVersion.push(blockCopy.id);
-    }
-
-    // 获取消息的主文本内容
-    const messageContent = getMainTextContent(message);
-
-    // 创建当前版本记录
-    const currentVersion = {
-      id: currentVersionId,
-      messageId: message.id,
-      blocks: blocksForVersion, // 使用新创建的块ID列表
-      content: messageContent, // 保存当前版本的文本内容
-      createdAt: message.createdAt,
-      updatedAt: message.updatedAt,
-      modelId: message.modelId,
-      model: message.model,
-      isActive: false, // 新版本将是活跃的，旧版本设为非活跃
-      metadata: {
-        content: messageContent, // 保存内容到metadata
-        blockIds: blocksForVersion // 额外保存块ID，确保版本与块的关联
+        // 重新获取消息以获取最新的版本信息
+        const messageWithVersions = await dexieStorage.getMessage(messageId);
+        if (messageWithVersions) {
+          updatedMessage = messageWithVersions;
+          console.log(`[regenerateMessage] 获取到更新后的消息，版本数: ${messageWithVersions.versions?.length || 0}`);
+        }
       }
-    };
-
-    // 将当前版本添加到版本历史中
-    versions.push(currentVersion);
-
-    console.log(`[regenerateMessage] 创建版本历史记录: 版本ID=${currentVersionId}, 块数量=${blocksForVersion.length}`);
+    } catch (versionError) {
+      console.error(`[regenerateMessage] 保存版本失败:`, versionError);
+      // 版本保存失败不影响重新生成流程
+    }
 
     // 5. 从Redux中移除消息块
     if (blockIds.length > 0) {
@@ -816,37 +814,17 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
     //   }))
     // });
 
-    // 创建更新对象
+    // 创建更新对象 - 使用包含最新版本信息的消息
     const resetMessage = {
-      ...message,
+      ...updatedMessage, // 使用包含最新版本信息的消息
       status: AssistantMessageStatus.PENDING,
       updatedAt: new Date().toISOString(),
       model: model,
       modelId: model.id,
       blocks: [], // 清空块，等待processAssistantResponse创建新的块
-      // 设置版本的活跃状态
-      versions: versions.map((v, index) => {
-        // 记录版本信息
-        if (Array.isArray(v.blocks) && v.blocks.length > 0) {
-          console.log(`[regenerateMessage] 版本 ${v.id} 有 ${v.blocks.length} 个块`);
-        }
-
-        return {
-          ...v,
-          // 最后添加的版本设置为活跃状态
-          isActive: index === versions.length - 1
-        };
-      })
+      // 保持版本信息，包括新保存的版本
+      versions: updatedMessage.versions || []
     };
-
-    // 保存最新版本ID，用于后续自动加载
-    const latestVersionId = versions.length > 0 ? versions[versions.length - 1].id : null;
-    console.log(`[regenerateMessage] 最新版本ID: ${latestVersionId}`);
-
-    // 将最新版本ID保存到localStorage，用于页面刷新后自动加载
-    if (latestVersionId) {
-      localStorage.setItem(`message_latest_version_${messageId}`, latestVersionId);
-    }
 
     // 7. 更新Redux状态
     dispatch(newMessagesActions.updateMessage({

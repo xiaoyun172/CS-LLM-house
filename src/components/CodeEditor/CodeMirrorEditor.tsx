@@ -27,8 +27,7 @@ interface CodeMirrorEditorProps {
 
 /**
  * CodeMirror 6 代码编辑器
- * 显示模式：使用 SyntaxHighlighter 进行语法高亮
- * 编辑模式：使用 CodeMirror 6 进行编辑
+ * 🔥 升级：显示模式使用简单预览，编辑模式使用 CodeMirror 6
  */
 const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
   value,
@@ -293,7 +292,7 @@ const CodeMirrorEditor: React.FC<CodeMirrorEditorProps> = ({
           }}
         />
       ) : (
-        // 预览模式保持使用 SyntaxHighlighter
+        // 🔥 升级：预览模式使用简单文本显示
         <Box
           onClick={startEditing}
           sx={{

@@ -19,12 +19,13 @@ import {
   Language as LanguageIcon,
   Settings as SettingsIcon,
   Check as CheckIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import type { RootState } from '../shared/store';
-import { setWebSearchProvider } from '../shared/store/slices/webSearchSlice';
+import { setWebSearchProvider, refreshProviders } from '../shared/store/slices/webSearchSlice';
 import type { WebSearchProviderConfig } from '../shared/types';
 
 interface WebSearchProviderSelectorProps {
@@ -81,10 +82,16 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
     navigate('/settings/web-search');
   };
 
+  const handleRefreshProviders = () => {
+    dispatch(refreshProviders());
+  };
+
   const getProviderIcon = (providerId: string) => {
     switch (providerId) {
       case 'tavily':
         return '🔍';
+      case 'bing':
+        return '🔎'; // 🚀 免费网络搜索引擎图标
       case 'searxng':
         return '🌐';
       case 'exa':
@@ -99,6 +106,11 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
   };
 
   const getProviderStatus = (provider: WebSearchProviderConfig) => {
+    // 🚀 免费搜索引擎（WebSearch）无需配置，直接可用
+    if (provider.id === 'bing') {
+      return { available: true, label: '免费可用' };
+    }
+
     // 检查API密钥
     if (provider.apiKey && provider.apiKey.trim()) {
       return { available: true, label: 'API密钥' };
@@ -119,15 +131,8 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
     return { available: false, label: '需要配置' };
   };
 
-  const availableProviders = providers.filter(p => {
-    const status = getProviderStatus(p);
-    return status.available;
-  });
-
-  const unavailableProviders = providers.filter(p => {
-    const status = getProviderStatus(p);
-    return !status.available;
-  });
+  // 🚀 显示所有提供商，不再区分可用和不可用
+  const allProviders = providers;
 
   return (
     <Dialog
@@ -155,6 +160,9 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
           选择搜索提供商
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
+        <IconButton onClick={handleRefreshProviders} size="small" title="刷新提供商列表">
+          <RefreshIcon />
+        </IconButton>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
@@ -204,18 +212,18 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
 
         <Divider sx={{ my: 1 }} />
 
-        {/* 可用的提供商 */}
-        {availableProviders.length > 0 && (
+        {/* 🚀 所有搜索提供商 */}
+        {allProviders.length > 0 && (
           <>
             <Typography
               variant="subtitle2"
               color="text.secondary"
               sx={{ px: 2, py: 1 }}
             >
-              可用的搜索提供商
+              搜索提供商
             </Typography>
             <List dense>
-              {availableProviders.map((provider) => {
+              {allProviders.map((provider) => {
                 const status = getProviderStatus(provider);
                 const isSelected = enabled && currentProvider === provider.id;
 
@@ -239,8 +247,9 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            bgcolor: alpha('#3b82f6', 0.1),
-                            fontSize: '16px'
+                            bgcolor: status.available ? alpha('#3b82f6', 0.1) : alpha('#666', 0.1),
+                            fontSize: '16px',
+                            opacity: status.available ? 1 : 0.6
                           }}
                         >
                           {getProviderIcon(provider.id)}
@@ -248,67 +257,13 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
                       </ListItemIcon>
                       <ListItemText
                         primary={provider.name}
-                        secondary={`✓ ${status.label}`}
+                        secondary={status.available ? `✓ ${status.label}` : `⚠️ ${status.label}`}
                       />
                       {isSelected && (
                         <ListItemSecondaryAction>
                           <CheckIcon color="primary" />
                         </ListItemSecondaryAction>
                       )}
-                    </ListItemButton>
-                  </ListItem>
-                );
-              })}
-            </List>
-          </>
-        )}
-
-        {/* 需要配置的提供商 */}
-        {unavailableProviders.length > 0 && (
-          <>
-            <Divider sx={{ my: 1 }} />
-            <Typography
-              variant="subtitle2"
-              color="text.secondary"
-              sx={{ px: 2, py: 1 }}
-            >
-              需要配置的提供商
-            </Typography>
-            <List dense>
-              {unavailableProviders.map((provider) => {
-                const status = getProviderStatus(provider);
-
-                return (
-                  <ListItem key={provider.id} disablePadding>
-                    <ListItemButton
-                      disabled
-                      sx={{
-                        mx: 2,
-                        borderRadius: 2,
-                        mb: 0.5
-                      }}
-                    >
-                      <ListItemIcon>
-                        <Box
-                          sx={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            bgcolor: alpha('#666', 0.1),
-                            fontSize: '16px',
-                            opacity: 0.5
-                          }}
-                        >
-                          {getProviderIcon(provider.id)}
-                        </Box>
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={provider.name}
-                        secondary={`⚠️ ${status.label}`}
-                      />
                     </ListItemButton>
                   </ListItem>
                 );

@@ -1,5 +1,5 @@
 import { useCallback, useTransition } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
 import { addAssistant, setCurrentAssistant as setReduxCurrentAssistant, updateAssistant, removeAssistant } from '../../../shared/store/slices/assistantsSlice';
 import { AssistantService } from '../../../shared/services';
@@ -7,6 +7,7 @@ import { dexieStorage } from '../../../shared/services/DexieStorageService';
 import { TopicService } from '../../../shared/services/TopicService';
 import { setStorageItem } from '../../../shared/utils/storage';
 import type { Assistant, ChatTopic } from '../../../shared/types/Assistant';
+import type { RootState } from '../../../shared/store';
 
 // 常量
 const CURRENT_ASSISTANT_ID_KEY = 'currentAssistantId';
@@ -18,18 +19,19 @@ export function useAssistantManagement({
   currentAssistant,
   setCurrentAssistant,
   // setUserAssistants, // 暂时注释掉未使用的变量
-  currentTopic,
-  refreshTopics
+  currentTopic
 }: {
   currentAssistant: Assistant | null;
   setCurrentAssistant: (assistant: Assistant | null) => void;
   setUserAssistants?: (assistants: Assistant[]) => void; // 改为可选参数
   currentTopic: ChatTopic | null;
-  refreshTopics: () => Promise<void>;
 }) {
   const dispatch = useDispatch();
   // 使用useTransition钩子，获取isPending状态和startTransition函数
   const [isPending, startTransition] = useTransition();
+
+  // 获取当前Redux中的助手列表
+  const allAssistants = useSelector((state: RootState) => state.assistants.assistants);
 
   // 保存当前选择的助手ID到本地存储
   const persistCurrentAssistantId = useCallback(async (assistantId: string) => {
@@ -47,8 +49,8 @@ export function useAssistantManagement({
     }
   }, [currentAssistant?.id, persistCurrentAssistantId]);
 
-  // 选择助手 - 直接使用Redux dispatch，类似最佳实例
-  const handleSelectAssistant = async (assistant: Assistant) => {
+  // 选择助手 - 直接使用Redux dispatch，类似最佳实例，添加useCallback缓存
+  const handleSelectAssistant = useCallback(async (assistant: Assistant) => {
     try {
       console.log('[useAssistantManagement] 开始选择助手:', assistant.name);
 
@@ -106,42 +108,30 @@ export function useAssistantManagement({
         setCurrentAssistant(assistant);
       });
 
-      // 刷新话题列表 - 使用异步函数而不是setTimeout
-      const updateTopics = async () => {
-        try {
-          await refreshTopics();
+      // 检查当前话题是否属于选中的助手，避免调用refreshTopics导致重新加载
+      const topicBelongsToAssistant = currentTopic &&
+                                     (currentTopic.assistantId === assistant.id ||
+                                      assistant.topicIds?.includes(currentTopic.id) ||
+                                      assistant.topics?.some(topic => topic.id === currentTopic.id));
 
-          // 检查当前话题是否属于选中的助手
-          const topicBelongsToAssistant = currentTopic &&
-                                         (currentTopic.assistantId === assistant.id ||
-                                          assistant.topicIds?.includes(currentTopic.id) ||
-                                          assistant.topics?.some(topic => topic.id === currentTopic.id));
+      // 如果当前话题不属于选中的助手，或者没有当前话题，自动选择该助手的第一个话题
+      if (!topicBelongsToAssistant && assistant.topics && assistant.topics.length > 0) {
+        console.log(`[useAssistantManagement] 当前话题不属于选中的助手或没有当前话题，自动选择第一个话题: ${assistant.topics[0].name}`);
 
-          // 如果当前话题不属于选中的助手，或者没有当前话题，自动选择该助手的第一个话题
-          if (!topicBelongsToAssistant && assistant.topics && assistant.topics.length > 0) {
-            console.log(`[useAssistantManagement] 当前话题不属于选中的助手或没有当前话题，自动选择第一个话题: ${assistant.topics[0].name}`);
-
-            // 使用startTransition包装话题ID更新
-            startTransition(() => {
-              dispatch(newMessagesActions.setCurrentTopicId(assistant.topics[0].id));
-            });
-          }
-        } catch (error) {
-          console.error('[useAssistantManagement] 刷新话题列表失败:', error);
-        }
-      };
-
-      // 立即执行更新话题的异步函数
-      updateTopics();
+        // 使用startTransition包装话题ID更新
+        startTransition(() => {
+          dispatch(newMessagesActions.setCurrentTopicId(assistant.topics[0].id));
+        });
+      }
 
       console.log('[useAssistantManagement] 助手选择完成:', assistant.id);
     } catch (error) {
       console.error('选择助手失败:', error);
     }
-  };
+  }, [dispatch, setCurrentAssistant, currentTopic]);
 
-  // 添加助手 - 直接使用Redux dispatch，类似最佳实例
-  const handleAddAssistant = async (assistant: Assistant) => {
+  // 添加助手 - 直接使用Redux dispatch，类似最佳实例，添加useCallback缓存
+  const handleAddAssistant = useCallback(async (assistant: Assistant) => {
     try {
       console.log('[useAssistantManagement] 开始添加助手:', assistant.name);
 
@@ -172,10 +162,10 @@ export function useAssistantManagement({
     } catch (error) {
       console.error('添加助手失败:', error);
     }
-  };
+  }, [dispatch, setCurrentAssistant]);
 
-  // 更新助手 - 直接使用Redux dispatch，类似最佳实例
-  const handleUpdateAssistant = async (assistant: Assistant) => {
+  // 更新助手 - 直接使用Redux dispatch，类似最佳实例，添加useCallback缓存
+  const handleUpdateAssistant = useCallback(async (assistant: Assistant) => {
     try {
       console.log('[useAssistantManagement] 开始更新助手:', assistant.name);
 
@@ -197,10 +187,10 @@ export function useAssistantManagement({
     } catch (error) {
       console.error('更新助手失败:', error);
     }
-  };
+  }, [dispatch, currentAssistant, setCurrentAssistant]);
 
-  // 删除助手 - 直接使用Redux dispatch，类似最佳实例
-  const handleDeleteAssistant = async (assistantId: string) => {
+  // 删除助手 - 直接使用Redux dispatch，类似最佳实例，添加useCallback缓存
+  const handleDeleteAssistant = useCallback(async (assistantId: string) => {
     try {
       console.log('[useAssistantManagement] 开始删除助手:', assistantId);
 
@@ -213,15 +203,16 @@ export function useAssistantManagement({
         dispatch(removeAssistant(assistantId));
       });
 
-      // 如果删除的是当前助手，更新本地状态
+      // 如果删除的是当前助手，从Redux状态中选择新的当前助手
       if (currentAssistant && currentAssistant.id === assistantId) {
-        const updatedAssistants = await AssistantService.getUserAssistants();
-
         // 使用startTransition包装状态更新，减少渲染阻塞
         startTransition(() => {
-          if (updatedAssistants.length > 0) {
-            setCurrentAssistant(updatedAssistants[0]);
-            dispatch(setReduxCurrentAssistant(updatedAssistants[0]));
+          // 从当前Redux状态中获取剩余的助手
+          const remainingAssistants = allAssistants.filter((a: Assistant) => a.id !== assistantId);
+
+          if (remainingAssistants.length > 0) {
+            setCurrentAssistant(remainingAssistants[0]);
+            dispatch(setReduxCurrentAssistant(remainingAssistants[0]));
           } else {
             setCurrentAssistant(null);
             dispatch(setReduxCurrentAssistant(null));
@@ -233,7 +224,7 @@ export function useAssistantManagement({
     } catch (error) {
       console.error('删除助手失败:', error);
     }
-  };
+  }, [dispatch, currentAssistant, setCurrentAssistant]);
 
   return {
     handleSelectAssistant,

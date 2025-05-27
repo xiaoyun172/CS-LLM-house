@@ -44,6 +44,8 @@ interface SettingsState {
   showModelName: boolean; // 是否显示模型名称
   messageStyle: 'plain' | 'bubble'; // 消息样式：简洁或气泡
   renderUserInputAsMarkdown: boolean; // 是否渲染用户输入的markdown
+  // 聊天界面自动滚动控制
+  autoScrollToBottom: boolean; // 是否自动滚动到底部
   // 顶部工具栏设置
   topToolbar: {
     showSettingsButton: boolean; // 是否显示设置按钮
@@ -79,6 +81,9 @@ interface SettingsState {
 
   // 工具栏折叠状态
   toolbarCollapsed?: boolean; // 工具栏是否折叠
+  
+  // 版本切换样式
+  versionSwitchStyle?: 'popup' | 'arrows'; // 版本切换样式：弹出列表或箭头式切换
 }
 
 // 初始预设供应商
@@ -236,6 +241,8 @@ const getInitialState = (): SettingsState => {
     showModelName: true, // 默认显示模型名称
     messageStyle: 'bubble' as 'plain' | 'bubble', // 默认使用气泡样式
     renderUserInputAsMarkdown: true, // 默认渲染用户输入的markdown
+    // 默认开启自动滚动
+    autoScrollToBottom: true,
     // 顶部工具栏默认设置
     topToolbar: {
       showSettingsButton: true, // 默认显示设置按钮
@@ -249,6 +256,14 @@ const getInitialState = (): SettingsState => {
       // 默认组件顺序
       leftComponents: ['menuButton', 'chatTitle', 'topicName', 'newTopicButton', 'clearButton'],
       rightComponents: ['modelSelector', 'settingsButton'],
+      // DIY布局组件位置信息
+      componentPositions: [] as Array<{
+        id: string;
+        x: number;
+        y: number;
+        width?: number;
+        height?: number;
+      }>,
     },
     isLoading: true, // 初始时设为加载中状态
 
@@ -258,7 +273,10 @@ const getInitialState = (): SettingsState => {
     userMessageMaxWidth: 80,   // 默认用户消息最大宽度80%
 
     // 工具栏默认设置
-    toolbarCollapsed: false    // 默认工具栏不折叠
+    toolbarCollapsed: false,    // 默认工具栏不折叠
+    
+    // 版本切换样式默认设置
+    versionSwitchStyle: 'popup' // 默认使用弹出列表样式
   };
 
   // 设置默认模型
@@ -338,9 +356,19 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
         savedSettings.toolbarCollapsed = false;
       }
 
+      // 如果没有版本切换样式设置，使用默认值
+      if (savedSettings.versionSwitchStyle === undefined) {
+        savedSettings.versionSwitchStyle = 'popup';
+      }
+
       // 如果没有消息样式设置，使用默认值
       if (!savedSettings.messageStyle) {
         savedSettings.messageStyle = 'bubble';
+      }
+
+      // 如果没有自动滚动设置，使用默认值
+      if (savedSettings.autoScrollToBottom === undefined) {
+        savedSettings.autoScrollToBottom = true;
       }
 
       return {
@@ -579,6 +607,10 @@ const settingsSlice = createSlice({
     setRenderUserInputAsMarkdown: (state, action: PayloadAction<boolean>) => {
       state.renderUserInputAsMarkdown = action.payload;
     },
+    // 自动滚动控制
+    setAutoScrollToBottom: (state, action: PayloadAction<boolean>) => {
+      state.autoScrollToBottom = action.payload;
+    },
   },
   extraReducers: (builder) => {
     // 处理加载设置
@@ -644,6 +676,8 @@ export const {
   // 消息样式相关的actions
   setMessageStyle,
   setRenderUserInputAsMarkdown,
+  // 自动滚动控制
+  setAutoScrollToBottom,
 } = settingsSlice.actions;
 
 // 重用现有的action creators，但添加异步保存

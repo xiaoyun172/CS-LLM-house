@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Typography, 
-  Box, 
-  Paper, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  ListItemSecondaryAction, 
-  IconButton, 
+import {
+  Typography,
+  Box,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
   Divider,
   CircularProgress,
   Tooltip,
@@ -69,7 +69,7 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
     try {
       setLoading(true);
       let allFiles: BackupFile[] = [];
-      
+
       // 搜索多个目录
       for (const dir of directories) {
         try {
@@ -78,9 +78,9 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
             path: dir.path,
             directory: dir.directory
           });
-          
+
           if (!result.files) continue;
-          
+
           // 过滤AetherLink备份文件
           const backups = result.files
             .filter(file => file.name && file.name.startsWith('AetherLink_Backup') && file.name.endsWith('.json'))
@@ -91,7 +91,7 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
               ctime: file.mtime || Date.now(), // 使用修改时间或当前时间
               directory: dir.label // 记录文件所在目录
             }));
-          
+
           allFiles = [...allFiles, ...backups];
           console.log(`在${dir.label}中找到${backups.length}个备份文件`);
         } catch (error) {
@@ -99,11 +99,11 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
           console.log(`搜索${dir.label}失败:`, error);
         }
       }
-      
+
       // 按时间降序排序
       allFiles.sort((a, b) => b.ctime - a.ctime);
       console.log(`总共找到${allFiles.length}个备份文件`);
-      
+
       setBackupFiles(allFiles);
     } catch (error) {
       console.error('加载备份文件失败:', error);
@@ -125,7 +125,7 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
   // 格式化日期
   const formatDate = (timestamp: number) => {
     if (!timestamp) return '未知日期';
-    
+
     try {
       const date = new Date(timestamp);
       return date.toLocaleString('zh-CN', {
@@ -169,32 +169,32 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
         stage: '读取文件中...',
         progress: 0.05
       });
-      
+
       // 获取文件内容
       const fileContent = await Filesystem.readFile({
         path: file.path,
         directory: Directory.External,
         encoding: Encoding.UTF8
       });
-      
+
       if (!fileContent.data) {
         throw new Error('文件内容为空');
       }
-      
+
       // 确保我们有字符串类型
-      const jsonString = typeof fileContent.data === 'string' 
-        ? fileContent.data 
+      const jsonString = typeof fileContent.data === 'string'
+        ? fileContent.data
         : JSON.stringify(fileContent.data);
-      
+
       // 解析JSON数据
       const backupData = JSON.parse(jsonString);
-      
+
       setRestoreProgress({
         active: true,
         stage: '验证备份数据...',
         progress: 0.1
       });
-      
+
       // 使用新的完整恢复过程
       const result = await performFullRestore(backupData, (stage, progress) => {
         setRestoreProgress({
@@ -203,28 +203,28 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
           progress
         });
       });
-      
+
       // 处理恢复结果
       if (result.success) {
         // 生成成功消息
         let restoreMessage = '';
-        
+
         if (result.topicsCount > 0) {
           restoreMessage += `• 已恢复 ${result.topicsCount} 个对话话题\n`;
         }
-        
+
         if (result.assistantsCount > 0) {
           restoreMessage += `• 已恢复 ${result.assistantsCount} 个助手\n`;
         }
-        
+
         if (result.settingsRestored) {
           restoreMessage += `• 已恢复应用设置\n`;
         }
-        
+
         if (result.localStorageCount > 0) {
           restoreMessage += `• 已恢复 ${result.localStorageCount} 项其他应用数据\n`;
         }
-        
+
         onRestoreSuccess(`备份恢复成功：\n${restoreMessage}\n重启应用以应用所有更改`);
       } else {
         // 显示错误信息
@@ -250,12 +250,12 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
   const handleDeleteFile = async (file: BackupFile) => {
     try {
       setProcessingFile(file.name);
-      
+
       await Filesystem.deleteFile({
         path: file.path,
         directory: Directory.External
       });
-      
+
       // 刷新文件列表
       setBackupFiles(prev => prev.filter(f => f.name !== file.name));
       onFileDeleted();
@@ -284,14 +284,14 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
         <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600 }}>
           本地备份文件
         </Typography>
-        
-        <Button 
-          startIcon={<RefreshIcon />} 
-          onClick={handleRefresh} 
+
+        <Button
+          startIcon={<RefreshIcon />}
+          onClick={handleRefresh}
           size="small"
           disabled={loading}
-          sx={{ 
-            color: '#9333EA', 
+          sx={{
+            color: '#9333EA',
             textTransform: 'none',
             '&:hover': {
               backgroundColor: 'rgba(147, 51, 234, 0.08)'
@@ -301,35 +301,35 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
           刷新
         </Button>
       </Box>
-      
+
       <Divider sx={{ mb: 2 }} />
-      
+
       {/* 恢复进度 */}
       {restoreProgress.active && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 1 }}>
             {restoreProgress.stage}
           </Typography>
-          <Box sx={{ 
-            height: 6, 
-            width: '100%', 
-            bgcolor: '#E9D5FF', 
+          <Box sx={{
+            height: 6,
+            width: '100%',
+            bgcolor: '#E9D5FF',
             borderRadius: 3,
             overflow: 'hidden'
           }}>
-            <Box 
-              sx={{ 
-                height: '100%', 
+            <Box
+              sx={{
+                height: '100%',
                 width: `${restoreProgress.progress * 100}%`,
                 bgcolor: '#9333EA',
                 borderRadius: 3,
                 transition: 'width 0.3s ease-in-out'
-              }} 
+              }}
             />
           </Box>
         </Box>
       )}
-      
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress size={32} sx={{ color: '#9333EA' }} />
@@ -348,7 +348,7 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
           {backupFiles.map((file) => (
             <Box key={file.uri}>
               <ListItem
-                sx={{ 
+                sx={{
                   py: 1.5,
                   '& .MuiListItemText-root': {
                     maxWidth: 'calc(100% - 120px)' // 为按钮留出足够空间
@@ -364,13 +364,13 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
                     </Box>
                   }
                   secondary={
-                    <>
+                    <Box component="div">
                       <Tooltip title={file.name} placement="top">
-                        <Typography 
-                          variant="body2" 
-                          component="span" 
-                          sx={{ 
-                            display: 'block', 
+                        <Typography
+                          variant="body2"
+                          component="span"
+                          sx={{
+                            display: 'block',
                             fontSize: '0.75rem',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -382,11 +382,11 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
                         </Typography>
                       </Tooltip>
                       {file.directory && (
-                        <Typography 
-                          variant="body2" 
-                          component="span" 
-                          sx={{ 
-                            display: 'block', 
+                        <Typography
+                          variant="body2"
+                          component="span"
+                          sx={{
+                            display: 'block',
                             fontSize: '0.7rem',
                             color: 'text.secondary',
                             mt: 0.5
@@ -395,17 +395,18 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
                           位置: {file.directory}
                         </Typography>
                       )}
-                    </>
+                    </Box>
                   }
+                  secondaryTypographyProps={{ component: 'div' }}
                 />
                 <ListItemSecondaryAction sx={{ right: 8 }}>
                   <Tooltip title="恢复此备份">
-                    <IconButton 
+                    <IconButton
                       size="small"
-                      aria-label="restore" 
+                      aria-label="restore"
                       onClick={() => handleRestoreFile(file)}
                       disabled={!!processingFile}
-                      sx={{ 
+                      sx={{
                         color: '#9333EA',
                         padding: '4px'
                       }}
@@ -418,12 +419,12 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="打开文件">
-                    <IconButton 
+                    <IconButton
                       size="small"
-                      aria-label="open" 
+                      aria-label="open"
                       onClick={() => handleOpenFile(file)}
                       disabled={!!processingFile}
-                      sx={{ 
+                      sx={{
                         color: 'text.secondary',
                         padding: '4px',
                         ml: 0.5
@@ -433,12 +434,12 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="删除备份">
-                    <IconButton 
+                    <IconButton
                       size="small"
-                      aria-label="delete" 
+                      aria-label="delete"
                       onClick={() => handleDeleteFile(file)}
                       disabled={!!processingFile}
-                      sx={{ 
+                      sx={{
                         color: 'error.main',
                         padding: '4px',
                         ml: 0.5
@@ -458,4 +459,4 @@ const BackupFilesList: React.FC<BackupFilesListProps> = ({
   );
 };
 
-export default BackupFilesList; 
+export default BackupFilesList;

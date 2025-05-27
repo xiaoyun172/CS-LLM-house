@@ -7,6 +7,8 @@ import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import SettingsIcon from '@mui/icons-material/Settings';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import StorageIcon from '@mui/icons-material/Storage';
+import CloudSyncIcon from '@mui/icons-material/CloudSync';
+import CloudIcon from '@mui/icons-material/Cloud';
 import { alpha } from '@mui/material/styles';
 
 interface BackupButtonsProps {
@@ -18,6 +20,9 @@ interface BackupButtonsProps {
   onImportExternal: () => void;
   onClearAll: () => void;
   onDiagnoseDatabase?: () => void; // 新增数据库诊断功能
+  onWebDavBackup?: () => void; // WebDAV 备份
+  onWebDavRestore?: () => void; // WebDAV 恢复
+  onWebDavSettings?: () => void; // WebDAV 设置
 }
 
 /**
@@ -31,7 +36,10 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
   onRestore,
   onImportExternal,
   onClearAll,
-  onDiagnoseDatabase
+  onDiagnoseDatabase,
+  onWebDavBackup,
+  onWebDavRestore,
+  onWebDavSettings
 }) => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 1 }}>
@@ -158,6 +166,77 @@ const BackupButtons: React.FC<BackupButtonsProps> = ({
           清理全部助手和话题
         </Button>
       </Box>
+
+      {/* WebDAV 云备份按钮 */}
+      {(onWebDavBackup || onWebDavRestore || onWebDavSettings) && (
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
+          {onWebDavSettings && (
+            <Button
+              variant="outlined"
+              startIcon={<CloudIcon />}
+              fullWidth
+              onClick={onWebDavSettings}
+              disabled={isLoading}
+              sx={{
+                py: 1.5,
+                borderRadius: 2,
+                borderColor: '#3B82F6',
+                color: '#3B82F6',
+                '&:hover': {
+                  borderColor: '#2563EB',
+                  bgcolor: alpha('#3B82F6', 0.05),
+                },
+              }}
+            >
+              WebDAV 云备份设置
+            </Button>
+          )}
+
+          {onWebDavBackup && (
+            <Button
+              variant="outlined"
+              startIcon={<CloudSyncIcon />}
+              fullWidth
+              onClick={onWebDavBackup}
+              disabled={isLoading}
+              sx={{
+                py: 1.5,
+                borderRadius: 2,
+                borderColor: '#8B5CF6',
+                color: '#8B5CF6',
+                '&:hover': {
+                  borderColor: '#7C3AED',
+                  bgcolor: alpha('#8B5CF6', 0.05),
+                },
+              }}
+            >
+              备份到 WebDAV
+            </Button>
+          )}
+
+          {onWebDavRestore && (
+            <Button
+              variant="outlined"
+              startIcon={<CloudDownloadIcon />}
+              fullWidth
+              onClick={onWebDavRestore}
+              disabled={isLoading}
+              sx={{
+                py: 1.5,
+                borderRadius: 2,
+                borderColor: '#06B6D4',
+                color: '#06B6D4',
+                '&:hover': {
+                  borderColor: '#0891B2',
+                  bgcolor: alpha('#06B6D4', 0.05),
+                },
+              }}
+            >
+              从 WebDAV 恢复
+            </Button>
+          )}
+        </Box>
+      )}
 
       {/* 数据库诊断按钮 */}
       {onDiagnoseDatabase && (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
+import { updateOneBlock } from '../../../shared/store/slices/messageBlocksSlice';
 import { multiModelService } from '../../../shared/services/MultiModelService';
 import { ApiProviderRegistry } from '../../../shared/services/messages/ApiProvider';
 import { dexieStorage } from '../../../shared/services/DexieStorageService';
@@ -119,32 +120,36 @@ export const useChatFeatures = (
         searchingMessage.id
       );
 
-      // 准备搜索结果内容和引用
-      let resultsContent = `### 网络搜索结果\n\n`;
-      const citations: any[] = [];
+      // 🚀 电脑版风格：搜索结果通过搜索结果块显示
+      let resultsContent = '';
 
       if (searchResults.length === 0) {
-        resultsContent += "没有找到相关结果。";
+        resultsContent = "没有找到相关结果。";
       } else {
-        searchResults.forEach((result, index) => {
-          resultsContent += `**${index + 1}. [${result.title}](${result.url})**\n`;
-          resultsContent += `${result.snippet}\n\n`;
+        // 🚀 消息内容为空，搜索结果完全通过块显示
+        resultsContent = '';
 
-          // 创建引用
-          citations.push({
-            number: index + 1,
-            url: result.url,
-            title: result.title,
-            hostname: new URL(result.url).hostname,
-            content: result.content || result.snippet,
-            showFavicon: true,
-            type: 'websearch',
-            metadata: {
-              provider: result.provider,
-              timestamp: result.timestamp
-            }
-          });
-        });
+        // 🚀 创建搜索结果块
+        const searchResultsBlock = {
+          id: `search-results-${Date.now()}`,
+          type: MessageBlockType.SEARCH_RESULTS,
+          messageId: searchingMessage.id,
+          content: '',
+          status: MessageBlockStatus.SUCCESS,
+          searchResults: searchResults,
+          query: query,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        // 🚀 将搜索结果块插入到消息块列表的开头（在主文本块之前）
+        const updatedMessage = await dexieStorage.getMessage(searchingMessage.id);
+        if (updatedMessage) {
+          // 将搜索结果块ID插入到blocks数组的开头
+          const updatedBlocks = [searchResultsBlock.id, ...(updatedMessage.blocks || [])];
+          await dexieStorage.updateMessage(searchingMessage.id, { blocks: updatedBlocks });
+          await dexieStorage.saveMessageBlock(searchResultsBlock);
+        }
       }
 
       // 更新主文本块内容
@@ -155,29 +160,9 @@ export const useChatFeatures = (
         });
       }
 
-      // 如果有引用，创建引用块
-      if (citations.length > 0) {
-        const citationBlock = {
-          id: `citation-${Date.now()}`,
-          type: MessageBlockType.CITATION,
-          messageId: searchingMessage.id,
-          content: '',
-          status: MessageBlockStatus.SUCCESS,
-          citations: citations,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
+      // 🚀 不再创建引用块，搜索结果通过搜索结果块显示
 
-        // 保存引用块到消息中
-        const updatedMessage = await dexieStorage.getMessage(searchingMessage.id);
-        if (updatedMessage) {
-          const updatedBlocks = [...(updatedMessage.blocks || []), citationBlock.id];
-          await dexieStorage.updateMessage(searchingMessage.id, { blocks: updatedBlocks });
-          await dexieStorage.saveMessageBlock(citationBlock);
-        }
-      }
-
-      // 更新消息状态 - 使用新的Redux action
+      // 更新消息状态为成功
       store.dispatch({
         type: 'normalizedMessages/updateMessageStatus',
         payload: {
@@ -189,6 +174,18 @@ export const useChatFeatures = (
 
       // 关闭网络搜索模式
       setWebSearchActive(false);
+
+      // 🚀 新增：基于搜索结果让AI进行回复（在同一个消息块内追加）
+      if (mainTextBlock && mainTextBlock.id) {
+        await handleAIResponseAfterSearch(
+          query,
+          searchResults,
+          currentTopic,
+          selectedModel,
+          searchingMessage.id,
+          mainTextBlock.id
+        );
+      }
 
     } catch (error) {
       console.error("网络搜索失败:", error);
@@ -226,6 +223,114 @@ export const useChatFeatures = (
     }
   };
 
+  // 🚀 新增：基于搜索结果让AI进行回复（在同一个消息块内追加内容）
+  const handleAIResponseAfterSearch = async (
+    originalQuery: string,
+    searchResults: any[],
+    topic: any,
+    model: any,
+    existingMessageId: string,
+    existingMainTextBlockId: string
+  ) => {
+    if (!topic || !model || searchResults.length === 0 || !existingMessageId || !existingMainTextBlockId) return;
+
+    try {
+      console.log(`[useChatFeatures] 开始基于搜索结果生成AI回复，追加到现有消息`);
+
+      // 构建包含搜索结果的提示词
+      let searchContext = `用户问题：${originalQuery}\n\n`;
+      searchContext += `网络搜索结果：\n`;
+
+      searchResults.forEach((result, index) => {
+        searchContext += `${index + 1}. 标题：${result.title}\n`;
+        searchContext += `   链接：${result.url}\n`;
+        searchContext += `   内容：${result.snippet}\n\n`;
+      });
+
+      searchContext += `请基于以上搜索结果，对用户的问题进行详细、准确的回答。请引用相关的搜索结果，并提供有价值的分析和见解。`;
+
+      // 获取当前搜索结果内容
+      const currentBlock = store.getState().messageBlocks.entities[existingMainTextBlockId];
+      const currentContent = (currentBlock as any)?.content || '';
+
+      // 在现有内容后添加分隔符和AI分析标题
+      const aiAnalysisHeader = '\n\n---\n\n## 🤖 AI 智能分析\n\n';
+
+      // 先更新块内容，添加AI分析标题
+      await TopicService.updateMessageBlockFields(existingMainTextBlockId, {
+        content: currentContent + aiAnalysisHeader,
+        status: MessageBlockStatus.PROCESSING
+      });
+
+      // 调用AI API
+      const { sendChatRequest } = await import('../../../shared/api');
+
+      // 构建消息历史
+      const messages = [{
+        role: 'user' as const,
+        content: searchContext
+      }];
+
+      console.log(`[useChatFeatures] 调用AI API进行搜索结果分析`);
+
+      // 调用AI API
+      const response = await sendChatRequest({
+        messages,
+        modelId: model.id,
+        onChunk: async (content: string) => {
+          // 实时更新块内容：搜索结果 + AI分析标题 + AI回复内容
+          const updatedContent = currentContent + aiAnalysisHeader + content;
+
+          // 同时更新数据库和Redux状态
+          await TopicService.updateMessageBlockFields(existingMainTextBlockId, {
+            content: updatedContent,
+            status: MessageBlockStatus.PROCESSING
+          });
+
+          // 强制更新Redux状态以触发UI重新渲染
+          dispatch(updateOneBlock({
+            id: existingMainTextBlockId,
+            changes: {
+              content: updatedContent,
+              status: MessageBlockStatus.PROCESSING,
+              updatedAt: new Date().toISOString()
+            }
+          }));
+        }
+      });
+
+      // 处理最终响应
+      let finalAIContent = '';
+      if (response.success && response.content) {
+        finalAIContent = response.content;
+      } else if (response.error) {
+        finalAIContent = `AI分析失败: ${response.error}`;
+      }
+
+      // 更新最终内容和状态
+      const finalContent = currentContent + aiAnalysisHeader + finalAIContent;
+      await TopicService.updateMessageBlockFields(existingMainTextBlockId, {
+        content: finalContent,
+        status: MessageBlockStatus.SUCCESS
+      });
+
+      // 更新消息状态为成功
+      store.dispatch({
+        type: 'normalizedMessages/updateMessageStatus',
+        payload: {
+          topicId: topic.id,
+          messageId: existingMessageId,
+          status: AssistantMessageStatus.SUCCESS
+        }
+      });
+
+      console.log(`[useChatFeatures] AI搜索结果分析完成`);
+
+    } catch (error) {
+      console.error('[useChatFeatures] AI搜索结果分析失败:', error);
+    }
+  };
+
   // 处理停止响应点击事件
   const handleStopResponseClick = () => {
     if (!currentTopic) return;
@@ -251,12 +356,15 @@ export const useChatFeatures = (
       payload: { topicId: currentTopic.id, streaming: false }
     });
 
-    // 更新所有正在处理的消息状态为成功
+    // 更新所有正在处理的消息状态为成功，并添加中断标记
     streamingMessages.forEach(message => {
+      console.log(`[handleStopResponseClick] 更新消息状态为成功: ${message.id}`);
+
       dispatch(newMessagesActions.updateMessage({
         id: message.id,
         changes: {
-          status: AssistantMessageStatus.SUCCESS
+          status: AssistantMessageStatus.SUCCESS,
+          updatedAt: new Date().toISOString()
         }
       }));
     });

@@ -8,26 +8,26 @@ export class TTSService {
   private isPlaying: boolean = false;
   private currentAudioBlob: string | null = null;
   private currentMessageId: string | null = null;
-  
+
   // 硅基流动API Key，实际应用中应从环境变量或安全存储中获取
   private siliconFlowApiKey: string = '';
-  
+
   // OpenAI API 设置
   private openaiApiKey: string = '';
   private useOpenAI: boolean = false;
-  
+
   // OpenAI TTS 参数
   private openaiModel: string = 'tts-1'; // 可选: tts-1, tts-1-hd
   private openaiVoice: string = 'alloy'; // 可选: alloy, echo, fable, onyx, nova, shimmer
   private openaiResponseFormat: string = 'mp3'; // 可选: mp3, opus, aac, flac
   private openaiSpeed: number = 1.0; // 范围: 0.25-4.0
   private useOpenAIStream: boolean = false; // 是否使用流式输出
-  
+
   // 默认使用的语音模型
   private defaultModel: string = 'FunAudioLLM/CosyVoice2-0.5B';
   // 默认使用的语音
   private defaultVoice: string = 'FunAudioLLM/CosyVoice2-0.5B:alex';
-  
+
   // 音频上下文 - 用于流式播放
   private audioContext: AudioContext | null = null;
   private sourceNode: AudioBufferSourceNode | null = null;
@@ -53,7 +53,7 @@ export class TTSService {
       this.isPlaying = false;
       this.currentMessageId = null;
     };
-    
+
     // 尝试初始化AudioContext (用于流式播放)
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -167,20 +167,20 @@ export class TTSService {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    
+
     // 停止流式播放
     this.stopStream();
 
     this.isPlaying = false;
     this.currentMessageId = null;
-    
+
     // 释放Blob URL
     if (this.currentAudioBlob) {
       URL.revokeObjectURL(this.currentAudioBlob);
       this.currentAudioBlob = null;
     }
   }
-  
+
   /**
    * 停止流式播放
    */
@@ -194,7 +194,7 @@ export class TTSService {
       }
       this.sourceNode = null;
     }
-    
+
     this.isStreamPlaying = false;
   }
 
@@ -225,12 +225,12 @@ export class TTSService {
       this.stop();
       return false;
     }
-    
+
     // 如果正在播放其他消息，先停止
     if (this.isPlaying || this.isStreamPlaying) {
       this.stop();
     }
-    
+
     // 开始播放新消息
     const success = await this.speak(text, voice);
     if (success) {
@@ -344,29 +344,29 @@ export class TTSService {
 
       // 获取音频数据
       const audioBlob = await response.blob();
-      
+
       // 释放之前的Blob URL
       if (this.currentAudioBlob) {
         URL.revokeObjectURL(this.currentAudioBlob);
       }
-      
+
       // 创建新的Blob URL
       this.currentAudioBlob = URL.createObjectURL(audioBlob);
-      
+
       // 播放音频
       if (this.audio) {
         this.audio.src = this.currentAudioBlob;
         this.audio.play();
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('OpenAI TTS API播放失败:', error);
       return false;
     }
   }
-  
+
   /**
    * 使用OpenAI TTS API流式播放文本
    * @param text 要播放的文本
@@ -379,7 +379,7 @@ export class TTSService {
         console.warn('OpenAI API密钥未设置，尝试其他方法');
         return false;
       }
-      
+
       // 确保AudioContext可用
       if (!this.audioContext) {
         console.warn('AudioContext不可用，无法使用流式播放');
@@ -393,7 +393,8 @@ export class TTSService {
         input: text,
         voice: this.openaiVoice,
         response_format: this.openaiResponseFormat,
-        speed: this.openaiSpeed
+        speed: this.openaiSpeed,
+        stream: true  // 流式播放必需参数
       };
 
       console.log('OpenAI TTS流式请求参数:', {
@@ -419,18 +420,18 @@ export class TTSService {
         console.error('OpenAI TTS API流式请求失败:', response.status, errorData);
         return false;
       }
-      
+
       // 重置流式播放状态
       this.stopStream();
       this.isStreamPlaying = true;
-      
+
       // 获取响应体作为流
       const reader = response.body?.getReader();
       if (!reader) {
         console.error('无法获取响应流');
         return false;
       }
-      
+
       // 根据不同格式选择解码器
       let mimeType = 'audio/mp3';
       switch(this.openaiResponseFormat) {
@@ -439,67 +440,67 @@ export class TTSService {
         case 'aac': mimeType = 'audio/aac'; break;
         case 'flac': mimeType = 'audio/flac'; break;
       }
-      
+
       // 创建媒体源和解码器
       const mediaSource = new MediaSource();
       const audioElement = new Audio();
       audioElement.src = URL.createObjectURL(mediaSource);
-      
+
       // 收集所有块，然后一次性解码和播放
       // 这种方法虽然不是实时流式播放，但比等待整个文件下载快
       const chunks: Uint8Array[] = [];
-      
+
       // 读取流
       const processStream = async () => {
         let done = false;
         while (!done) {
           const { value, done: isDone } = await reader.read();
           done = isDone;
-          
+
           if (value) {
             chunks.push(value);
           }
-          
+
           if (done) {
             // 合并所有块
             const totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
             const merged = new Uint8Array(totalLength);
             let offset = 0;
-            
+
             for (const chunk of chunks) {
               merged.set(chunk, offset);
               offset += chunk.length;
             }
-            
+
             // 创建Blob并播放
             const blob = new Blob([merged], { type: mimeType });
             const url = URL.createObjectURL(blob);
-            
+
             if (this.audio) {
               this.audio.src = url;
               this.audio.play();
-              
+
               // 监听播放完成事件
               this.audio.onended = () => {
                 URL.revokeObjectURL(url);
                 this.isStreamPlaying = false;
                 this.currentMessageId = null;
               };
-              
+
               return true;
             }
           }
         }
-        
+
         return false;
       };
-      
+
       // 开始处理流
       processStream().catch(err => {
         console.error('处理音频流时出错:', err);
         this.isStreamPlaying = false;
       });
-      
+
       return true;
     } catch (error) {
       console.error('OpenAI TTS API流式播放失败:', error);
@@ -525,14 +526,26 @@ export class TTSService {
       // 准备API请求参数
       const url = 'https://api.siliconflow.cn/v1/audio/speech';
       const model = this.defaultModel;
-      const voice = voiceName || this.defaultVoice;
-      
+
+      // 处理语音参数：硅基流动需要 "模型名:音色名" 格式
+      let voice = voiceName || this.defaultVoice;
+
+      // 如果voice不包含模型名，则添加模型名前缀
+      if (voice && !voice.includes(':')) {
+        voice = `${model}:${voice}`;
+      }
+
+      console.log('硅基流动TTS请求参数:', { model, voice, textLength: text.length });
+      console.log('硅基流动TTS文本内容:', text.substring(0, 100) + (text.length > 100 ? '...' : ''));
+
       const requestBody = {
         model: model,
         input: text,
         voice: voice,
         response_format: 'mp3'
       };
+
+      console.log('硅基流动TTS完整请求体:', JSON.stringify(requestBody, null, 2));
 
       // 发送API请求
       const response = await fetch(url, {
@@ -553,22 +566,22 @@ export class TTSService {
 
       // 获取音频数据
       const audioBlob = await response.blob();
-      
+
       // 释放之前的Blob URL
       if (this.currentAudioBlob) {
         URL.revokeObjectURL(this.currentAudioBlob);
       }
-      
+
       // 创建新的Blob URL
       this.currentAudioBlob = URL.createObjectURL(audioBlob);
-      
+
       // 播放音频
       if (this.audio) {
         this.audio.src = this.currentAudioBlob;
         this.audio.play();
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('硅基流动API播放失败:', error);
@@ -595,11 +608,11 @@ export class TTSService {
 
       // 创建语音合成器实例
       const utterance = new SpeechSynthesisUtterance(text);
-      
+
       // 获取可用的语音合成声音
       let voices = window.speechSynthesis.getVoices();
       console.log('可用的语音合成声音:', voices);
-      
+
       // 如果voices为空，可能是因为还没有加载完成
       if (voices.length === 0) {
         // 设置一个超时，等待语音加载
@@ -609,7 +622,7 @@ export class TTSService {
         }, 100);
         return true;
       }
-      
+
       // 如果已有voices，直接设置并播放
       return this.setVoiceAndPlay(utterance, voices, voiceName);
     } catch (error) {
@@ -618,7 +631,7 @@ export class TTSService {
       return false;
     }
   }
-  
+
   /**
    * 设置语音并播放
    * @param utterance SpeechSynthesisUtterance 实例
@@ -654,7 +667,7 @@ export class TTSService {
 
       // 设置语音
       utterance.voice = selectedVoice;
-      
+
       // 设置其他可选参数
       utterance.rate = 1; // 语速
       utterance.pitch = 1; // 音调
@@ -682,4 +695,4 @@ export class TTSService {
       return false;
     }
   }
-} 
+}

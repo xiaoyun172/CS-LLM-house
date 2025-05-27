@@ -203,16 +203,18 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
           }}
         />
 
-        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-          思考过程
+        <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1, gap: 1 }}>
+          <Typography variant="subtitle2" component="span">
+            思考过程
+          </Typography>
           <Chip
             label={isThinking ? `思考中... ${formattedThinkingTime}s` : `思考完成 ${formattedThinkingTime}s`}
             size="small"
             color={isThinking ? "warning" : "default"}
             variant="outlined"
-            sx={{ ml: 1, height: 20 }}
+            sx={{ height: 20 }}
           />
-        </Typography>
+        </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <IconButton
@@ -278,15 +280,17 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
           }}
         />
 
-        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-          {isThinking ? '正在深度思考...' : '深度思考过程'}
+        <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1, gap: 1 }}>
+          <Typography variant="subtitle2" component="span">
+            {isThinking ? '正在深度思考...' : '深度思考过程'}
+          </Typography>
           <Chip
             label={`${formattedThinkingTime}s`}
             size="small"
             color={isThinking ? "warning" : "primary"}
-            sx={{ ml: 1, height: 20 }}
+            sx={{ height: 20 }}
           />
-        </Typography>
+        </Box>
 
         <IconButton
           size="small"
@@ -422,15 +426,17 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 1 : 0 }}>
-          <Typography variant="body2" sx={{ flexGrow: 1, fontWeight: 500 }}>
-            💭 {isThinking ? '思考中...' : '思考完成'}
-          </Typography>
-          <Chip
-            label={`${formattedThinkingTime}s`}
-            size="small"
-            variant="outlined"
-            sx={{ ml: 1, height: 18, fontSize: '0.7rem' }}
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1, gap: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 500 }} component="span">
+              💭 {isThinking ? '思考中...' : '思考完成'}
+            </Typography>
+            <Chip
+              label={`${formattedThinkingTime}s`}
+              size="small"
+              variant="outlined"
+              sx={{ height: 18, fontSize: '0.7rem' }}
+            />
+          </Box>
           <IconButton
             size="small"
             onClick={handleCopy}
@@ -497,15 +503,16 @@ const ThinkingBlock: React.FC<Props> = ({ block }) => {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', mb: expanded ? 1 : 0 }}>
             <TimelineIcon sx={{ mr: 1, color: theme.palette.text.secondary }} />
-            <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-              {isThinking ? '正在思考...' : '思考过程'}
-            </Typography>
-            <Chip
-              label={`${formattedThinkingTime}s`}
-              size="small"
-              color={isThinking ? "warning" : "default"}
-              sx={{ mr: 1 }}
-            />
+            <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1, gap: 1 }}>
+              <Typography variant="subtitle2" component="span">
+                {isThinking ? '正在思考...' : '思考过程'}
+              </Typography>
+              <Chip
+                label={`${formattedThinkingTime}s`}
+                size="small"
+                color={isThinking ? "warning" : "default"}
+              />
+            </Box>
             <IconButton
               size="small"
               onClick={handleCopy}

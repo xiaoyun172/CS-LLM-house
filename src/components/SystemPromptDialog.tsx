@@ -158,7 +158,7 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
         borderBottom: `1px solid ${theme.palette.divider}`,
         pb: 1
       }}>
-        <Typography variant="h6">系统提示词设置</Typography>
+        系统提示词设置
         <IconButton edge="end" color="inherit" onClick={onClose} aria-label="close">
           <CloseIcon />
         </IconButton>

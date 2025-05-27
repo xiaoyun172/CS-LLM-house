@@ -276,6 +276,15 @@ export class MCPService {
       return client;
     } catch (error) {
       console.error(`[MCP] 连接服务器失败: ${server.name}`, error);
+
+      // 在移动端，为CORS错误提供更友好的错误信息
+      if (Capacitor.isNativePlatform() && error instanceof Error) {
+        if (error.message.includes('CORS') || error.message.includes('Access to fetch')) {
+          console.log(`[MCP] 移动端CORS错误，这通常表示服务器配置问题或网络问题`);
+          throw new Error(`连接MCP服务器失败: ${server.name} - 网络连接问题或服务器不可用`);
+        }
+      }
+
       throw error;
     }
   }

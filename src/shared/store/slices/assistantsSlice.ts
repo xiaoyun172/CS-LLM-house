@@ -42,6 +42,22 @@ const assistantsSlice = createSlice({
           assistant.topics.push(topic);
         }
 
+        // 如果更新的是当前选中的助手，也更新currentAssistant
+        if (state.currentAssistant && state.currentAssistant.id === assistantId) {
+          if (!state.currentAssistant.topicIds) {
+            state.currentAssistant.topicIds = [];
+          }
+          if (!state.currentAssistant.topics) {
+            state.currentAssistant.topics = [];
+          }
+          if (!state.currentAssistant.topicIds.includes(topic.id)) {
+            state.currentAssistant.topicIds.push(topic.id);
+          }
+          if (!state.currentAssistant.topics.some((t: ChatTopic) => t.id === topic.id)) {
+            state.currentAssistant.topics.push(topic);
+          }
+        }
+
         console.log(`[assistantsSlice] 添加话题 ${topic.id} 到助手 ${assistantId}，当前话题数量: ${assistant.topics.length}`);
       }
     },
@@ -53,6 +69,14 @@ const assistantsSlice = createSlice({
 
         if (assistant.topics) {
           assistant.topics = assistant.topics.filter((t: ChatTopic) => t.id !== topicId);
+        }
+
+        // 如果更新的是当前选中的助手，也更新currentAssistant
+        if (state.currentAssistant && state.currentAssistant.id === assistantId) {
+          state.currentAssistant.topicIds = state.currentAssistant.topicIds.filter((id: string) => id !== topicId);
+          if (state.currentAssistant.topics) {
+            state.currentAssistant.topics = state.currentAssistant.topics.filter((t: ChatTopic) => t.id !== topicId);
+          }
         }
 
         console.log(`[assistantsSlice] 从助手 ${assistantId} 移除话题 ${topicId}，剩余话题数量: ${assistant.topics?.length || 0}`);
@@ -74,6 +98,21 @@ const assistantsSlice = createSlice({
           if (assistant.topicIds.includes(topic.id)) {
             assistant.topics.push(topic);
             console.log(`[assistantsSlice] 添加话题 ${topic.id} 到助手 ${assistantId} 的topics数组`);
+          }
+        }
+
+        // 如果更新的是当前选中的助手，也更新currentAssistant
+        if (state.currentAssistant && state.currentAssistant.id === assistantId) {
+          if (!state.currentAssistant.topics) {
+            state.currentAssistant.topics = [];
+          }
+          const currentIndex = state.currentAssistant.topics.findIndex((t: ChatTopic) => t.id === topic.id);
+          if (currentIndex !== -1) {
+            state.currentAssistant.topics[currentIndex] = topic;
+          } else {
+            if (state.currentAssistant.topicIds.includes(topic.id)) {
+              state.currentAssistant.topics.push(topic);
+            }
           }
         }
       }

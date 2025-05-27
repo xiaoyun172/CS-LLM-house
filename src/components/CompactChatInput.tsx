@@ -1,30 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Box, IconButton, Typography, useTheme, Collapse } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, IconButton, Typography, Collapse } from '@mui/material';
 import MCPToolsButton from './chat/MCPToolsButton';
 import WebSearchProviderSelector from './WebSearchProviderSelector';
-import { ImageUploadService } from '../shared/services/ImageUploadService';
-import { FileUploadService } from '../shared/services/FileUploadService';
-import type { ImageContent, FileContent } from '../shared/types';
-import { isValidUrl } from '../shared/utils';
-import { dexieStorage } from '../shared/services/DexieStorageService';
+import { useChatInputLogic } from '../shared/hooks/useChatInputLogic';
+import { useTopicManagement } from '../shared/hooks/useTopicManagement';
+import { useFileUpload } from '../shared/hooks/useFileUpload';
+import { useUrlScraper } from '../shared/hooks/useUrlScraper';
+import { useInputStyles } from '../shared/hooks/useInputStyles';
+import { getBasicIcons, getExpandedIcons } from '../shared/config/inputIcons';
 
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
 import StopIcon from '@mui/icons-material/Stop';
-import ClearAllIcon from '@mui/icons-material/ClearAll';
-import SearchIcon from '@mui/icons-material/Search';
-import BuildIcon from '@mui/icons-material/Build';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
-import ImageIcon from '@mui/icons-material/Image';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
-import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import type { RootState } from '../shared/store';
-import type { SiliconFlowImageFormat } from '../shared/types';
-import { EventEmitter, EVENT_NAMES } from '../shared/services/EventService';
-import { TopicService } from '../shared/services/TopicService';
-import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
+import type { SiliconFlowImageFormat, ImageContent, FileContent } from '../shared/types';
+import { dexieStorage } from '../shared/services/DexieStorageService';
 
 interface CompactChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
@@ -65,30 +58,63 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
   toggleWebSearch,
   toggleToolsEnabled
 }) => {
-  const [message, setMessage] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [showProviderSelector, setShowProviderSelector] = useState(false);
   const [inputHeight, setInputHeight] = useState(40); // 输入框容器高度
   const [isFullExpanded, setIsFullExpanded] = useState(false); // 是否全展开
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 文件和图片上传相关状态
   const [images, setImages] = useState<ImageContent[]>([]);
   const [files, setFiles] = useState<FileContent[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
 
-  // URL解析状态
-  const [detectedUrl, setDetectedUrl] = useState<string>('');
-  const [parsedContent, setParsedContent] = useState<string>('');
-  const [urlScraperStatus, setUrlScraperStatus] = useState<'idle' | 'parsing' | 'success' | 'error'>('idle');
-  const [scraperError, setScraperError] = useState<string>('');
-
   // 获取当前话题状态
   const currentTopicId = useSelector((state: RootState) => state.messages.currentTopicId);
   const [currentTopicState, setCurrentTopicState] = useState<any>(null);
-  const theme = useTheme();
-  const isDarkMode = theme.palette.mode === 'dark';
-  const dispatch = useDispatch();
+
+  // 使用自定义hooks
+  const { styles, isDarkMode, inputBoxStyle } = useInputStyles();
+  const { handleCreateTopic } = useTopicManagement();
+
+  // URL解析功能
+  const {
+    detectedUrl,
+    parsedContent,
+    urlScraperStatus,
+    scraperError,
+    resetUrlScraper,
+    detectUrlInMessage
+  } = useUrlScraper({ onDetectUrl });
+
+  // 文件上传功能
+  const { handleImageUpload: uploadImages, handleFileUpload: uploadFiles } = useFileUpload({
+    currentTopicState,
+    setUploadingMedia
+  });
+
+  // 聊天输入逻辑
+  const {
+    message,
+    setMessage,
+    textareaRef,
+    canSendMessage,
+    handleSubmit,
+    handleKeyDown,
+    handleChange
+  } = useChatInputLogic({
+    onSendMessage,
+    onSendImagePrompt,
+    isLoading,
+    allowConsecutiveMessages,
+    imageGenerationMode,
+    toolsEnabled,
+    parsedContent,
+    images,
+    files,
+    setImages,
+    setFiles,
+    resetUrlScraper
+  });
 
   // 当话题ID变化时，从数据库获取话题信息
   useEffect(() => {
@@ -107,43 +133,6 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
 
     loadTopic();
   }, [currentTopicId]);
-
-  // 新建话题处理函数
-  const handleCreateTopic = async () => {
-    try {
-      // 触发新建话题事件
-      EventEmitter.emit(EVENT_NAMES.ADD_NEW_TOPIC);
-      console.log('[CompactChatInput] Emitted ADD_NEW_TOPIC event.');
-
-      // 创建新话题
-      const newTopic = await TopicService.createNewTopic();
-
-      // 如果成功创建话题，自动跳转到新话题
-      if (newTopic) {
-        console.log('[CompactChatInput] 成功创建新话题，自动跳转:', newTopic.id);
-
-        // 设置当前话题 - 立即选择新创建的话题
-        dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
-
-        // 确保话题侧边栏显示并选中新话题
-        setTimeout(() => {
-          EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR);
-
-          // 再次确保新话题被选中，防止其他逻辑覆盖
-          setTimeout(() => {
-            dispatch(newMessagesActions.setCurrentTopicId(newTopic.id));
-          }, 50);
-        }, 100);
-      }
-    } catch (error) {
-      console.error('[CompactChatInput] 创建新话题失败:', error);
-    }
-  };
-
-  // 获取输入框风格设置
-  const inputBoxStyle = useSelector((state: RootState) =>
-    (state.settings as any).inputBoxStyle || 'default'
-  );
 
 
 
@@ -192,57 +181,15 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     }
   }, [message, isFullExpanded]);
 
-  // 处理URL抓取
-  const handleUrlScraping = async (url: string) => {
-    if (!onDetectUrl) return;
-
-    try {
-      setUrlScraperStatus('parsing');
-      const content = await onDetectUrl(url);
-      setParsedContent(content);
-      setUrlScraperStatus('success');
-    } catch (error) {
-      console.error('URL抓取失败:', error);
-      setUrlScraperStatus('error');
-      setScraperError(error instanceof Error ? error.message : '网页解析失败');
-    }
+  // 处理输入变化，包含URL检测
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    handleChange(e);
+    detectUrlInMessage(e.target.value);
   };
 
-  // 重置URL抓取状态
-  const resetUrlScraper = () => {
-    setDetectedUrl('');
-    setParsedContent('');
-    setUrlScraperStatus('idle');
-    setScraperError('');
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newMessage = e.target.value;
-    setMessage(newMessage);
-
-    // 如果URL已经被检测到，不再重复检测
-    if (detectedUrl || urlScraperStatus !== 'idle') return;
-
-    // 如果消息包含URL并且我们有处理函数，尝试检测URL
-    if (onDetectUrl) {
-      // 使用正则表达式寻找可能的URL
-      const urlMatch = newMessage.match(/https?:\/\/\S+/);
-      if (urlMatch && urlMatch[0]) {
-        const potentialUrl = urlMatch[0];
-        // 检验URL是否有效
-        if (isValidUrl(potentialUrl)) {
-          setDetectedUrl(potentialUrl);
-          handleUrlScraping(potentialUrl);
-        }
-      }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
+  // 处理键盘事件，包含全展开功能
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    handleKeyDown(e);
     // Ctrl/Cmd + Enter 切换全展开模式
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -250,166 +197,15 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     }
   };
 
-  const handleSubmit = async () => {
-    if ((!message.trim() && images.length === 0 && files.length === 0 && !parsedContent) ||
-        (isLoading && !allowConsecutiveMessages)) {
-      return;
-    }
-
-    let processedMessage = message.trim();
-
-    // 如果有解析的内容，添加到消息中
-    if (parsedContent && urlScraperStatus === 'success') {
-      // 将网页内容和用户消息合并
-      processedMessage = `${processedMessage}\n\n${parsedContent}`;
-      // 重置URL解析状态
-      setDetectedUrl('');
-      setParsedContent('');
-      setUrlScraperStatus('idle');
-    }
-
-    // 如果是图像生成模式，则调用生成图像的回调
-    if (imageGenerationMode && onSendImagePrompt) {
-      console.log('调用图像生成回调');
-      onSendImagePrompt(processedMessage);
-      setMessage('');
-
-      // 重置输入框高度到默认值
-      const defaultHeight = 40; // 默认容器高度
-      setInputHeight(defaultHeight);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = '24px'; // 重置textarea高度
-      }
-      return;
-    }
-
-    // 创建正确的图片格式
-    const formattedImages: SiliconFlowImageFormat[] = [...images, ...files.filter(f => f.mimeType.startsWith('image/'))].map(img => ({
-      type: 'image_url',
-      image_url: {
-        url: img.base64Data || img.url
-      }
-    }));
-
-    // 调用父组件的回调
-    console.log('发送消息:', {
-      message: processedMessage,
-      images: formattedImages.length,
-      files: files.length,
-      allFiles: files,
-      toolsEnabled: toolsEnabled
-    });
-    onSendMessage(processedMessage, formattedImages.length > 0 ? formattedImages : undefined, toolsEnabled, files);
-
-    // 重置状态
-    setMessage('');
-    setImages([]);
-    setFiles([]);
-    setUploadingMedia(false);
-
-    // 重置输入框高度到默认值
-    const defaultHeight = 40; // 默认容器高度
-    setInputHeight(defaultHeight);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '24px'; // 重置textarea高度
-    }
-  };
-
-  const canSendMessage = () => {
-    // 必须有文本或图片或文件才能发送
-    const hasContent = message.trim() || images.length > 0 || files.length > 0 || parsedContent.trim();
-    // 如果允许连续发送，则只要有内容就可以发送
-    // 如果不允许连续发送，则需要检查isLoading状态
-    return hasContent && (allowConsecutiveMessages || !isLoading);
-  };
-
 
 
   // 处理图片上传
   const handleImageUpload = async (source: 'camera' | 'photos' = 'photos') => {
     try {
-      setUploadingMedia(true);
-
-      // 选择图片
-      const selectedImages = await ImageUploadService.selectImages(source);
-      if (selectedImages.length === 0) {
-        setUploadingMedia(false);
-        return;
-      }
-
-      // 压缩图片并存储进度
-      const totalImages = selectedImages.length;
-      let completedImages = 0;
-
-      // 创建一个进度更新函数
-      const updateProgress = (increment: number = 1) => {
-        completedImages += increment;
-        console.log(`处理图片进度: ${completedImages}/${totalImages}`);
-      };
-
-      // 处理图片
-      const processedImages = await Promise.all(
-        selectedImages.map(async (img, index) => {
-          try {
-            // 1. 压缩图片
-            const compressedImage = await ImageUploadService.compressImage(img, 1024); // 限制1MB
-            updateProgress(0.5); // 算作半个完成单位
-
-            // 2. 尝试保存到DexieStorageService
-            if (currentTopicState) {
-              try {
-                const imageRef = await dexieStorage.saveBase64Image(
-                  compressedImage.base64Data || '',
-                  {
-                    mimeType: compressedImage.mimeType,
-                    width: compressedImage.width,
-                    height: compressedImage.height,
-                    size: compressedImage.size,
-                    topicId: currentTopicState.id
-                  }
-                );
-
-                updateProgress(0.5);
-
-                // 成功保存，返回图片引用
-                return {
-                  url: `[图片:${imageRef}]`, // 注意：这里imageRef直接是字符串ID
-                  mimeType: compressedImage.mimeType,
-                  width: compressedImage.width,
-                  height: compressedImage.height
-                } as ImageContent;
-
-              } catch (storageError) {
-                // 数据库存储失败，直接使用压缩后的图片
-                console.warn('数据库存储图片失败，使用内存中的图片:', storageError);
-                updateProgress(0.5);
-
-                // 返回压缩后的图片，而不是引用
-                return compressedImage;
-              }
-            } else {
-              // 没有当前话题，使用原始方式
-              const formattedImage = ImageUploadService.ensureCorrectFormat(compressedImage);
-              updateProgress(0.5);
-              return formattedImage;
-            }
-          } catch (error) {
-            console.error(`处理第 ${index + 1} 张图片时出错:`, error);
-            updateProgress(1);
-            return null; // 返回null，稍后过滤掉
-          }
-        })
-      );
-
-      // 过滤掉错误的图片（null值）
-      const validImages = processedImages.filter(img => img !== null) as ImageContent[];
-
-      // 更新状态
-      setImages(prev => [...prev, ...validImages]);
-      setUploadingMedia(false);
+      const newImages = await uploadImages(source);
+      setImages(prev => [...prev, ...newImages]);
     } catch (error) {
       console.error('图片上传失败:', error);
-      setUploadingMedia(false);
       alert('图片上传失败，请重试');
     }
   };
@@ -417,21 +213,10 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
   // 处理文件上传
   const handleFileUpload = async () => {
     try {
-      setUploadingMedia(true);
-
-      // 选择文件
-      const selectedFiles = await FileUploadService.selectFiles();
-      if (selectedFiles.length === 0) {
-        setUploadingMedia(false);
-        return;
-      }
-
-      // 处理文件，不需要特殊处理，直接添加到files状态
-      setFiles(prev => [...prev, ...selectedFiles]);
-      setUploadingMedia(false);
+      const newFiles = await uploadFiles();
+      setFiles(prev => [...prev, ...newFiles]);
     } catch (error) {
       console.error('文件上传失败:', error);
-      setUploadingMedia(false);
       alert('文件上传失败，请重试');
     }
   };
@@ -446,111 +231,24 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  // 获取样式配置
-  const getStyles = () => {
-    const baseStyles = {
-      inputBg: isDarkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-      iconBg: isDarkMode ? 'rgba(40, 40, 40, 0.8)' : 'rgba(248, 250, 252, 0.8)',
-      border: isDarkMode ? '1px solid rgba(60, 60, 60, 0.8)' : '1px solid rgba(230, 230, 230, 0.8)',
-      borderRadius: '20px',
-      boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.1)',
-    };
+  // 使用配置文件获取图标
+  const basicIcons = getBasicIcons({
+    toolsEnabled,
+    webSearchActive,
+    imageGenerationMode,
+    onNewTopic,
+    onClearTopic,
+    handleWebSearchClick,
+    toggleImageGenerationMode
+  });
 
-    switch (inputBoxStyle) {
-      case 'modern':
-        return {
-          ...baseStyles,
-          inputBg: isDarkMode
-            ? 'linear-gradient(135deg, rgba(45, 45, 45, 0.95) 0%, rgba(35, 35, 35, 0.95) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%)',
-          borderRadius: '24px',
-          boxShadow: isDarkMode ? '0 4px 16px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.15)',
-        };
-      case 'minimal':
-        return {
-          ...baseStyles,
-          inputBg: isDarkMode ? 'rgba(40, 40, 40, 0.7)' : 'rgba(255, 255, 255, 0.8)',
-          border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
-          borderRadius: '16px',
-          boxShadow: 'none',
-        };
-      default:
-        return baseStyles;
-    }
-  };
-
-  const styles = getStyles();
-
-
-
-  // 基础功能图标
-  const basicIcons = [
-    {
-      icon: <BuildIcon />,
-      label: '工具',
-      onClick: () => {}, // 空函数，实际功能由 MCPToolsButton 处理
-      color: toolsEnabled ? '#4CAF50' : '#9E9E9E',
-      active: toolsEnabled
-    },
-    {
-      icon: <SearchIcon />,
-      label: '网络搜索',
-      onClick: handleWebSearchClick,
-      color: webSearchActive ? '#3b82f6' : '#607D8B',
-      active: webSearchActive
-    },
-    {
-      icon: <ImageIcon />,
-      label: '生成图片',
-      onClick: toggleImageGenerationMode,
-      color: imageGenerationMode ? '#9C27B0' : '#FF9800',
-      active: imageGenerationMode
-    },
-    {
-      icon: <AddCircleIcon />,
-      label: '新建话题',
-      onClick: onNewTopic || handleCreateTopic,
-      color: '#2196F3'
-    },
-    {
-      icon: <ClearAllIcon />,
-      label: '清空内容',
-      onClick: onClearTopic,
-      color: '#f44336'
-    }
-  ];
-
-  // 扩展功能图标 - 包含上传功能
-  const expandedIcons = [
-    {
-      icon: <PhotoCameraIcon />,
-      label: '拍照上传',
-      onClick: () => handleImageUpload('camera'),
-      color: '#FF9800',
-      disabled: uploadingMedia
-    },
-    {
-      icon: <ImageIcon />,
-      label: '图片上传',
-      onClick: () => handleImageUpload('photos'),
-      color: '#2196F3',
-      disabled: uploadingMedia
-    },
-    {
-      icon: <AttachFileIcon />,
-      label: '文件上传',
-      onClick: handleFileUpload,
-      color: '#9C27B0',
-      disabled: uploadingMedia
-    },
-    {
-      icon: <BuildIcon />,
-      label: '高级工具',
-      onClick: toggleToolsEnabled,
-      color: toolsEnabled ? '#4CAF50' : '#9E9E9E',
-      active: toolsEnabled
-    }
-  ];
+  const expandedIcons = getExpandedIcons({
+    toolsEnabled,
+    uploadingMedia,
+    toggleToolsEnabled,
+    handleImageUpload,
+    handleFileUpload
+  });
 
   return (
     <Box sx={{
@@ -616,8 +314,8 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
                   : "和ai助手说点什么... (Ctrl+Enter 全展开)"
             }
             value={message}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
+            onChange={handleInputChange}
+            onKeyDown={handleInputKeyDown}
             disabled={isLoading && !allowConsecutiveMessages}
           />
         </Box>

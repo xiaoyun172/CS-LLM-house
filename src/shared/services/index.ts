@@ -14,6 +14,9 @@ export {
   EVENT_NAMES
 };
 
+// 导出状态栏服务
+export { statusBarService, StatusBarService } from './StatusBarService';
+
 // 版本检查状态缓存
 let versionCheckPromise: Promise<any> | null = null;
 

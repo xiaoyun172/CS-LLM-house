@@ -112,13 +112,13 @@ export function processBackupDataForVersion(data: any): any {
                 status: 'success'
               }]
             };
-            
+
             // 移除不兼容的字段
             delete processedMsg.alternateVersions;
             delete processedMsg.version;
             delete processedMsg.isCurrentVersion;
             delete processedMsg.content; // 删除旧的content字段，仅使用blocks
-            
+
             return processedMsg as any; // 使用类型断言避免严格类型检查
           });
         } else {
@@ -219,7 +219,21 @@ export async function restoreTopics(topics: ChatTopic[]): Promise<number> {
         continue;
       }
       try {
+        // 保存话题
         await dexieStorage.saveTopic(topic);
+
+        // 如果话题包含消息，也要保存到messages表
+        if (topic.messages && Array.isArray(topic.messages) && topic.messages.length > 0) {
+          console.log(`保存话题 ${topic.id} 的 ${topic.messages.length} 条消息到messages表...`);
+          for (const message of topic.messages) {
+            try {
+              await dexieStorage.saveMessage(message);
+            } catch (messageError) {
+              console.error(`保存消息 ${message.id} 时出错:`, messageError);
+            }
+          }
+        }
+
         successCount++;
       } catch (error) {
         console.error(`保存话题 ${topic.id} 时出错:`, error);
@@ -284,13 +298,13 @@ export async function restoreSettings(
     }
 
     console.log('开始恢复设置...');
-    
+
     // 合并当前设置和备份设置
     const mergedSettings = {
       ...currentSettings,
       ...backupSettings
     };
-    
+
     // 确保关键字段存在
     const finalSettings = {
       ...mergedSettings,
@@ -301,10 +315,10 @@ export async function restoreSettings(
       language: mergedSettings.language || 'zh-CN',
       sendWithEnter: mergedSettings.sendWithEnter !== undefined ? mergedSettings.sendWithEnter : true
     };
-    
+
     // 保存设置到数据库
     await setStorageItem('settings', finalSettings);
-    
+
     console.log('设置恢复完成');
     return true;
   } catch (error) {
@@ -322,19 +336,19 @@ export async function restoreBackupSettings(backupSettings: { location?: string;
       console.warn('没有备份设置需要恢复');
       return false;
     }
-    
+
     console.log('开始恢复备份设置...');
-    
+
     // 保存备份位置
     if (backupSettings.location) {
       await setStorageItem('backup-location', backupSettings.location);
     }
-    
+
     // 保存备份存储类型
     if (backupSettings.storageType) {
       await setStorageItem('backup-storage-type', backupSettings.storageType);
     }
-    
+
     console.log('备份设置恢复完成');
     return true;
   } catch (error) {
@@ -352,36 +366,36 @@ export async function restoreLocalStorageItems(items: Record<string, any>): Prom
       console.warn('没有LocalStorage项需要恢复');
       return 0;
     }
-    
+
     console.log(`开始恢复 ${Object.keys(items).length} 个本地存储项...`);
-    
+
     // 排除一些不应恢复的敏感键
     const excludeKeys = [
       // 敏感信息不恢复
       'apiKey', 'openaiKey', 'anthropicKey', 'googleAiKey', 'siliconstudioKey',
       'azureApiKey', 'awsAccessKey', 'awsSecretKey',
-      
+
       // 设置相关项（已单独恢复）
       'settings', 'backup-location', 'backup-storage-type',
-      
+
       // 临时状态
       'currentChatId', '_sessionData', '_topicsLoaded', '_lastSaved'
     ];
-    
+
     // 过滤排除项
     const filteredItems: Record<string, any> = {};
     let count = 0;
-    
+
     for (const [key, value] of Object.entries(items)) {
       if (!excludeKeys.includes(key)) {
         filteredItems[key] = value;
         count++;
       }
     }
-    
+
     // 批量保存到数据库
     await setStorageItems(filteredItems);
-    
+
     console.log(`${count} 个本地存储项恢复完成`);
     return count;
   } catch (error) {
@@ -409,55 +423,55 @@ export async function performFullRestore(
     if (!validateBackupData(backupData)) {
       throw new Error('备份数据格式无效');
     }
-    
+
     onProgress?.('处理备份数据', 0.15);
-    
+
     // 处理备份数据的版本兼容性
     const processedData = processBackupDataForVersion(backupData);
-    
+
     // 恢复进度
     onProgress?.('恢复话题数据', 0.2);
-    
+
     // 恢复话题
     const topicsCount = await restoreTopics(processedData.topics);
-    
+
     onProgress?.('恢复助手数据', 0.4);
-    
+
     // 恢复助手
     const assistantsCount = await restoreAssistants(processedData.assistants);
-    
+
     onProgress?.('恢复设置数据', 0.6);
-    
+
     // 获取当前设置
     const currentSettings = await getStorageItem('settings') || {};
-    
+
     // 恢复设置
     const settingsRestored = processedData.settings ?
       await restoreSettings(processedData.settings, currentSettings) :
       false;
-    
+
     onProgress?.('恢复备份设置', 0.7);
-    
+
     // 恢复备份设置
     if (processedData.backupSettings) {
       await restoreBackupSettings(processedData.backupSettings);
     }
-    
+
     onProgress?.('恢复其他数据', 0.8);
-    
+
     // 恢复其他localStorage项
     const localStorageCount = processedData.localStorage ?
       await restoreLocalStorageItems(processedData.localStorage) :
       0;
-    
+
     onProgress?.('完成恢复', 0.95);
-    
+
     // 延迟一下以确保所有异步操作完成
     await new Promise(resolve => setTimeout(resolve, 200));
-    
+
     // 恢复完成
     onProgress?.('恢复完成', 1.0);
-    
+
     return {
       success: true,
       topicsCount,
@@ -493,7 +507,14 @@ export async function importExternalBackupFromFile(file: File): Promise<{
     const jsonData = await readJSONFromFile(file);
 
     // 尝试识别并导入外部备份
-    const { topics, assistants, source } = await importExternalBackup(jsonData);
+    const { topics, assistants, source, messageBlocks } = await importExternalBackup(jsonData);
+
+    // 恢复消息块（必须在话题之前）
+    if (messageBlocks && messageBlocks.length > 0) {
+      console.log(`开始恢复 ${messageBlocks.length} 个消息块...`);
+      await dexieStorage.bulkSaveMessageBlocks(messageBlocks);
+      console.log('消息块恢复完成');
+    }
 
     // 恢复话题
     const topicsCount = await restoreTopics(topics);
@@ -529,7 +550,7 @@ export async function clearAllData(): Promise<{
 }> {
   try {
     console.log('开始清空所有数据...');
-    
+
     // 清空所有表
     await dexieStorage.clearDatabase();
 

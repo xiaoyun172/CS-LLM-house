@@ -14,30 +14,26 @@ import { OpenAIProvider } from './provider';
  * 发送聊天请求
  * @param messages 消息数组
  * @param model 模型配置
- * @param options 额外选项
+ * @param onUpdate 流式更新回调
+ * @param abortSignal 中断信号
  * @returns 响应内容
  */
 export async function sendChatRequest(
   messages: Message[],
   model: Model,
-  options?: {
-    onUpdate?: (content: string, reasoning?: string) => void;
-    enableWebSearch?: boolean;
-    systemPrompt?: string;
-    enableTools?: boolean; // 添加工具开关参数
-  }
+  onUpdate?: (content: string, reasoning?: string) => void,
+  abortSignal?: AbortSignal
 ): Promise<string | { content: string; reasoning?: string; reasoningTime?: number }> {
   try {
-    const opts = options || {};
-    // 确保onUpdate回调类型正确
-    const onUpdate = typeof opts.onUpdate === 'function' ? opts.onUpdate : undefined;
-    const enableWebSearch = opts.enableWebSearch === true;
-    // 默认启用工具，除非明确设置为false
-    const enableTools = opts.enableTools !== false;
+    // 检查是否已经被中断
+    if (abortSignal?.aborted) {
+      throw new DOMException('Operation aborted', 'AbortError');
+    }
 
-    // 获取系统提示词 - 即使没有提供也使用空字符串，确保始终添加system角色消息
-    // 这样与最佳实例保持一致，最佳实例总是添加system角色消息
-    const systemPrompt = opts.systemPrompt || '';
+    // 默认启用工具和网页搜索
+    const enableWebSearch = true;
+    const enableTools = true;
+    const systemPrompt = '';
 
     console.log(`[API请求] 使用OpenAI API发送请求，模型ID: ${model.id}，提供商: ${model.provider}`);
     console.log(`[API请求] 消息数量: ${messages.length}, 系统提示: ${systemPrompt ? '有' : '无'}`);
@@ -118,7 +114,8 @@ export async function sendChatRequest(
       onUpdate,
       enableWebSearch,
       systemPrompt,
-      enableTools
+      enableTools,
+      abortSignal
     });
   } catch (error) {
     console.error('[API错误] OpenAI API请求失败:', error);

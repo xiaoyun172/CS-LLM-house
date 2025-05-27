@@ -199,6 +199,35 @@ const MessageItem: React.FC<MessageItemProps> = ({
     }
   }, [message.status]); // 只依赖message.status，避免无限循环
 
+  // 🔥 新增：监听消息编辑更新事件，确保UI重新渲染
+  useEffect(() => {
+    const handleMessageUpdated = (event: CustomEvent) => {
+      const { messageId } = event.detail;
+      if (messageId === message.id) {
+        console.log('[MessageItem] 收到消息更新事件，强制重新渲染:', messageId);
+        if (forceUpdateRef.current) {
+          forceUpdateRef.current();
+        }
+      }
+    };
+
+    const handleForceRefresh = () => {
+      console.log('[MessageItem] 收到强制刷新事件');
+      if (forceUpdateRef.current) {
+        forceUpdateRef.current();
+      }
+    };
+
+    // 监听自定义事件
+    window.addEventListener('messageUpdated', handleMessageUpdated as EventListener);
+    window.addEventListener('forceRefresh', handleForceRefresh as EventListener);
+
+    return () => {
+      window.removeEventListener('messageUpdated', handleMessageUpdated as EventListener);
+      window.removeEventListener('forceRefresh', handleForceRefresh as EventListener);
+    };
+  }, [message.id]); // 依赖message.id，确保监听正确的消息
+
   // 版本恢复逻辑已移至TopicService.loadTopicMessages中统一处理
   // 这里不再需要重复的版本恢复逻辑
 

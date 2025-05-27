@@ -10,6 +10,7 @@ import type { ErrorInfo } from '../../store/slices/newMessagesSlice';
 import { formatErrorMessage, getErrorType } from '../../utils/error';
 import { updateOneBlock, addOneBlock } from '../../store/slices/messageBlocksSlice';
 import { versionService } from '../VersionService';
+
 import type { Chunk } from '../../types/chunk';
 import { v4 as uuid } from 'uuid';
 import { globalToolTracker } from '../../utils/toolExecutionSync';
@@ -320,6 +321,14 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
      * @param reasoning 推理内容（可选）
      */
     handleChunk(chunk: string, reasoning?: string) {
+      // 检查是否被中断 - 如果被中断则停止处理
+      const currentState = store.getState();
+      const message = currentState.messages.entities[messageId];
+      if (message?.status === AssistantMessageStatus.SUCCESS) {
+        console.log(`[ResponseHandler] 消息已完成，停止处理新的块`);
+        return accumulatedContent;
+      }
+
       // 检查是否是对比结果
       if (chunk === '__COMPARISON_RESULT__' && reasoning) {
         console.log(`[ResponseHandler] 检测到对比结果`);
@@ -997,21 +1006,9 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         }
       });
 
-      // 在事务外处理版本创建（避免事务冲突）
-      const finalMessageState = store.getState().messages.entities[messageId];
-      if (finalMessageState && (!finalMessageState.versions || finalMessageState.versions.length === 0)) {
-        // 使用VersionService创建初始版本
-        try {
-          await versionService.createInitialVersion(
-            messageId,
-            blockId,
-            accumulatedContent,
-            finalMessageState.model
-          );
-        } catch (versionError) {
-          console.error(`[ResponseHandler] 创建初始版本失败:`, versionError);
-        }
-      }
+      // 基于 Chatbox 原理 - ResponseHandler 不管版本，只负责生成内容
+      // 版本管理完全由 messageThunk 在重新生成前处理
+      console.log(`[ResponseHandler] 内容生成完成，版本管理由调用方处理`);
 
       // 发送完成事件
       EventEmitter.emit(EVENT_NAMES.MESSAGE_COMPLETE, {
@@ -1049,6 +1046,112 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
       }
 
       return accumulatedContent;
+    },
+
+    /**
+     * 响应被中断时的完成处理
+     * @returns 累计的响应内容
+     */
+    async completeWithInterruption() {
+      console.log(`[ResponseHandler] 响应被中断 - 消息ID: ${messageId}, 当前内容长度: ${accumulatedContent.length}`);
+
+      const now = new Date().toISOString();
+
+      try {
+        // 如果有内容，添加中断警告
+        let finalContent = accumulatedContent;
+        if (finalContent.trim()) {
+          finalContent += '\n\n---\n\n> ⚠️ **此回复已被用户中断**\n> \n> 以上内容为中断前已生成的部分内容。';
+        } else {
+          finalContent = '> ⚠️ **回复已被中断，未生成任何内容**\n> \n> 请重新发送消息以获取完整回复。';
+        }
+
+        // 更新主文本块内容和状态
+        store.dispatch(updateOneBlock({
+          id: blockId,
+          changes: {
+            content: finalContent,
+            status: MessageBlockStatus.SUCCESS,
+            updatedAt: now,
+            metadata: {
+              ...store.getState().messageBlocks.entities[blockId]?.metadata,
+              interrupted: true, // 标记为被中断
+              interruptedAt: now
+            }
+          }
+        }));
+
+        // 更新消息状态
+        store.dispatch(newMessagesActions.updateMessage({
+          id: messageId,
+          changes: {
+            status: AssistantMessageStatus.SUCCESS,
+            updatedAt: now,
+            metadata: {
+              interrupted: true,
+              interruptedAt: now
+            }
+          }
+        }));
+
+        // 设置主题为非流式响应状态
+        store.dispatch(newMessagesActions.setTopicStreaming({
+          topicId,
+          streaming: false
+        }));
+
+        // 设置主题为非加载状态
+        store.dispatch(newMessagesActions.setTopicLoading({
+          topicId,
+          loading: false
+        }));
+
+        // 保存到数据库
+        await Promise.all([
+          dexieStorage.updateMessageBlock(blockId, {
+            content: finalContent,
+            status: MessageBlockStatus.SUCCESS,
+            updatedAt: now,
+            metadata: {
+              interrupted: true,
+              interruptedAt: now
+            }
+          }),
+          dexieStorage.updateMessage(messageId, {
+            status: AssistantMessageStatus.SUCCESS,
+            updatedAt: now,
+            metadata: {
+              interrupted: true,
+              interruptedAt: now
+            }
+          })
+        ]);
+
+        // 发送完成事件
+        EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
+          text: finalContent,
+          messageId,
+          blockId,
+          topicId,
+          interrupted: true
+        });
+
+        // 发送消息完成事件
+        EventEmitter.emit(EVENT_NAMES.MESSAGE_COMPLETE, {
+          id: messageId,
+          topicId,
+          status: 'success',
+          interrupted: true
+        });
+
+        console.log(`[ResponseHandler] 中断处理完成 - 最终内容长度: ${finalContent.length}`);
+        return finalContent;
+
+      } catch (error) {
+        console.error(`[ResponseHandler] 中断处理失败:`, error);
+        // 如果处理失败，回退到普通完成处理
+        return await this.complete(accumulatedContent);
+      }
     },
 
     /**

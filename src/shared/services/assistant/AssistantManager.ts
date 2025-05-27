@@ -41,11 +41,13 @@ export class AssistantManager {
         assistant.topics = topics;
       }
 
-      // 确保每个助手都有正确的图标
+      // 直接返回助手数据，emoji字段已经在数据库中正确保存
       return assistants.map(assistant => {
-        // 序列化后再反序列化以确保图标正确
-        const serializedAssistant = serializeAssistant(assistant);
-        return deserializeAssistant(serializedAssistant);
+        // 确保助手有type字段
+        if (!assistant.type) {
+          assistant.type = 'assistant';
+        }
+        return assistant;
       });
     } catch (error) {
       console.error('获取用户助手失败:', error);
@@ -89,9 +91,13 @@ export class AssistantManager {
       // 设置话题数组
       assistant.topics = topics;
 
-      // 确保返回的助手有正确的图标
-      const serializedAssistant = serializeAssistant(assistant);
-      return deserializeAssistant(serializedAssistant);
+      // 确保助手有type字段
+      if (!assistant.type) {
+        assistant.type = 'assistant';
+      }
+
+      // 直接返回助手数据，emoji字段已经在数据库中正确保存
+      return assistant;
     } catch (error) {
       console.error('获取当前助手失败:', error);
       return null;

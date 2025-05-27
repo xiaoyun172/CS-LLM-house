@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Box } from '@mui/material';
 import { throttle } from 'lodash';
 
@@ -35,21 +35,32 @@ function VirtualScroller<T>({
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
-  // 计算可见区域的起始和结束索引
-  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscanCount);
-  const endIndex = Math.min(
-    items.length - 1,
-    Math.floor((scrollTop + containerHeight) / itemHeight) + overscanCount
-  );
+  // 使用 useMemo 缓存计算结果，避免每次渲染都重新计算
+  const { startIndex, endIndex, visibleItems, totalHeight, offsetY } = useMemo(() => {
+    // 计算可见区域的起始和结束索引
+    const start = Math.max(0, Math.floor(scrollTop / itemHeight) - overscanCount);
+    const end = Math.min(
+      items.length - 1,
+      Math.floor((scrollTop + containerHeight) / itemHeight) + overscanCount
+    );
 
-  // 计算可见项目
-  const visibleItems = items.slice(startIndex, endIndex + 1);
+    // 计算可见项目
+    const visible = items.slice(start, end + 1);
 
-  // 计算内容总高度
-  const totalHeight = items.length * itemHeight;
+    // 计算内容总高度
+    const total = items.length * itemHeight;
 
-  // 计算可见内容的偏移量
-  const offsetY = startIndex * itemHeight;
+    // 计算可见内容的偏移量
+    const offset = start * itemHeight;
+
+    return {
+      startIndex: start,
+      endIndex: end,
+      visibleItems: visible,
+      totalHeight: total,
+      offsetY: offset
+    };
+  }, [scrollTop, containerHeight, itemHeight, overscanCount, items]);
 
   // 处理滚动事件
   const handleScroll = useCallback(

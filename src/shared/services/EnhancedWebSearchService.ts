@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { tavily } from './TavilyMobileSDK';
 import type { WebSearchResult, WebSearchProviderConfig, WebSearchProviderResponse } from '../types';
 import store from '../store';
 import { newMessagesActions } from '../store/slices/newMessagesSlice';
@@ -37,8 +38,8 @@ class EnhancedWebSearchService {
       return false;
     }
 
-    // 本地搜索提供商（Google、Bing）不需要API密钥
-    if (provider.id === 'local-google' || provider.id === 'local-bing') {
+    // 本地搜索提供商（Google、Bing）和免费WebSearch不需要API密钥
+    if (provider.id === 'local-google' || provider.id === 'local-bing' || provider.id === 'bing') {
       return true;
     }
 
@@ -88,25 +89,19 @@ class EnhancedWebSearchService {
     switch (provider.id) {
       case 'tavily':
         return await this.tavilySearch(provider, formattedQuery, websearch);
-      case 'searxng':
-        return await this.searxngSearch(provider, formattedQuery, websearch);
       case 'exa':
         return await this.exaSearch(provider, formattedQuery, websearch);
       case 'bocha':
         return await this.bochaSearch(provider, formattedQuery, websearch);
       case 'firecrawl':
         return await this.firecrawlSearch(provider, formattedQuery, websearch);
-      case 'local-google':
-        return await this.localGoogleSearch(provider, formattedQuery, websearch);
-      case 'local-bing':
-        return await this.localBingSearch(provider, formattedQuery, websearch);
       default:
         throw new Error(`不支持的搜索提供商: ${provider.id}`);
     }
   }
 
   /**
-   * Tavily搜索实现 - 使用代理API调用
+   * Tavily搜索实现 - 使用移动端兼容的SDK
    */
   private async tavilySearch(
     provider: WebSearchProviderConfig,
@@ -118,84 +113,72 @@ class EnhancedWebSearchService {
         throw new Error('Tavily API密钥未配置');
       }
 
-      // 使用代理路径调用Tavily API
-      const response = await fetch('/api/tavily/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          api_key: provider.apiKey,
-          query,
-          search_depth: 'basic',
-          include_answer: false,
-          include_images: false,
-          include_raw_content: false,
-          max_results: websearch.maxResults || 5
-        })
+      console.log(`[EnhancedWebSearchService] 开始Tavily移动端SDK搜索: ${query}`);
+
+      // 创建移动端兼容的Tavily客户端
+      const tvly = tavily({ apiKey: provider.apiKey });
+
+      // 使用移动端SDK进行搜索 - 根据Tavily最佳实践优化
+      const response = await tvly.search(query, {
+        searchDepth: 'advanced', // 🚀 使用高级搜索深度获得更高质量内容
+        includeAnswer: false,
+        includeImages: false,
+        includeRawContent: true, // 🚀 启用原始内容提取，避免内容截断
+        maxResults: Math.min(websearch.maxResults || 5, 10), // 🚀 限制在10以内，提高相关性
+        chunksPerSource: 3, // 🚀 每个源返回3个内容块，提高内容质量
+        excludeDomains: websearch.excludeDomains || []
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Tavily API error: ${response.status} - ${errorText}`);
-      }
+      // 转换结果格式 - 优化内容处理和编码
+      const results: WebSearchResult[] = response.results?.map((result: any) => {
+        // 🚀 优先使用原始内容，如果没有则使用摘要内容
+        let content = result.raw_content || result.content || '';
 
-      const data = await response.json();
-      const results: WebSearchResult[] = data.results?.map((result: any) => ({
-        id: uuidv4(),
-        title: result.title || '',
-        url: result.url || '',
-        snippet: result.content || '',
-        timestamp: new Date().toISOString(),
-        provider: 'tavily'
-      })) || [];
+        // 🚀 清理和规范化内容，移除可能的乱码
+        content = content
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\x00-\x1F\x7F-\x9F]/g, '') // 移除控制字符
+          .replace(/\s+/g, ' ') // 规范化空白字符
+          .trim();
 
+        // 🚀 如果内容过长，智能截取（保持完整句子）
+        if (content.length > 500) {
+          const sentences = content.split(/[.!?。！？]/);
+          let truncated = '';
+          for (const sentence of sentences) {
+            if ((truncated + sentence).length > 450) break;
+            truncated += sentence + '。';
+          }
+          content = truncated || content.substring(0, 500) + '...';
+        }
+
+        // 🚀 清理标题，移除可能的HTML标签和特殊字符
+        const title = (result.title || '')
+          .replace(/<[^>]*>/g, '') // 移除HTML标签
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\x00-\x1F\x7F-\x9F]/g, '') // 移除控制字符
+          .trim();
+
+        return {
+          id: uuidv4(),
+          title: title || '无标题',
+          url: result.url || '',
+          snippet: content,
+          timestamp: new Date().toISOString(),
+          provider: 'tavily',
+          score: result.score || 0 // 🚀 保留相关性评分
+        };
+      }) || [];
+
+      console.log(`[EnhancedWebSearchService] Tavily移动端SDK搜索完成，找到 ${results.length} 个结果`);
       return { results };
     } catch (error: any) {
+      console.error('[EnhancedWebSearchService] Tavily移动端SDK搜索失败:', error);
       throw new Error(`Tavily搜索失败: ${error.message}`);
     }
   }
 
-  /**
-   * Searxng搜索实现
-   */
-  private async searxngSearch(
-    provider: WebSearchProviderConfig,
-    query: string,
-    websearch: any
-  ): Promise<WebSearchProviderResponse> {
-    const url = new URL(`${provider.apiHost}/search`);
-    url.searchParams.set('q', query);
-    url.searchParams.set('format', 'json');
-    url.searchParams.set('engines', provider.engines?.join(',') || 'google,bing');
 
-    const headers: Record<string, string> = {
-      'Accept': 'application/json'
-    };
-
-    if (provider.basicAuthUsername && provider.basicAuthPassword) {
-      const auth = btoa(`${provider.basicAuthUsername}:${provider.basicAuthPassword}`);
-      headers['Authorization'] = `Basic ${auth}`;
-    }
-
-    const response = await fetch(url.toString(), { headers });
-
-    if (!response.ok) {
-      throw new Error(`Searxng API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const results: WebSearchResult[] = data.results?.slice(0, websearch.maxResults).map((result: any) => ({
-      id: uuidv4(),
-      title: result.title || '',
-      url: result.url || '',
-      snippet: result.content || '',
-      timestamp: new Date().toISOString(),
-      provider: 'searxng'
-    })) || [];
-
-    return { results };
-  }
 
   /**
    * Exa搜索实现
@@ -332,107 +315,7 @@ class EnhancedWebSearchService {
     }
   }
 
-  /**
-   * 本地Google搜索实现 - 移动端版本
-   * 使用代理服务器抓取Google搜索结果
-   */
-  private async localGoogleSearch(
-    _provider: WebSearchProviderConfig,
-    query: string,
-    websearch: any
-  ): Promise<WebSearchProviderResponse> {
-    try {
-      console.log(`[EnhancedWebSearchService] 开始本地Google搜索: ${query}`);
 
-      // 使用代理路径避免CORS问题
-      const response = await fetch('/api/google/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          query,
-          maxResults: websearch.maxResults || 5,
-          language: 'zh-CN',
-          region: 'CN'
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Google搜索API错误: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-
-      // 解析搜索结果
-      const results: WebSearchResult[] = data.results?.map((result: any) => ({
-        id: uuidv4(),
-        title: result.title || '',
-        url: result.url || '',
-        snippet: result.snippet || '',
-        timestamp: new Date().toISOString(),
-        provider: 'local-google'
-      })) || [];
-
-      console.log(`[EnhancedWebSearchService] Google搜索完成，找到 ${results.length} 个结果`);
-      return { results };
-    } catch (error: any) {
-      console.error('[EnhancedWebSearchService] Google搜索失败:', error);
-      throw new Error(`Google搜索失败: ${error.message}`);
-    }
-  }
-
-  /**
-   * 本地Bing搜索实现 - 移动端版本
-   * 使用代理服务器抓取Bing搜索结果
-   */
-  private async localBingSearch(
-    _provider: WebSearchProviderConfig,
-    query: string,
-    websearch: any
-  ): Promise<WebSearchProviderResponse> {
-    try {
-      console.log(`[EnhancedWebSearchService] 开始本地Bing搜索: ${query}`);
-
-      // 使用代理路径避免CORS问题
-      const response = await fetch('/api/bing/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          query,
-          maxResults: websearch.maxResults || 5,
-          language: 'zh-CN',
-          region: 'CN'
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Bing搜索API错误: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-
-      // 解析搜索结果
-      const results: WebSearchResult[] = data.results?.map((result: any) => ({
-        id: uuidv4(),
-        title: result.title || '',
-        url: result.url || '',
-        snippet: result.snippet || '',
-        timestamp: new Date().toISOString(),
-        provider: 'local-bing'
-      })) || [];
-
-      console.log(`[EnhancedWebSearchService] Bing搜索完成，找到 ${results.length} 个结果`);
-      return { results };
-    } catch (error: any) {
-      console.error('[EnhancedWebSearchService] Bing搜索失败:', error);
-      throw new Error(`Bing搜索失败: ${error.message}`);
-    }
-  }
 
 
 

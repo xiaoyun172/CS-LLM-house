@@ -7,6 +7,7 @@ import { useModelSelection } from './hooks/useModelSelection.ts';
 import { useTopicManagement } from './hooks/useTopicManagement.ts';
 import { useMessageHandling } from './hooks/useMessageHandling.ts';
 import { useChatFeatures } from './hooks/useChatFeatures.ts';
+import { useAIDebate } from './hooks/useAIDebate.ts';
 import { ChatPageUI } from './components/ChatPageUI.tsx';
 import {
   selectMessagesForTopic,
@@ -125,6 +126,16 @@ const ChatPage: React.FC = () => {
     handleMessageSend,
     handleMultiModelSend
   } = useChatFeatures(currentTopic, currentMessages, selectedModel, handleSendMessage);
+
+  // AI辩论功能钩子
+  const {
+    isDebating,
+    handleStartDebate,
+    handleStopDebate
+  } = useAIDebate({
+    onSendMessage: handleSendMessage,
+    currentTopic
+  });
 
   // 在主题切换时加载消息
   useEffect(() => {
@@ -266,6 +277,9 @@ const ChatPage: React.FC = () => {
       handleMessageSend={handleMessageSend}
       handleMultiModelSend={handleMultiModelSend}
       handleStopResponseClick={handleStopResponseClick}
+      isDebating={isDebating}
+      handleStartDebate={handleStartDebate}
+      handleStopDebate={handleStopDebate}
     />
   );
 };

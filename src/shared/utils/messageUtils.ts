@@ -496,27 +496,53 @@ export function findCitationBlocks(message: Message): CitationMessageBlock[] {
 
 /**
  * 获取消息的主要文本内容
- * 简化版本：直接从消息块中获取内容，不创建默认块
+ * 优化版本：增强错误处理和内容获取逻辑，特别针对移动端优化
  */
 export function getMainTextContent(message: Message): string {
   // 安全检查
   if (!message) {
+    console.warn('[getMainTextContent] 消息对象为空');
     return '';
   }
 
   try {
-    // 🔥 优先检查是否有保存的content字段（多模型对比选择后的内容）
+    console.log(`[getMainTextContent] 开始获取消息内容:`, {
+      messageId: message.id,
+      role: message.role,
+      hasBlocks: !!message.blocks,
+      blocksCount: message.blocks?.length || 0,
+      hasContent: !!(message as any).content
+    });
+
+    // 🔥 优先检查是否有保存的content字段（多模型对比选择后的内容或编辑后的内容）
     if (typeof (message as any).content === 'string' && (message as any).content.trim()) {
-      console.log(`[getMainTextContent] 使用保存的content字段，内容长度: ${(message as any).content.length}`);
-      return (message as any).content;
+      const content = (message as any).content.trim();
+      console.log(`[getMainTextContent] 使用保存的content字段，内容长度: ${content.length}`);
+      return content;
     }
 
-    // 直接从Redux状态获取块，避免调用findMainTextBlocks的默认块创建逻辑
+    // 检查是否有blocks
     if (!message.blocks || message.blocks.length === 0) {
+      console.warn(`[getMainTextContent] 消息 ${message.id} 没有blocks`);
+
+      // 尝试从旧版本的content属性获取内容（兼容性处理）
+      if (typeof (message as any).content === 'string') {
+        const legacyContent = (message as any).content.trim();
+        if (legacyContent) {
+          console.log(`[getMainTextContent] 使用旧版本content字段，内容长度: ${legacyContent.length}`);
+          return legacyContent;
+        }
+      }
+
       return '';
     }
 
+    // 获取Redux状态
     const state = store.getState();
+    if (!state) {
+      console.error('[getMainTextContent] Redux状态不可用');
+      return '';
+    }
 
     // 🔥 首先检查是否有模型对比块，并且有选中的内容
     for (const blockId of message.blocks) {
@@ -526,8 +552,9 @@ export function getMainTextContent(message: Message): string {
           // 检查是否是对比块且有选中内容
           const comparisonBlock = block as any;
           if (comparisonBlock.subType === 'comparison' && comparisonBlock.selectedContent) {
-            console.log(`[getMainTextContent] 使用对比块选中内容，内容长度: ${comparisonBlock.selectedContent.length}`);
-            return comparisonBlock.selectedContent;
+            const selectedContent = comparisonBlock.selectedContent.trim();
+            console.log(`[getMainTextContent] 使用对比块选中内容，内容长度: ${selectedContent.length}`);
+            return selectedContent;
           }
         }
       } catch (error) {
@@ -541,9 +568,18 @@ export function getMainTextContent(message: Message): string {
     for (const blockId of message.blocks) {
       try {
         const block = messageBlocksSelectors.selectById(state, blockId);
-        // 兼容性处理：同时支持 MAIN_TEXT 和 UNKNOWN 类型的块
-        if (block && (block.type === MessageBlockType.MAIN_TEXT || block.type === MessageBlockType.UNKNOWN)) {
-          // 对于 UNKNOWN 类型的块，也当作主文本块处理
+        if (!block) {
+          console.warn(`[getMainTextContent] 块 ${blockId} 不存在`);
+          continue;
+        }
+
+        // 兼容性处理：同时支持 MAIN_TEXT、UNKNOWN 和字符串类型的块类型
+        const blockType = typeof block.type === 'string' ? block.type : block.type;
+        if (blockType === MessageBlockType.MAIN_TEXT ||
+            blockType === MessageBlockType.UNKNOWN ||
+            blockType === 'main_text' ||
+            blockType === 'MAIN_TEXT') {
+          // 对于各种类型的主文本块，都当作主文本块处理
           textBlocks.push(block as MainTextMessageBlock);
         }
       } catch (error) {
@@ -551,17 +587,42 @@ export function getMainTextContent(message: Message): string {
       }
     }
 
+    console.log(`[getMainTextContent] 找到 ${textBlocks.length} 个文本块`);
+
     // 过滤掉空内容的块
-    const nonEmptyBlocks = textBlocks.filter(block => block.content && block.content.trim());
+    const nonEmptyBlocks = textBlocks.filter(block => {
+      const content = block.content;
+      return content && typeof content === 'string' && content.trim();
+    });
+
+    console.log(`[getMainTextContent] 过滤后有 ${nonEmptyBlocks.length} 个非空文本块`);
 
     if (nonEmptyBlocks.length === 0) {
+      console.warn(`[getMainTextContent] 消息 ${message.id} 没有有效的文本内容`);
       return '';
     }
 
     // 连接所有文本块的内容
-    return nonEmptyBlocks.map(block => block.content).join('\n\n');
+    const result = nonEmptyBlocks.map(block => block.content.trim()).join('\n\n');
+    console.log(`[getMainTextContent] 最终内容长度: ${result.length}`);
+
+    return result;
   } catch (error) {
     console.error('[getMainTextContent] 获取消息内容失败:', error);
+
+    // 最后的兜底方案：尝试直接从消息对象获取任何可能的文本内容
+    try {
+      if (typeof (message as any).content === 'string') {
+        const fallbackContent = (message as any).content.trim();
+        if (fallbackContent) {
+          console.log(`[getMainTextContent] 使用兜底方案，内容长度: ${fallbackContent.length}`);
+          return fallbackContent;
+        }
+      }
+    } catch (fallbackError) {
+      console.error('[getMainTextContent] 兜底方案也失败:', fallbackError);
+    }
+
     return '';
   }
 }

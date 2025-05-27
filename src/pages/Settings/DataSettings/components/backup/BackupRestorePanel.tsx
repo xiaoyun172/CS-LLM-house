@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Paper, LinearProgress, Typography, Box, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Button } from '@mui/material';
 import BackupHeader from './BackupHeader';
 import BackupButtons from './BackupButtons';
@@ -7,6 +7,9 @@ import CustomBackupDialog from './CustomBackupDialog';
 import ImportExternalBackupDialog from './ImportExternalBackupDialog';
 import DatabaseDiagnosticDialog from './DatabaseDiagnosticDialog';
 import NotificationSnackbar from './NotificationSnackbar';
+import WebDavSettings from '../webdav/WebDavSettings';
+import WebDavBackupManager from '../webdav/WebDavBackupManager';
+import WebDavConfigDialog from '../webdav/WebDavConfigDialog';
 import {
   prepareBasicBackupData,
   prepareFullBackupData,
@@ -22,6 +25,9 @@ import {
   performFullRestore,
 } from '../../utils/restoreUtils';
 import { dexieStorage } from '../../../../../shared/services/DexieStorageService';
+import type { WebDavConfig } from '../../../../../shared/types';
+import { WebDavBackupService } from '../../../../../shared/services/WebDavBackupService';
+import { getWebDavConfig, saveWebDavConfig } from '../../../../../shared/utils/webdavUtils';
 
 /**
  * 备份恢复面板组件
@@ -62,6 +68,31 @@ const BackupRestorePanel: React.FC = () => {
 
   // 数据库诊断对话框状态
   const [databaseDiagnosticOpen, setDatabaseDiagnosticOpen] = useState(false);
+
+  // WebDAV 相关状态
+  const [webdavConfig, setWebdavConfig] = useState<WebDavConfig | null>(null);
+  const [webdavSettingsOpen, setWebdavSettingsOpen] = useState(false);
+  const [webdavBackupManagerOpen, setWebdavBackupManagerOpen] = useState(false);
+  const [webdavConfigDialogOpen, setWebdavConfigDialogOpen] = useState(false);
+
+  const webdavService = WebDavBackupService.getInstance();
+
+  // 初始化 WebDAV 配置
+  useEffect(() => {
+    const loadWebDavConfig = async () => {
+      try {
+        const config = await getWebDavConfig();
+        if (config) {
+          setWebdavConfig(config);
+          await webdavService.initialize(config);
+        }
+      } catch (error) {
+        console.error('加载 WebDAV 配置失败:', error);
+      }
+    };
+
+    loadWebDavConfig();
+  }, []);
 
   // 显示提示信息
   const showMessage = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'info') => {
@@ -325,11 +356,11 @@ const BackupRestorePanel: React.FC = () => {
   const confirmClearAll = async () => {
     setClearConfirmOpen(false);
     setIsLoading(true);
-    
+
     try {
       // 使用dexieStorage清理所有数据
       await dexieStorage.clearDatabase();
-      
+
       // 显示成功消息
       showMessage('所有数据已彻底清除', 'success');
       refreshBackupFilesList(); // 刷新备份文件列表
@@ -371,6 +402,86 @@ const BackupRestorePanel: React.FC = () => {
     showMessage('备份文件已删除', 'info');
     // 刷新备份文件列表
     refreshBackupFilesList();
+  };
+
+  // WebDAV 功能处理函数
+  const handleWebDavSettings = () => {
+    setWebdavSettingsOpen(true);
+  };
+
+  const handleWebDavBackup = async () => {
+    if (!webdavConfig) {
+      setWebdavConfigDialogOpen(true);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      // 准备备份数据
+      const backupData = await prepareBasicBackupData();
+
+      // 上传到 WebDAV
+      const result = await webdavService.backupToWebDav(backupData);
+
+      if (result.success) {
+        showMessage('备份已成功上传到 WebDAV 服务器', 'success');
+      } else {
+        showMessage(`WebDAV 备份失败: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      showMessage(`WebDAV 备份失败: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleWebDavRestoreOpen = () => {
+    if (!webdavConfig) {
+      setWebdavConfigDialogOpen(true);
+      return;
+    }
+    setWebdavBackupManagerOpen(true);
+  };
+
+  const handleWebDavConfigSave = async (config: WebDavConfig) => {
+    try {
+      await saveWebDavConfig(config);
+      setWebdavConfig(config);
+      showMessage('WebDAV 配置已保存', 'success');
+    } catch (error) {
+      showMessage(`保存配置失败: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  };
+
+  const handleWebDavRestoreFile = async (fileName: string, data: any) => {
+    try {
+      setIsLoading(true);
+
+      // 使用现有的恢复逻辑
+      const result = await performFullRestore(data, (stage, progress) => {
+        setRestoreProgress({
+          active: true,
+          stage,
+          progress
+        });
+      });
+
+      if (result.success) {
+        showMessage('从 WebDAV 恢复成功', 'success');
+      } else {
+        showMessage(`恢复失败: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      showMessage(`恢复失败: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsLoading(false);
+      setRestoreProgress({
+        active: false,
+        stage: '',
+        progress: 0
+      });
+    }
   };
 
   return (
@@ -417,6 +528,9 @@ const BackupRestorePanel: React.FC = () => {
         onImportExternal={openImportExternalDialog}
         onClearAll={handleClearAll}
         onDiagnoseDatabase={openDatabaseDiagnosticDialog}
+        onWebDavSettings={handleWebDavSettings}
+        onWebDavBackup={handleWebDavBackup}
+        onWebDavRestore={handleWebDavRestoreOpen}
       />
 
       {/* 备份文件列表 */}
@@ -489,6 +603,40 @@ const BackupRestorePanel: React.FC = () => {
       <DatabaseDiagnosticDialog
         open={databaseDiagnosticOpen}
         onClose={closeDatabaseDiagnosticDialog}
+      />
+
+      {/* WebDAV 设置对话框 */}
+      <Dialog
+        open={webdavSettingsOpen}
+        onClose={() => setWebdavSettingsOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>WebDAV 云备份设置</DialogTitle>
+        <DialogContent>
+          <WebDavSettings onConfigChange={setWebdavConfig} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWebdavSettingsOpen(false)}>
+            关闭
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* WebDAV 配置对话框 */}
+      <WebDavConfigDialog
+        open={webdavConfigDialogOpen}
+        onClose={() => setWebdavConfigDialogOpen(false)}
+        onSave={handleWebDavConfigSave}
+        initialConfig={webdavConfig}
+      />
+
+      {/* WebDAV 备份管理器 */}
+      <WebDavBackupManager
+        open={webdavBackupManagerOpen}
+        onClose={() => setWebdavBackupManagerOpen(false)}
+        config={webdavConfig}
+        onRestore={handleWebDavRestoreFile}
       />
     </Paper>
   );

@@ -8,36 +8,39 @@ export function useModelSelection() {
   const dispatch = useDispatch();
   const settings = useSelector((state: RootState) => state.settings);
   const currentModelId = useSelector((state: RootState) => state.settings.currentModelId);
-  
+
   // 模型选择菜单相关状态
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // 打开模型选择菜单
   const handleModelMenuClick = useCallback(() => {
     setDialogOpen(true);
   }, []);
-  
+
   // 关闭模型选择菜单
   const handleModelMenuClose = useCallback(() => {
     setDialogOpen(false);
   }, []);
-  
-  // 选择模型
+
+  // 优化选择模型函数 - 添加防抖和错误处理
   const handleModelSelect = useCallback((model: Model) => {
     if (!model || !model.id) {
       console.error('尝试选择无效的模型:', model);
       return;
     }
-    
-    setSelectedModel(model);
-    // 保存选择的模型ID到Redux和localStorage
-    dispatch(setCurrentModel(model.id));
-    handleModelMenuClose();
-  }, [dispatch]);
-  
+
+    // 使用 requestAnimationFrame 优化 UI 更新时机
+    requestAnimationFrame(() => {
+      setSelectedModel(model);
+      // 保存选择的模型ID到Redux和localStorage
+      dispatch(setCurrentModel(model.id));
+      handleModelMenuClose();
+    });
+  }, [dispatch, handleModelMenuClose]);
+
   // 初始化可用模型列表
   useEffect(() => {
     const initializeModels = async () => {
@@ -129,7 +132,7 @@ export function useModelSelection() {
 
     initializeModels();
   }, [dispatch, settings, currentModelId]);
-  
+
   return {
     selectedModel,
     availableModels,
@@ -139,4 +142,4 @@ export function useModelSelection() {
     menuOpen: dialogOpen,
     isLoading
   };
-} 
+}

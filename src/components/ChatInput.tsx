@@ -1,33 +1,35 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { IconButton, CircularProgress, Badge, Tooltip, useMediaQuery } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { IconButton, CircularProgress, Badge, Tooltip } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import KeyboardVoiceIcon from '@mui/icons-material/KeyboardVoice';
 import LinkIcon from '@mui/icons-material/Link';
 import StopIcon from '@mui/icons-material/Stop';
 
-import { ImageUploadService } from '../shared/services/ImageUploadService';
+import { useChatInputLogic } from '../shared/hooks/useChatInputLogic';
+import { useFileUpload } from '../shared/hooks/useFileUpload';
+import { useUrlScraper } from '../shared/hooks/useUrlScraper';
+import { useInputStyles } from '../shared/hooks/useInputStyles';
 import MultiModelSelector from './MultiModelSelector';
-import { FileUploadService } from '../shared/services/FileUploadService';
 import type { ImageContent, SiliconFlowImageFormat, FileContent } from '../shared/types';
 import ImageIcon from '@mui/icons-material/Image';
 import SearchIcon from '@mui/icons-material/Search';
-import { isValidUrl } from '../shared/utils';
 import UrlScraperStatus from './UrlScraperStatus';
 import type { FileStatus } from './FilePreview';
 import IntegratedFilePreview from './IntegratedFilePreview';
 import UploadMenu from './UploadMenu';
 import EnhancedToast, { toastManager } from './EnhancedToast';
-import type { ScraperStatus } from './UrlScraperStatus';
 import { dexieStorage } from '../shared/services/DexieStorageService';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../shared/store';
-import { useTheme } from '@mui/material/styles';
-import { alpha } from '@mui/material/styles';
+import AIDebateButton from './AIDebateButton';
+import type { DebateConfig } from '../shared/services/AIDebateService';
 
 interface ChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
   onSendMultiModelMessage?: (message: string, models: any[], images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void; // 多模型发送回调
+  onStartDebate?: (question: string, config: DebateConfig) => void; // 开始AI辩论回调
+  onStopDebate?: () => void; // 停止AI辩论回调
   isLoading?: boolean;
   allowConsecutiveMessages?: boolean; // 允许连续发送消息，即使AI尚未回复
   imageGenerationMode?: boolean; // 是否处于图像生成模式
@@ -36,6 +38,7 @@ interface ChatInputProps {
   onDetectUrl?: (url: string) => Promise<string>; // 用于检测并解析URL的回调
   onStopResponse?: () => void; // 停止AI回复的回调
   isStreaming?: boolean; // 是否正在流式响应中
+  isDebating?: boolean; // 是否正在AI辩论中
   toolsEnabled?: boolean; // 工具开关状态
   availableModels?: any[]; // 可用模型列表
 }
@@ -43,6 +46,8 @@ interface ChatInputProps {
 const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
   onSendMultiModelMessage,
+  onStartDebate,
+  onStopDebate,
   isLoading = false,
   allowConsecutiveMessages = true, // 默认允许连续发送
   imageGenerationMode = false, // 默认不是图像生成模式
@@ -51,17 +56,19 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onDetectUrl,
   onStopResponse,
   isStreaming = false,
+  isDebating = false, // 默认不在辩论中
   toolsEnabled = true, // 默认启用工具
   availableModels = [] // 默认空数组
 }) => {
-  const [message, setMessage] = useState('');
+  // 基础状态
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [uploadMenuAnchorEl, setUploadMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [multiModelSelectorOpen, setMultiModelSelectorOpen] = useState(false);
+
+  // 文件和图片状态
   const [images, setImages] = useState<ImageContent[]>([]);
   const [files, setFiles] = useState<FileContent[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [uploadMenuAnchorEl, setUploadMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const [multiModelSelectorOpen, setMultiModelSelectorOpen] = useState(false);
 
   // 文件状态管理
   const [fileStatuses, setFileStatuses] = useState<Record<string, { status: FileStatus; progress?: number; error?: string }>>({});
@@ -69,15 +76,63 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // Toast消息管理
   const [toastMessages, setToastMessages] = useState<any[]>([]);
 
-  // URL解析状态
-  const [detectedUrl, setDetectedUrl] = useState<string>('');
-  const [parsedContent, setParsedContent] = useState<string>('');
-  const [urlScraperStatus, setUrlScraperStatus] = useState<ScraperStatus>('idle');
-  const [scraperError, setScraperError] = useState<string>('');
-
-  // 获取当前话题状态 - 移到组件顶层
+  // 获取当前话题状态
   const currentTopicId = useSelector((state: RootState) => state.messages.currentTopicId);
   const [currentTopicState, setCurrentTopicState] = useState<any>(null);
+
+  // 使用共享的 hooks
+  const { styles, isDarkMode, inputBoxStyle } = useInputStyles();
+
+  // URL解析功能
+  const {
+    detectedUrl,
+    parsedContent,
+    urlScraperStatus,
+    scraperError,
+    resetUrlScraper,
+    detectUrlInMessage
+  } = useUrlScraper({ onDetectUrl });
+
+  // 文件上传功能
+  const { handleImageUpload, handleFileUpload } = useFileUpload({
+    currentTopicState,
+    setUploadingMedia
+  });
+
+  // 聊天输入逻辑 - 启用 ChatInput 特有功能
+  const {
+    message,
+    setMessage,
+    textareaRef,
+    canSendMessage,
+    handleSubmit,
+    handleKeyDown,
+    handleChange,
+    textareaHeight,
+    showCharCount,
+    handleCompositionStart,
+    handleCompositionEnd,
+    isMobile,
+    isTablet
+  } = useChatInputLogic({
+    onSendMessage,
+    onSendMultiModelMessage,
+    onSendImagePrompt,
+    isLoading,
+    allowConsecutiveMessages,
+    imageGenerationMode,
+    toolsEnabled,
+    parsedContent,
+    images,
+    files,
+    setImages,
+    setFiles,
+    resetUrlScraper,
+    enableTextareaResize: true,
+    enableCompositionHandling: true,
+    enableCharacterCount: true,
+    availableModels
+  });
 
   // 当话题ID变化时，从数据库获取话题信息
   useEffect(() => {
@@ -103,147 +158,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
     return unsubscribe;
   }, []);
 
-  // 获取主题相关颜色和响应式断点
-  const theme = useTheme();
-  const isDarkMode = theme.palette.mode === 'dark';
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // 小于600px
-  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md')); // 600px-900px
+  // 从 useInputStyles hook 获取样式
+  const { inputBg: inputBgColor, border, borderRadius, boxShadow } = styles;
+  const iconColor = isDarkMode ? '#64B5F6' : '#1976D2';
+  const textColor = isDarkMode ? '#E0E0E0' : '#000000';
+  const disabledColor = isDarkMode ? '#555' : '#ccc';
 
-  // 文本输入增强状态
-  const [textareaHeight, setTextareaHeight] = useState<number>(isMobile ? 24 : 28);
-  const [isComposing, setIsComposing] = useState(false); // 输入法组合状态
-  const [showCharCount, setShowCharCount] = useState(false); // 是否显示字符计数
-
-  // 获取输入框风格设置
-  const inputBoxStyle = useSelector((state: RootState) =>
-    (state.settings as any).inputBoxStyle || 'default'
-  );
-
-  // 根据风格获取样式
-  const getInputStyles = () => {
-    const baseStyles = {
-      inputBgColor: isDarkMode ? alpha(theme.palette.background.paper, 0.5) : alpha(theme.palette.background.paper, 0.95), // 浅色模式使用更高的透明度
-      iconColor: theme.palette.mode === 'dark' ? theme.palette.primary.light : theme.palette.primary.main,
-      textColor: isDarkMode ? '#E0E0E0' : '#000000',
-      disabledColor: isDarkMode ? '#555' : '#ccc',
-      borderRadius: '20px',
-      boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-      border: 'none'
-    };
-
-    switch (inputBoxStyle) {
-      case 'modern':
-        return {
-          ...baseStyles,
-          inputBgColor: isDarkMode
-            ? 'linear-gradient(135deg, rgba(45, 45, 45, 0.9) 0%, rgba(35, 35, 35, 0.9) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%)',
-          borderRadius: '16px',
-          boxShadow: isDarkMode
-            ? '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2)'
-            : '0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05)',
-          border: isDarkMode
-            ? '1px solid rgba(255, 255, 255, 0.1)'
-            : '1px solid rgba(0, 0, 0, 0.05)',
-          iconColor: isDarkMode ? '#64B5F6' : '#1976D2'
-        };
-      case 'minimal':
-        return {
-          ...baseStyles,
-          inputBgColor: isDarkMode
-            ? 'rgba(40, 40, 40, 0.6)'
-            : 'rgba(255, 255, 255, 0.7)',
-          borderRadius: '12px',
-          boxShadow: 'none',
-          border: isDarkMode
-            ? '1px solid rgba(255, 255, 255, 0.08)'
-            : '1px solid rgba(0, 0, 0, 0.08)',
-          iconColor: isDarkMode ? '#9E9E9E' : '#757575'
-        };
-      default:
-        return baseStyles;
-    }
-  };
-
-  const styles = getInputStyles();
-  const { inputBgColor, iconColor, textColor, disabledColor, borderRadius, boxShadow, border } = styles;
-
-  // 判断是否允许发送消息
-  const canSendMessage = () => {
-    // 必须有文本或图片或文件才能发送
-    const hasContent = message.trim() || images.length > 0 || files.length > 0 || parsedContent.trim();
-    // 如果允许连续发送，则只要有内容就可以发送
-    // 如果不允许连续发送，则需要检查isLoading状态
-    return hasContent && (allowConsecutiveMessages || !isLoading);
-  };
-
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-
-    if ((!message.trim() && images.length === 0 && files.length === 0 && !parsedContent) || isLoading) {
-      return;
-    }
-
-    let processedMessage = message.trim();
-
-    // 如果有解析的内容，添加到消息中
-    if (parsedContent && urlScraperStatus === 'success') {
-      // 将网页内容和用户消息合并
-      processedMessage = `${processedMessage}\n\n${parsedContent}`;
-      // 重置URL解析状态
-      setDetectedUrl('');
-      setParsedContent('');
-      setUrlScraperStatus('idle');
-    }
-
-    // 如果是图像生成模式，则调用生成图像的回调
-    if (imageGenerationMode && onSendImagePrompt) {
-      console.log('调用图像生成回调');
-      onSendImagePrompt(processedMessage);
-      setMessage('');
-
-      // 重置输入框高度到默认值
-      const defaultHeight = isMobile ? 24 : 28;
-      setTextareaHeight(defaultHeight);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = `${defaultHeight}px`;
-      }
-      return;
-    }
-
-    // 创建正确的图片格式
-    const formattedImages: SiliconFlowImageFormat[] = [...images, ...files.filter(f => f.mimeType.startsWith('image/'))].map(img => ({
-      type: 'image_url',
-      image_url: {
-        url: img.base64Data || img.url
-      }
-    }));
-
-    // 不在这里处理文件描述，让API处理文件内容
-
-    // 调用父组件的回调
-    console.log('发送消息:', {
-      message: processedMessage,
-      images: formattedImages.length,
-      files: files.length,
-      allFiles: files,
-      toolsEnabled: toolsEnabled
-    });
-    onSendMessage(processedMessage, formattedImages.length > 0 ? formattedImages : undefined, toolsEnabled, files);
-
-    // 重置状态
-    setMessage('');
-    setImages([]);
-    setFiles([]);
-    setUploadingMedia(false);
-
-    // 重置输入框高度到默认值
-    const defaultHeight = isMobile ? 24 : 28;
-    setTextareaHeight(defaultHeight);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = `${defaultHeight}px`;
-    }
-  };
+  // handleSubmit 现在由 useChatInputLogic hook 提供
 
   // 处理多模型发送
   const handleMultiModelSend = (selectedModels: any[]) => {
@@ -255,10 +176,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
     // 如果有解析的内容，添加到消息中
     if (parsedContent && urlScraperStatus === 'success') {
       processedMessage = `${processedMessage}\n\n${parsedContent}`;
-      // 重置URL解析状态
-      setDetectedUrl('');
-      setParsedContent('');
-      setUrlScraperStatus('idle');
+      // 重置URL解析状态 - 使用 hook 提供的函数
+      resetUrlScraper();
     }
 
     // 创建正确的图片格式
@@ -285,120 +204,21 @@ const ChatInput: React.FC<ChatInputProps> = ({
       files
     );
 
-    // 重置状态
+    // 重置状态 - 使用 hook 提供的函数
     setMessage('');
     setImages([]);
     setFiles([]);
     setUploadingMedia(false);
-
-    // 重置输入框高度到默认值
-    const defaultHeight = isMobile ? 24 : 28;
-    setTextareaHeight(defaultHeight);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = `${defaultHeight}px`;
-    }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newMessage = e.target.value;
-    setMessage(newMessage);
+  // 输入处理逻辑现在由 useChatInputLogic 和 useUrlScraper hooks 提供
 
-    // 自动调整textarea高度
-    adjustTextareaHeight(e.target);
-
-    // 显示/隐藏字符计数
-    setShowCharCount(newMessage.length > 100 || newMessage.length > 500);
-
-    // 如果URL已经被检测到，不再重复检测
-    if (detectedUrl || urlScraperStatus !== 'idle') return;
-
-    // 如果消息包含URL并且我们有处理函数，尝试检测URL
-    if (onDetectUrl) {
-      // 使用正则表达式寻找可能的URL
-      const urlMatch = newMessage.match(/https?:\/\/\S+/);
-      if (urlMatch && urlMatch[0]) {
-        const potentialUrl = urlMatch[0];
-        // 检验URL是否有效
-        if (isValidUrl(potentialUrl)) {
-          setDetectedUrl(potentialUrl);
-          handleUrlScraping(potentialUrl);
-        }
-      }
-    }
-  };
-
-  // 自动调整textarea高度
-  const adjustTextareaHeight = (textarea: HTMLTextAreaElement) => {
-    // 重置高度以获取正确的scrollHeight
-    textarea.style.height = 'auto';
-
-    // 计算新高度 - 大幅提高最大高度限制
-    const minHeight = isMobile ? 24 : 28;
-    const maxHeight = isMobile ? 200 : 250; // 移动端200px，桌面端250px
-    const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
-
-    // 设置新高度
-    textarea.style.height = `${newHeight}px`;
-    setTextareaHeight(newHeight);
-  };
-
-  // 处理URL抓取
-  const handleUrlScraping = async (url: string) => {
-    if (!onDetectUrl) return;
-
-    try {
-      setUrlScraperStatus('parsing');
-      const content = await onDetectUrl(url);
-      setParsedContent(content);
-      setUrlScraperStatus('success');
-    } catch (error) {
-      console.error('URL抓取失败:', error);
-      setUrlScraperStatus('error');
-      setScraperError(error instanceof Error ? error.message : '网页解析失败');
-    }
-  };
-
-  // 重置URL抓取状态
-  const resetUrlScraper = () => {
-    setDetectedUrl('');
-    setParsedContent('');
-    setUrlScraperStatus('idle');
-    setScraperError('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // 处理快捷键
-    if (e.ctrlKey || e.metaKey) {
-      switch (e.key) {
-        case 'a':
-          // Ctrl+A 全选 - 浏览器默认行为，不需要阻止
-          break;
-        case 'z':
-          // Ctrl+Z 撤销 - 浏览器默认行为，不需要阻止
-          break;
-        case 'y':
-          // Ctrl+Y 重做 - 浏览器默认行为，不需要阻止
-          break;
-      }
-    }
-
-    // Enter键发送消息（非输入法组合状态且非Shift+Enter）
-    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
-      e.preventDefault();
-      handleSubmit(e as any);
-    }
-  };
-
-  // 输入法组合开始
-  const handleCompositionStart = () => {
-    setIsComposing(true);
-  };
-
-  // 输入法组合结束
-  const handleCompositionEnd = (e: React.CompositionEvent<HTMLTextAreaElement>) => {
-    setIsComposing(false);
-    // 组合结束后重新调整高度
-    adjustTextareaHeight(e.target as HTMLTextAreaElement);
+  // 增强的 handleChange 以支持 URL 检测
+  const enhancedHandleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    // 调用 hook 提供的 handleChange
+    handleChange(e);
+    // 检测 URL
+    detectUrlInMessage(e.target.value);
   };
 
   // 添加焦点管理以确保复制粘贴功能正常工作，并处理键盘显示
@@ -409,6 +229,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
         // 聚焦后立即模糊，这有助于解决某些Android设备上的复制粘贴问题
         textareaRef.current.focus();
         textareaRef.current.blur();
+
+        // 确保初始高度正确设置，以显示完整的placeholder
+        const initialHeight = isMobile ? 32 : isTablet ? 36 : 34;
+        textareaRef.current.style.height = `${initialHeight}px`;
       }
     }, 300);
 
@@ -433,7 +257,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         textareaRef.current.removeEventListener('blur', handleBlur);
       }
     };
-  }, []);
+  }, [isMobile, isTablet]); // 添加依赖项以响应屏幕尺寸变化
 
   // 处理上传菜单
   const handleOpenUploadMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -444,214 +268,22 @@ const ChatInput: React.FC<ChatInputProps> = ({
     setUploadMenuAnchorEl(null);
   };
 
-  // 处理图片上传
-  const handleImageUpload = async (source: 'camera' | 'photos' = 'photos') => {
+  // 文件上传处理函数 - 包装 hook 提供的函数以更新本地状态
+  const handleImageUploadLocal = async (source: 'camera' | 'photos' = 'photos') => {
     try {
-      setUploadingMedia(true);
-
-      // 选择图片
-      const selectedImages = await ImageUploadService.selectImages(source);
-      if (selectedImages.length === 0) {
-        setUploadingMedia(false);
-        return;
-      }
-
-      // 压缩图片并存储进度
-      const totalImages = selectedImages.length;
-      let completedImages = 0;
-
-      // 创建一个进度更新函数
-      const updateProgress = (increment: number = 1) => {
-        completedImages += increment;
-        // 这里可以添加进度百分比显示的逻辑，比如设置状态或显示进度条
-        console.log(`处理图片进度: ${completedImages}/${totalImages}`);
-      };
-
-      // 处理图片
-      const processedImages = await Promise.all(
-        selectedImages.map(async (img, index) => {
-          try {
-            // 1. 压缩图片
-            const compressedImage = await ImageUploadService.compressImage(img, 1024); // 限制1MB
-            updateProgress(0.5); // 算作半个完成单位
-
-            // 2. 尝试保存到DexieStorageService
-            if (currentTopicState) {
-              try {
-                const imageRef = await dexieStorage.saveBase64Image(
-                  compressedImage.base64Data || '',
-                  {
-                    mimeType: compressedImage.mimeType,
-                    width: compressedImage.width,
-                    height: compressedImage.height,
-                    size: compressedImage.size,
-                    topicId: currentTopicState.id
-                  }
-                );
-
-                updateProgress(0.5);
-
-                // 成功保存，返回图片引用
-                return {
-                  url: `[图片:${imageRef}]`, // 注意：这里imageRef直接是字符串ID
-                  mimeType: compressedImage.mimeType,
-                  width: compressedImage.width,
-                  height: compressedImage.height
-                } as ImageContent;
-
-              } catch (storageError) {
-                // 数据库存储失败，直接使用压缩后的图片
-                console.warn('数据库存储图片失败，使用内存中的图片:', storageError);
-                updateProgress(0.5);
-
-                // 返回压缩后的图片，而不是引用
-                return compressedImage;
-              }
-            } else {
-              // 没有当前话题，使用原始方式
-              const formattedImage = ImageUploadService.ensureCorrectFormat(compressedImage);
-              updateProgress(0.5);
-              return formattedImage;
-            }
-          } catch (error) {
-            console.error(`处理第 ${index + 1} 张图片时出错:`, error);
-            updateProgress(1);
-            return null; // 返回null，稍后过滤掉
-          }
-        })
-      );
-
-      // 过滤掉错误的图片（null值）
-      const validImages = processedImages.filter(img => img !== null) as ImageContent[];
-
-      // 更新状态
-      setImages(prev => [...prev, ...validImages]);
-      setUploadingMedia(false);
+      const uploadedImages = await handleImageUpload(source);
+      setImages(prev => [...prev, ...uploadedImages]);
     } catch (error) {
       console.error('图片上传失败:', error);
-      setUploadingMedia(false);
-      alert('图片上传失败，请重试');
     }
   };
 
-  // 处理文件上传
-  const handleFileUpload = async () => {
-    let uploadToastId: string | null = null;
-
+  const handleFileUploadLocal = async () => {
     try {
-      setUploadingMedia(true);
-
-      // 显示上传开始提示
-      uploadToastId = toastManager.upload('正在选择文件...', '文件上传');
-
-      // 选择文件
-      const selectedFiles = await FileUploadService.selectFiles();
-      if (selectedFiles.length === 0) {
-        setUploadingMedia(false);
-        if (uploadToastId) toastManager.remove(uploadToastId);
-        return;
-      }
-
-      // 更新进度
-      if (uploadToastId) {
-        toastManager.updateProgress(uploadToastId, 20, `正在处理 ${selectedFiles.length} 个文件...`);
-      }
-
-      // 处理每个文件
-      const processedFiles: FileContent[] = [];
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        const fileKey = `${file.name}-${file.size}`;
-
-        try {
-          // 设置文件状态为验证中
-          setFileStatuses(prev => ({
-            ...prev,
-            [fileKey]: { status: 'validating' }
-          }));
-
-          // 模拟验证过程
-          await new Promise(resolve => setTimeout(resolve, 500));
-
-          // 检查文件大小
-          if (file.size > 50 * 1024 * 1024) {
-            throw new Error('文件太大，最大允许50MB');
-          }
-
-          // 设置文件状态为成功
-          setFileStatuses(prev => ({
-            ...prev,
-            [fileKey]: { status: 'success' }
-          }));
-
-          processedFiles.push(file);
-
-          // 更新总体进度
-          const progress = 20 + ((i + 1) / selectedFiles.length) * 70;
-          if (uploadToastId) {
-            toastManager.updateProgress(uploadToastId, progress, `已处理 ${i + 1}/${selectedFiles.length} 个文件`);
-          }
-
-        } catch (fileError) {
-          console.error(`处理文件 ${file.name} 失败:`, fileError);
-
-          // 设置文件状态为错误
-          setFileStatuses(prev => ({
-            ...prev,
-            [fileKey]: {
-              status: 'error',
-              error: fileError instanceof Error ? fileError.message : '处理失败'
-            }
-          }));
-
-          // 显示单个文件错误
-          toastManager.error(
-            `文件 "${file.name}" 处理失败: ${fileError instanceof Error ? fileError.message : '未知错误'}`,
-            '文件处理错误'
-          );
-        }
-      }
-
-      // 添加成功处理的文件
-      if (processedFiles.length > 0) {
-        setFiles(prev => [...prev, ...processedFiles]);
-      }
-
-      // 完成上传
-      if (uploadToastId) {
-        toastManager.updateProgress(uploadToastId, 100, '文件上传完成');
-        setTimeout(() => {
-          if (uploadToastId) toastManager.remove(uploadToastId);
-        }, 1500);
-      }
-
-      // 显示成功消息
-      if (processedFiles.length > 0) {
-        toastManager.success(
-          `成功上传 ${processedFiles.length} 个文件`,
-          '上传完成',
-          {
-            action: processedFiles.length !== selectedFiles.length ? {
-              label: '查看详情',
-              onClick: () => {
-                // 可以打开详情对话框
-              }
-            } : undefined
-          }
-        );
-      }
-
-      setUploadingMedia(false);
+      const uploadedFiles = await handleFileUpload();
+      setFiles(prev => [...prev, ...uploadedFiles]);
     } catch (error) {
       console.error('文件上传失败:', error);
-      setUploadingMedia(false);
-
-      if (uploadToastId) toastManager.remove(uploadToastId);
-
-      toastManager.error(
-        error instanceof Error ? error.message : '文件上传失败，请重试',
-        '上传失败'
-      );
     }
   };
 
@@ -748,7 +380,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         borderRadius: borderRadius,
         background: inputBgColor,
           border: border,
-        minHeight: isTablet ? '48px' : '40px',
+        minHeight: isTablet ? '56px' : isMobile ? '48px' : '50px', // 增加容器最小高度以适应新的textarea高度
         boxShadow: boxShadow,
         width: '100%',
         maxWidth: '100%', // 使用100%宽度，与外部容器一致
@@ -778,16 +410,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
             ref={textareaRef}
             style={{
               fontSize: isTablet ? '17px' : '16px',
-              padding: isTablet ? '14px 0' : '12px 0',
+              padding: isTablet ? '10px 0' : '8px 0', // 减少padding以给placeholder更多空间
               border: 'none',
               outline: 'none',
               width: '100%',
               backgroundColor: 'transparent',
-              lineHeight: '1.5',
+              lineHeight: '1.4', // 优化行高，减少垂直空间占用
               fontFamily: 'inherit',
               resize: 'none',
               overflow: textareaHeight >= (isMobile ? 200 : 250) ? 'auto' : 'hidden',
-              minHeight: `${isMobile ? 24 : 28}px`,
+              minHeight: `${isMobile ? 32 : isTablet ? 36 : 34}px`, // 与计算逻辑保持一致
               height: `${textareaHeight}px`,
               maxHeight: `${isMobile ? 200 : 250}px`,
               color: textColor,
@@ -797,7 +429,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             }}
             placeholder={imageGenerationMode ? "输入图像生成提示词..." : webSearchActive ? "输入网络搜索内容..." : "和ai助手说点什么"}
             value={message}
-            onChange={handleChange}
+            onChange={enhancedHandleChange}
             onKeyDown={handleKeyDown}
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
@@ -846,7 +478,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
           </IconButton>
         </Tooltip>
 
-
+        {/* AI辩论按钮 */}
+        <AIDebateButton
+          onStartDebate={onStartDebate}
+          onStopDebate={onStopDebate}
+          isDebating={isDebating}
+          disabled={uploadingMedia || (isLoading && !allowConsecutiveMessages)}
+          question={message}
+        />
 
         {/* 发送按钮或停止按钮 */}
         <IconButton
@@ -887,8 +526,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
         anchorEl={uploadMenuAnchorEl}
         open={Boolean(uploadMenuAnchorEl)}
         onClose={handleCloseUploadMenu}
-        onImageUpload={handleImageUpload}
-        onFileUpload={handleFileUpload}
+        onImageUpload={handleImageUploadLocal}
+        onFileUpload={handleFileUploadLocal}
         onMultiModelSend={() => setMultiModelSelectorOpen(true)}
         showMultiModel={!!(onSendMultiModelMessage && availableModels.length > 1 && !isStreaming && canSendMessage())}
       />

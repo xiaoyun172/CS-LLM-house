@@ -22,7 +22,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     CapacitorHttp: {
-      enabled: true
+      enabled: false
     },
     WebView: {
       scrollEnabled: true,
@@ -34,7 +34,7 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       backgroundColor: '#475569',
-      style: 'light',
+      style: 'DARK', // 使用正确的枚举值
       overlaysWebView: false,
       translucent: false
     },

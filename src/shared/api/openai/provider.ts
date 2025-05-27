@@ -635,7 +635,13 @@ export class OpenAIProvider extends BaseOpenAIProvider {
         // 使用非流式响应处理
         return await this.handleNonStreamResponse(requestParams, onUpdate, onChunk, enableTools, mcpTools, abortSignal);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // 检查是否为中断错误
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('[OpenAIProvider.sendChatMessage] 请求被用户中断');
+        throw new DOMException('Operation aborted', 'AbortError');
+      }
+
       console.error('[OpenAIProvider.sendChatMessage] API请求失败:', error);
       throw error;
     }

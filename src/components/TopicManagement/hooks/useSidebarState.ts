@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { createSelector } from '@reduxjs/toolkit';
 import { useAssistant } from '../../../shared/hooks';
@@ -21,9 +21,6 @@ export function useSidebarState() {
   const [loading, setLoading] = useState(true);
   const initialized = useRef(false);
 
-  // 使用本地状态作为备份，但主要从Redux获取数据
-  const [userAssistants, setLocalUserAssistants] = useState<Assistant[]>([]);
-  const [currentAssistant, setLocalCurrentAssistant] = useState<Assistant | null>(null);
   const dispatch = useDispatch();
 
   // 创建记忆化的 selector 来避免不必要的重新渲染
@@ -34,17 +31,17 @@ export function useSidebarState() {
         (state: RootState) => state.assistants.currentAssistant,
         (state: RootState) => state.messages.currentTopicId
       ],
-      (reduxAssistants, reduxCurrentAssistant, currentTopicId) => ({
-        reduxAssistants,
-        reduxCurrentAssistant,
+      (assistants, currentAssistant, currentTopicId) => ({
+        assistants,
+        currentAssistant,
         currentTopicId
       })
     ),
     []
   );
 
-  // 从Redux获取助手列表和当前助手
-  const { reduxAssistants, reduxCurrentAssistant, currentTopicId } = useSelector(selectSidebarState);
+  // 直接从Redux获取数据，移除冗余的本地状态
+  const { assistants: userAssistants, currentAssistant, currentTopicId } = useSelector(selectSidebarState);
 
   // 从数据库获取当前话题
   const [currentTopic, setCurrentTopic] = useState<any>(null);
@@ -78,26 +75,29 @@ export function useSidebarState() {
     refreshTopics,
   } = useAssistant(currentAssistant?.id || null);
 
-  // 设置用户助手的函数，同时更新本地状态和Redux
-  const setUserAssistants = (assistants: Assistant[]) => {
-    setLocalUserAssistants(assistants);
+  // 简化状态设置函数，直接使用Redux
+  const setUserAssistants = useCallback((assistants: Assistant[]) => {
     dispatch(setAssistants(assistants));
-  };
+  }, [dispatch]);
 
-  // 设置当前助手的函数，同时更新本地状态和Redux
-  const setCurrentAssistant = (assistant: Assistant | null) => {
-    setLocalCurrentAssistant(assistant);
+  const setCurrentAssistant = useCallback((assistant: Assistant | null) => {
     dispatch(setReduxCurrentAssistant(assistant));
-  };
+  }, [dispatch]);
 
-  // 加载助手列表
-  const loadAssistants = async () => {
+  // 加载助手列表 - 优化版本，避免不必要的重新加载
+  const loadAssistants = useCallback(async (forceReload = false) => {
     try {
+      // 如果已经有助手数据且不是强制重新加载，则跳过
+      if (!forceReload && userAssistants.length > 0) {
+        console.log('[SidebarTabs] 助手列表已存在，跳过重新加载');
+        return;
+      }
+
       console.log('[SidebarTabs] 开始加载助手列表');
       const assistants = await AssistantService.getUserAssistants();
       console.log('[SidebarTabs] 获取到助手列表:', assistants.length);
 
-      // 同时更新本地状态和Redux状态
+      // 直接更新Redux状态
       setUserAssistants(assistants);
 
       // 获取当前助手ID
@@ -138,14 +138,14 @@ export function useSidebarState() {
       console.error('[SidebarTabs] 加载助手数据失败:', error);
       throw error;
     }
-  };
+  }, [userAssistants.length, setUserAssistants, setCurrentAssistant]);
 
   // 初始化数据
   useEffect(() => {
     async function initializeData() {
       try {
         setLoading(true);
-        await loadAssistants(); // 加载助手列表
+        await loadAssistants(true); // 初始化时强制加载助手列表
         initialized.current = true;
       } catch (error) {
         console.error('[SidebarTabs] 初始化数据失败:', error);
@@ -170,33 +170,15 @@ export function useSidebarState() {
     };
   }, []);
 
-  // 同步Redux状态到本地状态
-  useEffect(() => {
-    if (reduxAssistants.length > 0 && reduxAssistants !== userAssistants) {
-      console.log('[SidebarTabs] 从Redux同步助手列表:', reduxAssistants.length);
-      setLocalUserAssistants(reduxAssistants);
-    }
-  }, [reduxAssistants, userAssistants]);
-
-  // 同步Redux当前助手到本地状态
-  useEffect(() => {
-    if (reduxCurrentAssistant && reduxCurrentAssistant !== currentAssistant) {
-      console.log('[SidebarTabs] 从Redux同步当前助手:', reduxCurrentAssistant.name);
-      setLocalCurrentAssistant(reduxCurrentAssistant);
-    }
-  }, [reduxCurrentAssistant, currentAssistant]);
-
-  // 优先使用Redux状态，如果Redux状态为空则使用本地状态
-  const effectiveUserAssistants = reduxAssistants.length > 0 ? reduxAssistants : userAssistants;
-  const effectiveCurrentAssistant = reduxCurrentAssistant || currentAssistant;
+  // 移除冗余的状态同步逻辑，直接使用Redux状态
 
   return {
     value,
     setValue,
     loading,
-    userAssistants: effectiveUserAssistants,
+    userAssistants,
     setUserAssistants,
-    currentAssistant: effectiveCurrentAssistant,
+    currentAssistant,
     setCurrentAssistant,
     assistantWithTopics,
     currentTopic,

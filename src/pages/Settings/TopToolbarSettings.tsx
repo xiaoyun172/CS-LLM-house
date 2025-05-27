@@ -16,7 +16,9 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Card
+  Card,
+  Button,
+  Divider
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import InfoIcon from '@mui/icons-material/Info';
@@ -28,6 +30,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import TitleIcon from '@mui/icons-material/Title';
 import TopicIcon from '@mui/icons-material/Topic';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../../shared/store';
 import { updateSettings } from '../../shared/store/settingsSlice';
@@ -271,9 +274,25 @@ const TopToolbarSettings: React.FC = () => {
           sx={{ mr: 2, cursor: 'pointer' }}
           onClick={handleBack}
         />
-        <Typography variant="h6" color="primary">
+        <Typography variant="h6" color="primary" sx={{ flexGrow: 1 }}>
           顶部工具栏设置
         </Typography>
+        <Button
+          variant="outlined"
+          onClick={() => navigate('/settings/appearance/top-toolbar-test')}
+          size="small"
+          sx={{ mr: 1 }}
+        >
+          测试页面
+        </Button>
+        <Button
+          variant="contained"
+          startIcon={<AutoFixHighIcon />}
+          onClick={() => navigate('/settings/appearance/top-toolbar-diy')}
+          size="small"
+        >
+          DIY 布局
+        </Button>
       </Box>
 
       <Box sx={{

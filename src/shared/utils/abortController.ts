@@ -41,7 +41,10 @@ export const abortCompletion = (id: string) => {
         fn();
         removeAbortController(id, fn);
       } catch (error) {
-        console.error('执行中断函数时出错:', error);
+        // 静默处理中断错误，避免控制台错误
+        if (!isAbortError(error)) {
+          console.error('执行中断函数时出错:', error);
+        }
       }
     }
   }
@@ -106,13 +109,26 @@ export function createAbortController(messageId?: string, isAddEventListener?: b
     signalPromise.promise = new Promise((resolve, reject) => {
       signalPromise.resolve = resolve;
       if (abortController.signal.aborted) {
-        reject(new Error('Request was aborted.'));
+        reject(new DOMException('Operation aborted', 'AbortError'));
       }
       // 捕获abort事件
       abortController.signal.addEventListener('abort', () => {
-        reject(new Error('Request was aborted.'));
+        reject(new DOMException('Operation aborted', 'AbortError'));
       });
     });
+
+    // 添加错误处理，避免未捕获的 Promise 错误
+    signalPromise.promise.catch(error => {
+      // 静默处理中断错误，避免控制台错误
+      if (isAbortError(error)) {
+        console.log('[AbortController] 请求被用户中断');
+        return null;
+      }
+      // 对于非中断错误，记录但不重新抛出
+      console.error('[AbortController] 非中断错误:', error);
+      return null;
+    });
+
     return {
       abortController,
       cleanup,
@@ -132,5 +148,8 @@ export function createAbortController(messageId?: string, isAddEventListener?: b
  * @returns 是否为中断错误
  */
 export function isAbortError(error: any): boolean {
-  return error?.name === 'AbortError' || error?.message?.includes('aborted');
+  return error?.name === 'AbortError' ||
+         error?.message?.includes('aborted') ||
+         error?.message?.includes('Request was aborted') ||
+         error?.message?.includes('Operation aborted');
 }

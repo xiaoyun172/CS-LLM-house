@@ -111,8 +111,8 @@ export interface GeneratedImage {
   modelId: string;
 }
 
-// 网络搜索提供商类型 - 包含付费API服务和本地搜索引擎
-export type WebSearchProvider = 'tavily' | 'searxng' | 'exa' | 'bocha' | 'firecrawl' | 'serpapi' | 'local-google' | 'local-bing' | 'custom';
+// 网络搜索提供商类型 - 仅包含收费API服务
+export type WebSearchProvider = 'tavily' | 'exa' | 'bocha' | 'firecrawl' | 'custom';
 
 // 网络搜索提供商配置
 export interface WebSearchProviderConfig {
@@ -132,7 +132,7 @@ export interface WebSearchProviderConfig {
 export interface WebSearchSettings {
   enabled: boolean;
   provider: WebSearchProvider;
-  apiKey: string;
+  apiKey: string; // 🚀 保留用于向后兼容，但优先使用apiKeys
   baseUrl?: string;
   includeInContext: boolean;  // 是否将搜索结果包含在上下文中
   maxResults: number;         // 最大结果数量
@@ -144,6 +144,21 @@ export interface WebSearchSettings {
   contentLimit?: number;      // 内容限制
   providers: WebSearchProviderConfig[]; // 所有可用的搜索提供商列表
   customProviders?: WebSearchCustomProvider[]; // 自定义搜索提供商
+
+  // 🚀 新增：每个提供商独立的API密钥存储
+  apiKeys?: { [provider: string]: string }; // 为每个提供商独立存储API密钥
+
+  // 🚀 新增：Tavily最佳实践相关设置
+  searchDepth?: 'basic' | 'advanced'; // 搜索深度
+  chunksPerSource?: number;           // 每个来源的内容块数量
+  includeRawContent?: boolean;        // 是否包含原始内容
+  includeAnswer?: boolean;            // 是否包含AI生成的答案摘要
+  minScore?: number;                  // 最小相关性分数阈值
+  enableQueryValidation?: boolean;    // 启用查询验证
+  enablePostProcessing?: boolean;     // 启用结果后处理
+  enableSmartSearch?: boolean;        // 启用智能搜索（自动应用最佳实践）
+  timeRange?: 'day' | 'week' | 'month' | 'year'; // 时间范围过滤
+  newsSearchDays?: number;            // 新闻搜索的天数范围
 }
 
 // 自定义搜索提供商
@@ -380,3 +395,6 @@ export interface MCPToolResponse {
   toolCallId?: string; // OpenAI 兼容
   toolUseId?: string;  // Anthropic 兼容
 }
+
+// 导出所有类型
+export * from './WebDav';

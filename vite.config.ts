@@ -45,15 +45,7 @@ export default defineConfig({
       'Access-Control-Allow-Headers': '*',
     },
     proxy: {
-      // Tavily API代理
-      '/api/tavily': {
-        target: 'https://api.tavily.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/tavily/, ''),
-        headers: {
-          'Origin': 'https://api.tavily.com'
-        }
-      },
+
       // Exa API代理
       '/api/exa': {
         target: 'https://api.exa.ai',
@@ -461,8 +453,8 @@ export default defineConfig({
           'utils-vendor': ['redux', '@reduxjs/toolkit', 'lodash'],
           // Vue相关库
           'vue-vendor': ['vue'],
-          // 语法高亮相关
-          'syntax-vendor': ['react-syntax-highlighter'],
+          // 🔥 升级：语法高亮相关 - 使用 Shiki
+          'syntax-vendor': ['shiki'],
           // 日期处理相关
           'date-vendor': ['date-fns'],
           // 动画相关

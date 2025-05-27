@@ -12,7 +12,7 @@ import BackButtonHandler from './components/BackButtonHandler';
 import UpdateNoticeDialog from './components/UpdateNoticeDialog';
 import AppInitializer from './components/AppInitializer';
 import { App as CapApp } from '@capacitor/app';
-import { StatusBar, Style } from '@capacitor/status-bar';
+import { statusBarService } from './shared/services/StatusBarService';
 import { loadTopicMessagesThunk } from './shared/store/slices/newMessagesSlice';
 import { initGroups } from './shared/store/slices/groupsSlice';
 import { useSelector } from 'react-redux';
@@ -20,6 +20,8 @@ import { DataManager } from './shared/services';
 import { DataRepairService } from './shared/services/DataRepairService';
 import { DatabaseCleanupService } from './shared/services/DatabaseCleanupService';
 import { dexieStorage } from './shared/services/DexieStorageService';
+import { SnackbarProvider } from 'notistack';
+
 
 import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from '@mui/material';
 
@@ -29,13 +31,14 @@ LoggerService.log('INFO', '应用初始化');
 // 使用memo优化ExitConfirmDialog
 const MemoizedExitConfirmDialog = memo(ExitConfirmDialog);
 
-function App() {
+// 创建一个内部组件，它在Provider内部使用Redux
+const AppContent = () => {
   // 应用初始化状态
   const [appInitialized, setAppInitialized] = useState(false);
   const [mode, setMode] = useState<'light' | 'dark'>('light');
   const [showResetNotice, setShowResetNotice] = useState(false);
 
-  // 从Redux状态获取主题设置
+  // 从Redux状态获取主题设置 - 现在在Provider内部安全使用
   const themePreference = useSelector((state: any) => state.settings.theme);
 
   // 监听主题变化
@@ -177,19 +180,7 @@ function App() {
     // 初始化状态栏
     const setupStatusBar = async () => {
       try {
-        // 设置状态栏不覆盖WebView
-        await StatusBar.setOverlaysWebView({ overlay: false });
-
-        // 根据当前主题设置状态栏样式
-        if (mode === 'dark') {
-          await StatusBar.setStyle({ style: Style.Dark });
-          await StatusBar.setBackgroundColor({ color: '#232323' }); // 更新深色模式状态栏颜色
-        } else {
-          await StatusBar.setStyle({ style: Style.Dark }); // 仍然使用浅色图标，但背景色为浅色
-          await StatusBar.setBackgroundColor({ color: '#475569' }); // 浅色模式状态栏
-        }
-
-        console.log('[App] 状态栏已初始化');
+        await statusBarService.initialize(mode);
       } catch (error) {
         console.error('[App] 状态栏初始化失败:', error);
       }
@@ -339,35 +330,55 @@ function App() {
     };
   }, [theme, mode]); // 只依赖主题变化
 
-  // 基于初始化状态决定是否展示全部内容
+  // 监听主题变化并更新状态栏
+  useEffect(() => {
+    const updateStatusBarTheme = async () => {
+      try {
+        if (statusBarService.isReady()) {
+          await statusBarService.updateTheme(mode);
+        }
+      } catch (error) {
+        console.error('[App] 状态栏主题更新失败:', error);
+      }
+    };
+
+    updateStatusBarTheme();
+  }, [mode]); // 只在模式变化时更新状态栏
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <HashRouter>
-        {appInitialized ? (
-          <>
-            <AppInitializer />
-            <AppRouter />
-            <BackButtonHandler />
-            <MemoizedExitConfirmDialog />
-            <UpdateNoticeDialog />
-          </>
-        ) : (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            height: '100vh',
-            background: mode === 'light' ? '#F8FAFC' : '#1a1a1a'
-          }}>
+      <SnackbarProvider
+        maxSnack={3}
+        autoHideDuration={3000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <HashRouter>
+          {appInitialized ? (
+            <>
+              <AppInitializer />
+              <AppRouter />
+              <BackButtonHandler />
+              <MemoizedExitConfirmDialog />
+              <UpdateNoticeDialog />
+            </>
+          ) : (
             <div style={{
-              color: mode === 'light' ? '#64748B' : '#a0a0a0',
-              fontWeight: 600,
-              fontSize: '18px'
-            }}>AetherLink 正在启动...</div>
-          </div>
-        )}
-      </HashRouter>
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              height: '100vh',
+              background: mode === 'light' ? '#F8FAFC' : '#1a1a1a'
+            }}>
+              <div style={{
+                color: mode === 'light' ? '#64748B' : '#a0a0a0',
+                fontWeight: 600,
+                fontSize: '18px'
+              }}>AetherLink 正在启动...</div>
+            </div>
+          )}
+        </HashRouter>
+      </SnackbarProvider>
 
       {/* 数据重置通知对话框 */}
       <Dialog
@@ -386,23 +397,23 @@ function App() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowResetNotice(false)} color="primary" autoFocus>
-            我知道了
+            知道了
           </Button>
         </DialogActions>
       </Dialog>
     </ThemeProvider>
   );
-}
+};
 
-// 包装App组件以提供Redux存储和持久化
-function AppWithRedux() {
+// 主App组件 - 不再直接使用Redux，而是通过Provider包裹内部组件
+function App() {
   return (
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
-        <App />
+        <AppContent />
       </PersistGate>
     </Provider>
   );
 }
 
-export default AppWithRedux;
+export default App;

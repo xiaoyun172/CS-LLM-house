@@ -31,6 +31,8 @@ interface SettingItemProps {
 export default function SettingItem({ setting, onChange }: SettingItemProps) {
   // 获取Redux中的消息样式状态
   const messageStyle = useAppSelector(state => state.settings.messageStyle);
+  // 🔥 新增：获取Redux中的自动滚动状态
+  const autoScrollToBottom = useAppSelector(state => state.settings.autoScrollToBottom);
 
   // 初始化时就从localStorage读取值，避免undefined到boolean的变化
   const getInitialValue = React.useCallback(() => {
@@ -40,6 +42,11 @@ export default function SettingItem({ setting, onChange }: SettingItemProps) {
         return messageStyle || 'bubble';
       }
 
+      // 🔥 新增：特殊处理自动滚动设置
+      if (setting.id === 'autoScrollToBottom') {
+        return autoScrollToBottom !== undefined ? autoScrollToBottom : true;
+      }
+
       const appSettings = getAppSettings();
       const currentValue = appSettings[setting.id];
       return currentValue !== undefined ? currentValue : setting.defaultValue;
@@ -47,7 +54,7 @@ export default function SettingItem({ setting, onChange }: SettingItemProps) {
       console.error('加载设置失败:', error);
       return setting.defaultValue;
     }
-  }, [setting.id, setting.defaultValue, messageStyle]);
+  }, [setting.id, setting.defaultValue, messageStyle, autoScrollToBottom]);
 
   // 使用受控状态，初始值从localStorage读取
   const [value, setValue] = useState<boolean | string>(() => getInitialValue());

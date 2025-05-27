@@ -50,7 +50,19 @@ import {
   deleteCustomProvider,
   toggleCustomProviderEnabled,
   toggleSearchWithTime,
-  setExcludeDomains
+  setExcludeDomains,
+
+  // 🚀 新增：Tavily最佳实践相关actions
+  setSearchDepth,
+  setChunksPerSource,
+  toggleIncludeRawContent,
+  toggleIncludeAnswer,
+  setMinScore,
+  toggleQueryValidation,
+  togglePostProcessing,
+  toggleSmartSearch,
+  setTimeRange,
+  setNewsSearchDays
 } from '../../shared/store/slices/webSearchSlice';
 import type { RootState } from '../../shared/store';
 
@@ -164,6 +176,27 @@ const WebSearchSettings: React.FC = () => {
       ...prev!,
       [field]: value
     }));
+  };
+
+  // 🚀 新增：Tavily最佳实践相关处理函数
+  const handleSearchDepthChange = (event: SelectChangeEvent) => {
+    dispatch(setSearchDepth(event.target.value as 'basic' | 'advanced'));
+  };
+
+  const handleChunksPerSourceChange = (_: Event, newValue: number | number[]) => {
+    dispatch(setChunksPerSource(newValue as number));
+  };
+
+  const handleMinScoreChange = (_: Event, newValue: number | number[]) => {
+    dispatch(setMinScore((newValue as number) / 100)); // 转换为0-1范围
+  };
+
+  const handleTimeRangeChange = (event: SelectChangeEvent) => {
+    dispatch(setTimeRange(event.target.value as 'day' | 'week' | 'month' | 'year'));
+  };
+
+  const handleNewsSearchDaysChange = (_: Event, newValue: number | number[]) => {
+    dispatch(setNewsSearchDays(newValue as number));
   };
 
   // 渲染主要内容
@@ -287,35 +320,52 @@ const WebSearchSettings: React.FC = () => {
               input={<OutlinedInput label="搜索服务商" />}
               disabled={!webSearchSettings.enabled}
             >
-              <MenuItem value="tavily">Tavily (推荐)</MenuItem>
-              <MenuItem value="searxng">Searxng (自托管)</MenuItem>
-              <MenuItem value="exa">Exa (神经搜索)</MenuItem>
-              <MenuItem value="bocha">Bocha (AI搜索)</MenuItem>
-              <MenuItem value="firecrawl">Firecrawl (网页抓取)</MenuItem>
-              <MenuItem value="custom">自定义服务</MenuItem>
+              <MenuItem value="tavily">💎 Tavily (推荐)</MenuItem>
+              <MenuItem value="exa">🧠 Exa (神经搜索)</MenuItem>
+              <MenuItem value="bocha">🤖 Bocha (AI搜索)</MenuItem>
+              <MenuItem value="firecrawl">🔥 Firecrawl (网页抓取)</MenuItem>
+              <MenuItem value="custom">⚙️ 自定义服务</MenuItem>
             </Select>
           </FormControl>
 
-          {webSearchSettings.provider !== 'custom' &&
-           webSearchSettings.provider !== 'searxng' && (
+          {webSearchSettings.provider !== 'custom' && (
             <>
               <TextField
                 fullWidth
                 margin="normal"
                 label="API 密钥"
                 type="password"
-                value={webSearchSettings.apiKey || ''}
+                value={
+                  // 🚀 优先使用当前提供商的独立API密钥，如果没有则使用通用密钥
+                  (webSearchSettings.apiKeys && webSearchSettings.apiKeys[webSearchSettings.provider]) ||
+                  webSearchSettings.apiKey ||
+                  ''
+                }
                 onChange={handleApiKeyChange}
                 disabled={!webSearchSettings.enabled}
                 variant="outlined"
                 placeholder={`请输入 ${webSearchSettings.provider} API 密钥`}
               />
 
+              {/* 🚀 调试信息：显示当前存储的API密钥状态 */}
+              {process.env.NODE_ENV === 'development' && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  调试信息: 当前提供商({webSearchSettings.provider})的API密钥: {
+                    webSearchSettings.apiKeys && webSearchSettings.apiKeys[webSearchSettings.provider]
+                      ? '已设置'
+                      : '未设置'
+                  }
+                  {webSearchSettings.apiKeys && Object.keys(webSearchSettings.apiKeys).length > 0 && (
+                    <span> | 已保存的提供商: {Object.keys(webSearchSettings.apiKeys).join(', ')}</span>
+                  )}
+                </Typography>
+              )}
+
               {webSearchSettings.provider === 'tavily' && (
                 <Alert severity="info" sx={{ mt: 2 }}>
-                  Tavily 是专为AI设计的搜索API，提供高质量的搜索结果。访问
-                  <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
-                    tavily.com
+                  Tavily 是专为AI设计的搜索API，提供高质量的搜索结果。现在使用移动端兼容的 SDK，完全避免了 CORS 限制问题。访问
+                  <a href="https://app.tavily.com" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
+                    app.tavily.com
                   </a>
                   获取 API 密钥。
                 </Alert>
@@ -353,14 +403,7 @@ const WebSearchSettings: React.FC = () => {
             </>
           )}
 
-          {webSearchSettings.provider === 'searxng' && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              Searxng 是自托管的开源搜索引擎。您需要部署自己的 Searxng 实例，然后在此配置服务器地址。
-              <a href="https://searxng.github.io/searxng/" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 5 }}>
-                了解更多
-              </a>
-            </Alert>
-          )}
+
 
           {webSearchSettings.provider === 'custom' && webSearchSettings.customProviders && webSearchSettings.customProviders.length > 0 && (
             <Box sx={{ mt: 2 }}>
@@ -533,6 +576,235 @@ const WebSearchSettings: React.FC = () => {
             />
           </FormGroup>
         </Paper>
+
+        {/* 🚀 Tavily最佳实践设置 */}
+        {webSearchSettings.provider === 'tavily' && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              mb: 3,
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                fontWeight: 600,
+                color: (theme) => theme.palette.text.primary,
+                mb: 2,
+              }}
+            >
+              🚀 Tavily 最佳实践设置
+            </Typography>
+
+            <Alert severity="info" sx={{ mb: 3 }}>
+              这些设置基于 Tavily 官方最佳实践，可以显著提升搜索质量和相关性。
+            </Alert>
+
+            {/* 智能搜索开关 */}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={webSearchSettings.enableSmartSearch || false}
+                  onChange={() => dispatch(toggleSmartSearch())}
+                  disabled={!webSearchSettings.enabled}
+                  color="primary"
+                />
+              }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Typography sx={{ mr: 1 }}>启用智能搜索</Typography>
+                  <Tooltip title="自动应用最佳实践设置，包括高级搜索深度、内容块优化等">
+                    <InfoOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                  </Tooltip>
+                </Box>
+              }
+              sx={{ mb: 3 }}
+            />
+
+            {/* 搜索深度 */}
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel id="search-depth-label">搜索深度</InputLabel>
+              <Select
+                labelId="search-depth-label"
+                value={webSearchSettings.searchDepth || 'basic'}
+                onChange={handleSearchDepthChange}
+                input={<OutlinedInput label="搜索深度" />}
+                disabled={!webSearchSettings.enabled || webSearchSettings.enableSmartSearch}
+              >
+                <MenuItem value="basic">基础搜索 (更快)</MenuItem>
+                <MenuItem value="advanced">高级搜索 (更准确，推荐)</MenuItem>
+              </Select>
+            </FormControl>
+
+            {/* 每个来源的内容块数量 */}
+            <Box sx={{ mb: 3 }}>
+              <Typography id="chunks-per-source-slider" gutterBottom>
+                每个来源的内容块数量: {webSearchSettings.chunksPerSource || 3}
+              </Typography>
+              <Slider
+                aria-labelledby="chunks-per-source-slider"
+                value={webSearchSettings.chunksPerSource || 3}
+                onChange={handleChunksPerSourceChange}
+                min={1}
+                max={5}
+                step={1}
+                marks={[
+                  { value: 1, label: '1' },
+                  { value: 3, label: '3' },
+                  { value: 5, label: '5' },
+                ]}
+                disabled={!webSearchSettings.enabled || webSearchSettings.enableSmartSearch}
+              />
+            </Box>
+
+            {/* 最小相关性分数 */}
+            <Box sx={{ mb: 3 }}>
+              <Typography id="min-score-slider" gutterBottom>
+                最小相关性分数: {Math.round((webSearchSettings.minScore || 0.3) * 100)}%
+              </Typography>
+              <Slider
+                aria-labelledby="min-score-slider"
+                value={Math.round((webSearchSettings.minScore || 0.3) * 100)}
+                onChange={handleMinScoreChange}
+                min={0}
+                max={100}
+                step={5}
+                marks={[
+                  { value: 0, label: '0%' },
+                  { value: 30, label: '30%' },
+                  { value: 70, label: '70%' },
+                  { value: 100, label: '100%' },
+                ]}
+                disabled={!webSearchSettings.enabled || webSearchSettings.enableSmartSearch}
+              />
+              <Typography variant="body2" color="text.secondary">
+                过滤掉相关性分数低于此阈值的搜索结果
+              </Typography>
+            </Box>
+
+            {/* 时间范围过滤 */}
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel id="time-range-label">时间范围过滤</InputLabel>
+              <Select
+                labelId="time-range-label"
+                value={webSearchSettings.timeRange || 'week'}
+                onChange={handleTimeRangeChange}
+                input={<OutlinedInput label="时间范围过滤" />}
+                disabled={!webSearchSettings.enabled}
+              >
+                <MenuItem value="day">最近一天</MenuItem>
+                <MenuItem value="week">最近一周</MenuItem>
+                <MenuItem value="month">最近一个月</MenuItem>
+                <MenuItem value="year">最近一年</MenuItem>
+              </Select>
+            </FormControl>
+
+            {/* 新闻搜索天数 */}
+            <Box sx={{ mb: 3 }}>
+              <Typography id="news-search-days-slider" gutterBottom>
+                新闻搜索天数范围: {webSearchSettings.newsSearchDays || 7} 天
+              </Typography>
+              <Slider
+                aria-labelledby="news-search-days-slider"
+                value={webSearchSettings.newsSearchDays || 7}
+                onChange={handleNewsSearchDaysChange}
+                min={1}
+                max={30}
+                step={1}
+                marks={[
+                  { value: 1, label: '1天' },
+                  { value: 7, label: '1周' },
+                  { value: 14, label: '2周' },
+                  { value: 30, label: '1月' },
+                ]}
+                disabled={!webSearchSettings.enabled}
+              />
+              <Typography variant="body2" color="text.secondary">
+                当搜索主题设置为"新闻"时使用
+              </Typography>
+            </Box>
+
+            {/* 高级选项 */}
+            <FormGroup>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={webSearchSettings.includeRawContent || false}
+                    onChange={() => dispatch(toggleIncludeRawContent())}
+                    disabled={!webSearchSettings.enabled || webSearchSettings.enableSmartSearch}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography sx={{ mr: 1 }}>包含原始内容</Typography>
+                    <Tooltip title="获取完整的网页内容，用于深度分析">
+                      <InfoOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                    </Tooltip>
+                  </Box>
+                }
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={webSearchSettings.includeAnswer || false}
+                    onChange={() => dispatch(toggleIncludeAnswer())}
+                    disabled={!webSearchSettings.enabled}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography sx={{ mr: 1 }}>包含AI答案摘要</Typography>
+                    <Tooltip title="Tavily生成的基于搜索结果的答案摘要">
+                      <InfoOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                    </Tooltip>
+                  </Box>
+                }
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={webSearchSettings.enableQueryValidation !== false}
+                    onChange={() => dispatch(toggleQueryValidation())}
+                    disabled={!webSearchSettings.enabled}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography sx={{ mr: 1 }}>启用查询验证</Typography>
+                    <Tooltip title="验证查询长度和格式，提供优化建议">
+                      <InfoOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                    </Tooltip>
+                  </Box>
+                }
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={webSearchSettings.enablePostProcessing !== false}
+                    onChange={() => dispatch(togglePostProcessing())}
+                    disabled={!webSearchSettings.enabled}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography sx={{ mr: 1 }}>启用结果后处理</Typography>
+                    <Tooltip title="基于相关性分数过滤和排序搜索结果">
+                      <InfoOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                    </Tooltip>
+                  </Box>
+                }
+              />
+            </FormGroup>
+          </Paper>
+        )}
 
         {/* 高级设置 */}
         <Paper

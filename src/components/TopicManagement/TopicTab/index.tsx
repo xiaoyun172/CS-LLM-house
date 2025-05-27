@@ -37,6 +37,7 @@ import { useTopicGroups } from './hooks/useTopicGroups';
 import TopicGroups from './TopicGroups';
 import TopicItem from './TopicItem';
 import type { RootState } from '../../../shared/store';
+import store from '../../../shared/store';
 import { TopicService } from '../../../shared/services/TopicService';
 
 interface TopicTabProps {
@@ -203,28 +204,45 @@ export default function TopicTab({
     };
   }, [currentAssistant]);
 
-  // 自动选择第一个话题（当话题加载完成且有话题但没有当前选中的话题时）
+  // 自动选择第一个话题（优化：解决状态同步时序问题）
   useEffect(() => {
-    // 只有在非加载状态、有话题且没有当前选中话题时才执行
-    if (!isLoading && topics.length > 0 && !currentTopic) {
+    // 优化条件检查：
+    // 1. 非加载状态
+    // 2. 有话题列表
+    // 3. 没有当前选中的话题ID（使用Redux状态而不是本地状态）
+    if (!isLoading && topics.length > 0) {
+      // 从Redux获取当前话题ID，避免本地状态异步加载的时序问题
+      const currentTopicId = store.getState().messages?.currentTopicId;
 
+      // 检查当前话题ID是否存在于当前话题列表中
+      const currentTopicExists = currentTopicId && topics.some(topic => topic.id === currentTopicId);
 
-      // 使用requestAnimationFrame代替setTimeout，更符合React渲染周期
-      // 这样可以确保在下一次渲染帧中执行，减少闪烁
-      requestAnimationFrame(() => {
-        onSelectTopic(topics[0]);
-      });
+      // 如果没有当前话题ID，或者当前话题不在当前助手的话题列表中，自动选择第一个话题
+      if (!currentTopicId || !currentTopicExists) {
+        console.log('[TopicTab] 自动选择第一个话题:', topics[0].name || topics[0].title);
+
+        // 使用requestAnimationFrame确保在下一次渲染帧中执行
+        requestAnimationFrame(() => {
+          onSelectTopic(topics[0]);
+        });
+      }
     }
-  }, [topics, isLoading, currentTopic, onSelectTopic]);
+  }, [topics, isLoading, onSelectTopic]);
 
-  // 监听SHOW_TOPIC_SIDEBAR事件，确保在切换到话题标签页时自动选择话题
+  // 监听SHOW_TOPIC_SIDEBAR事件，确保在切换到话题标签页时自动选择话题（优化：与主逻辑保持一致）
   useEffect(() => {
     const handleShowTopicSidebar = () => {
       // 如果有话题但没有选中的话题，自动选择第一个话题
       if (!isLoading && topics.length > 0) {
-        // 如果没有当前选中的话题，选择第一个话题
-        if (!currentTopic) {
-          // 使用requestAnimationFrame代替setTimeout
+        // 使用Redux状态检查，与主自动选择逻辑保持一致
+        const currentTopicId = store.getState().messages?.currentTopicId;
+        const currentTopicExists = currentTopicId && topics.some(topic => topic.id === currentTopicId);
+
+        // 如果没有当前话题ID，或者当前话题不在当前助手的话题列表中，自动选择第一个话题
+        if (!currentTopicId || !currentTopicExists) {
+          console.log('[TopicTab] SHOW_TOPIC_SIDEBAR事件触发自动选择第一个话题:', topics[0].name);
+
+          // 使用requestAnimationFrame确保在下一次渲染帧中执行
           requestAnimationFrame(() => {
             onSelectTopic(topics[0]);
           });
@@ -237,7 +255,7 @@ export default function TopicTab({
     return () => {
       unsubscribe();
     };
-  }, [topics, isLoading, currentTopic, onSelectTopic]);
+  }, [topics, isLoading, onSelectTopic]);
 
   // 筛选话题
   const filteredTopics = React.useMemo(() => {

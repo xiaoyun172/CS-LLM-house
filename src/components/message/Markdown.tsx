@@ -1,13 +1,17 @@
-import React, { useMemo, memo } from 'react';
+import React, { useMemo, memo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
+// @ts-ignore rehype-mathjax is not typed
+import rehypeMathjax from 'rehype-mathjax';
 import remarkGfm from 'remark-gfm';
 import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkMath from 'remark-math';
 import { Box, Link, useTheme } from '@mui/material';
 import CodeRenderer from './blocks/CodeRenderer';
+import AdvancedImagePreview from './blocks/AdvancedImagePreview';
 import 'katex/dist/katex.min.css';
+import { getCodeBlockId } from '../../utils/markdown';
 
 // 🔥 参考最佳实例：工具函数
 const ALLOWED_ELEMENTS = /<(style|p|div|span|b|i|strong|em|ul|ol|li|table|tr|td|th|thead|tbody|h[1-6]|blockquote|pre|code|br|hr|svg|path|circle|rect|line|polyline|polygon|text|g|defs|title|desc|tspan|sub|sup)/i;
@@ -46,10 +50,11 @@ function removeSvgEmptyLines(text: string): string {
 interface MarkdownProps {
   content: string;
   allowHtml?: boolean;
-  mathEngine?: 'KaTeX' | 'none'; // 添加数学引擎支持
+  mathEngine?: 'KaTeX' | 'MathJax' | 'none'; // 🔥 升级：支持双数学引擎
+  onCodeBlockUpdate?: (id: string, content: string) => void; // 添加代码块更新回调
 }
 
-const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEngine = 'KaTeX' }) => {
+const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEngine = 'KaTeX', onCodeBlockUpdate }) => {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
 
@@ -62,36 +67,53 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
     return plugins;
   }, [mathEngine]);
 
-  // 🔥 参考最佳实例：内容预处理 + 强化换行处理
+  // 🔥 修复：内容预处理 - 保护表格和代码块
   const messageContent = useMemo(() => {
     if (!content) return '';
 
     let processedContent = removeSvgEmptyLines(escapeBrackets(content));
 
-    // 🔥 强化换行处理：确保单个换行符被保持，但不影响代码块
-    // 先保护代码块内容，避免被换行处理影响
-    const codeBlockRegex = /```[\s\S]*?```/g;
-    const codeBlocks: string[] = [];
-    let codeBlockIndex = 0;
+    // 🔥 修复：保护代码块和表格，避免被换行处理影响
+    const protectedBlocks: string[] = [];
+    let blockIndex = 0;
 
-    // 提取代码块并用占位符替换
-    processedContent = processedContent.replace(codeBlockRegex, (match) => {
-      codeBlocks.push(match);
-      return `__CODE_BLOCK_${codeBlockIndex++}__`;
+    // 保护代码块
+    processedContent = processedContent.replace(/```[\s\S]*?```/g, (match) => {
+      protectedBlocks.push(match);
+      return `__PROTECTED_BLOCK_${blockIndex++}__`;
     });
 
-    // 对非代码块内容进行换行处理
-    processedContent = processedContent.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
+    // 🔥 新增：保护表格（以 | 开头的行）
+    processedContent = processedContent.replace(/^(\|.*\|.*\n)+/gm, (match) => {
+      protectedBlocks.push(match);
+      return `__PROTECTED_BLOCK_${blockIndex++}__`;
+    });
 
-    // 恢复代码块内容
-    codeBlocks.forEach((codeBlock, index) => {
-      processedContent = processedContent.replace(`__CODE_BLOCK_${index}__`, codeBlock);
+    // 🔥 新增：保护表格分隔行（如 |:-----|:----:|-----:|）
+    processedContent = processedContent.replace(/^\|[\s\-:]+\|.*\n/gm, (match) => {
+      protectedBlocks.push(match);
+      return `__PROTECTED_BLOCK_${blockIndex++}__`;
+    });
+
+    // 对非保护内容进行换行处理（但要更谨慎）
+    // 只在确实需要的地方添加换行，避免破坏表格
+    processedContent = processedContent.replace(/([^\n|])\n([^\n|])/g, (match, p1, p2) => {
+      // 如果前后都不是表格相关字符，才添加换行
+      if (!p1.includes('|') && !p2.includes('|')) {
+        return `${p1}\n\n${p2}`;
+      }
+      return match;
+    });
+
+    // 恢复保护的内容
+    protectedBlocks.forEach((block, index) => {
+      processedContent = processedContent.replace(`__PROTECTED_BLOCK_${index}__`, block);
     });
 
     return processedContent;
   }, [content]);
 
-  // 🔥 参考最佳实例：rehype 插件配置
+  // 🔥 升级：rehype 插件配置 - 支持双数学引擎
   const rehypePlugins = useMemo(() => {
     const plugins: any[] = [];
     if (allowHtml && ALLOWED_ELEMENTS.test(messageContent)) {
@@ -99,9 +121,18 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
     }
     if (mathEngine === 'KaTeX') {
       plugins.push(rehypeKatex as any);
+    } else if (mathEngine === 'MathJax') {
+      plugins.push(rehypeMathjax as any);
     }
     return plugins;
   }, [mathEngine, messageContent, allowHtml]);
+
+  // 处理代码块更新
+  const handleCodeUpdate = useCallback((id: string, newContent: string) => {
+    if (onCodeBlockUpdate) {
+      onCodeBlockUpdate(id, newContent);
+    }
+  }, [onCodeBlockUpdate]);
 
   return (
     <Box sx={{
@@ -206,21 +237,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
         whiteSpace: 'pre'
       },
 
-      // 表格样式
-      '& table': {
-        borderCollapse: 'collapse',
-        my: 1,
-        width: '100%'
-      },
-      '& th, & td': {
-        border: 1,
-        borderColor: 'divider',
-        p: 0.5
-      },
-      '& th': {
-        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-        fontWeight: 'bold'
-      }
+      // 🔥 升级：表格样式现在通过自定义组件处理
     }}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
@@ -244,47 +261,143 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
               rel="noopener noreferrer"
             />
           ),
+          // 🔥 升级：自定义表格渲染 - 参考电脑版实现 + 移动端优化
+          table: ({ children, ...props }: any) => (
+            <Box
+              sx={{
+                margin: '1em 0',
+                width: '100%',
+                overflowX: 'auto', // 移动端横向滚动
+                borderRadius: '8px',
+                border: `0.5px solid ${isDarkMode ? '#404040' : '#d0d0d0'}`,
+                boxShadow: isDarkMode
+                  ? '0 2px 8px rgba(0, 0, 0, 0.3)'
+                  : '0 2px 8px rgba(0, 0, 0, 0.1)'
+              }}
+            >
+              <Box
+                component="table"
+                sx={{
+                  borderCollapse: 'collapse',
+                  width: '100%',
+                  minWidth: '300px', // 确保表格有最小宽度
+                  backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff'
+                }}
+                {...props}
+              >
+                {children}
+              </Box>
+            </Box>
+          ),
+          thead: ({ children, ...props }: any) => (
+            <Box
+              component="thead"
+              sx={{
+                backgroundColor: isDarkMode ? '#2d2d2d' : '#f8f8f8'
+              }}
+              {...props}
+            >
+              {children}
+            </Box>
+          ),
+          tbody: ({ children, ...props }: any) => (
+            <Box component="tbody" {...props}>
+              {children}
+            </Box>
+          ),
+          tr: ({ children, ...props }: any) => (
+            <Box
+              component="tr"
+              sx={{
+                '&:nth-of-type(odd)': {
+                  backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.01)'
+                },
+                '&:hover': {
+                  backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)'
+                },
+                transition: 'background-color 0.2s ease'
+              }}
+              {...props}
+            >
+              {children}
+            </Box>
+          ),
+          th: ({ children, ...props }: any) => (
+            <Box
+              component="th"
+              sx={{
+                border: `0.5px solid ${isDarkMode ? '#404040' : '#d0d0d0'}`,
+                padding: { xs: '0.5em', sm: '0.75em' }, // 移动端减少内边距
+                textAlign: 'left',
+                verticalAlign: 'top',
+                fontWeight: 'bold',
+                color: isDarkMode ? '#ffffff' : '#333333',
+                borderBottom: `1px solid ${isDarkMode ? '#555555' : '#cccccc'}`,
+                fontSize: { xs: '13px', sm: '14px' }, // 移动端字体稍小
+                whiteSpace: 'nowrap',
+                minWidth: '80px' // 确保最小宽度
+              }}
+              {...props}
+            >
+              {children}
+            </Box>
+          ),
+          td: ({ children, ...props }: any) => (
+            <Box
+              component="td"
+              sx={{
+                border: `0.5px solid ${isDarkMode ? '#404040' : '#d0d0d0'}`,
+                padding: { xs: '0.5em', sm: '0.75em' }, // 移动端减少内边距
+                textAlign: 'left',
+                verticalAlign: 'top',
+                fontSize: { xs: '13px', sm: '14px' }, // 移动端字体稍小
+                lineHeight: 1.5,
+                wordBreak: 'break-word',
+                minWidth: '80px', // 确保最小宽度
+                maxWidth: '200px' // 限制最大宽度，避免过宽
+              }}
+              {...props}
+            >
+              {children}
+            </Box>
+          ),
           img: ({ src, alt, ...props }: any) => {
-            // 处理图片显示，支持 base64 和普通 URL
+            // 🔥 升级：使用高级图片预览组件
             if (!src) {
               return null;
             }
 
             return (
-              <img
+              <AdvancedImagePreview
                 src={src}
                 alt={alt || 'Generated Image'}
                 {...props}
-                style={{
-                  maxWidth: '100%',
-                  height: 'auto',
-                  borderRadius: '8px',
-                  margin: '8px 0',
-                  display: 'block',
-                  ...props.style
-                }}
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
               />
             );
           },
-          code: ({ className, children, ...props }: any) => {
+          code: ({ node, inline, className, children, ...props }: any) => {
             const match = /language-(\w+)/.exec(className || '');
-            const language = match ? match[1] : '';
+            const lang = match ? match[1] : 'text';
 
-            // 使用与最佳实例相同的判定逻辑：有 language- 类名或者包含换行符
+            // 获取代码块ID
+            let codeBlockId = null;
+            if (!inline && node?.position?.start) {
+              codeBlockId = getCodeBlockId(node.position.start);
+            }
+
+            // 检查是否为代码块
             const isCodeBlock = match || (typeof children === 'string' && children.includes('\n'));
 
-            return props.inline || !isCodeBlock ? (
+            return inline || !isCodeBlock ? (
               <code className={className} {...props}>
                 {children}
               </code>
             ) : (
               <CodeRenderer
                 code={String(children).replace(/\n$/, '')}
-                language={language || 'text'}
+                language={lang}
+                codeBlockId={codeBlockId}
+                onUpdate={handleCodeUpdate}
               />
             );
           },
@@ -295,7 +408,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
               return React.Children.toArray(elements).some((child: any) => {
                 // 检查是否是代码块
                 if (child?.props?.className?.includes('language-') ||
-                    (typeof child === 'object' && child?.type?.name === 'SyntaxHighlighter')) {
+                    (typeof child === 'object' && child?.type?.name === 'ShikiCodeRenderer')) {
                   return true;
                 }
 

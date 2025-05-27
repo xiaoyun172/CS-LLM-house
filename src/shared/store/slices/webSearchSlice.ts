@@ -6,36 +6,29 @@ import { getStorageItem, setStorageItem } from '../../utils/storage';
 // 存储键名
 const STORAGE_KEY = 'webSearchSettings';
 
-// 默认提供商配置 - 仅包含付费API服务
+// 默认提供商配置 - 仅包含收费API服务
 const getDefaultProviders = (): WebSearchProviderConfig[] => [
   {
     id: 'tavily',
-    name: 'Tavily',
+    name: 'Tavily (推荐)',
     apiHost: 'https://api.tavily.com',
     apiKey: ''
   },
   {
-    id: 'searxng',
-    name: 'Searxng',
-    apiHost: '',
-    basicAuthUsername: '',
-    basicAuthPassword: ''
-  },
-  {
     id: 'exa',
-    name: 'Exa',
+    name: 'Exa (神经搜索)',
     apiHost: 'https://api.exa.ai',
     apiKey: ''
   },
   {
     id: 'bocha',
-    name: 'Bocha',
+    name: 'Bocha (AI搜索)',
     apiHost: 'https://api.bochaai.com',
     apiKey: ''
   },
   {
     id: 'firecrawl',
-    name: 'Firecrawl',
+    name: 'Firecrawl (网页抓取)',
     apiHost: 'https://api.firecrawl.dev',
     apiKey: ''
   }
@@ -71,7 +64,22 @@ const loadFromStorage = async (): Promise<WebSearchSettings> => {
     searchWithTime: false,
     excludeDomains: [],
     providers: getDefaultProviders(),
-    customProviders: []
+    customProviders: [],
+
+    // 🚀 新增：每个提供商独立的API密钥存储
+    apiKeys: {},
+
+    // 🚀 新增：Tavily最佳实践默认设置
+    searchDepth: 'basic',
+    chunksPerSource: 3,
+    includeRawContent: false,
+    includeAnswer: false,
+    minScore: 0.3,
+    enableQueryValidation: true,
+    enablePostProcessing: true,
+    enableSmartSearch: false,
+    timeRange: 'week',
+    newsSearchDays: 7
   };
 };
 
@@ -88,7 +96,22 @@ const initialState: WebSearchSettings = {
   searchWithTime: false,
   excludeDomains: [],
   providers: getDefaultProviders(),
-  customProviders: []
+  customProviders: [],
+
+  // 🚀 新增：每个提供商独立的API密钥存储
+  apiKeys: {},
+
+  // 🚀 新增：Tavily最佳实践默认设置
+  searchDepth: 'basic',
+  chunksPerSource: 3,
+  includeRawContent: false,
+  includeAnswer: false,
+  minScore: 0.3,
+  enableQueryValidation: true,
+  enablePostProcessing: true,
+  enableSmartSearch: false,
+  timeRange: 'week',
+  newsSearchDays: 7
 };
 
 // 延迟加载数据，避免循环导入
@@ -126,7 +149,22 @@ const saveToStorage = (state: WebSearchSettings) => {
     excludeDomains: [...(state.excludeDomains || [])],
     providers: state.providers.map(p => ({ ...p })),
     customProviders: (state.customProviders || []).map(p => ({ ...p })),
-    contentLimit: state.contentLimit
+    contentLimit: state.contentLimit,
+
+    // 🚀 新增：每个提供商独立的API密钥存储
+    apiKeys: { ...(state.apiKeys || {}) },
+
+    // 🚀 新增：Tavily最佳实践相关字段
+    searchDepth: state.searchDepth,
+    chunksPerSource: state.chunksPerSource,
+    includeRawContent: state.includeRawContent,
+    includeAnswer: state.includeAnswer,
+    minScore: state.minScore,
+    enableQueryValidation: state.enableQueryValidation,
+    enablePostProcessing: state.enablePostProcessing,
+    enableSmartSearch: state.enableSmartSearch,
+    timeRange: state.timeRange,
+    newsSearchDays: state.newsSearchDays
   };
 
   setStorageItem(STORAGE_KEY, serializableState).catch(error => {
@@ -149,11 +187,26 @@ const webSearchSlice = createSlice({
     },
     setWebSearchProvider: (state, action: PayloadAction<WebSearchProvider>) => {
       state.provider = action.payload;
+
+      // 🚀 切换提供商时，自动加载该提供商的API密钥
+      if (state.apiKeys && state.apiKeys[action.payload]) {
+        state.apiKey = state.apiKeys[action.payload];
+      } else {
+        // 如果没有保存的API密钥，清空当前显示的密钥
+        state.apiKey = '';
+      }
+
       saveToStorage(state);
     },
     setWebSearchApiKey: (state, action: PayloadAction<string>) => {
       // 更新全局apiKey（向后兼容）
       state.apiKey = action.payload;
+
+      // 🚀 同时更新当前提供商的独立API密钥存储
+      if (!state.apiKeys) {
+        state.apiKeys = {};
+      }
+      state.apiKeys[state.provider] = action.payload;
 
       // 同时更新当前选中provider的apiKey
       const currentProviderIndex = state.providers.findIndex(p => p.id === state.provider);
@@ -185,6 +238,48 @@ const webSearchSlice = createSlice({
     },
     setSearchMode: (state, action: PayloadAction<'auto' | 'manual'>) => {
       state.searchMode = action.payload;
+      saveToStorage(state);
+    },
+
+    // 🚀 新增：Tavily最佳实践相关actions
+    setSearchDepth: (state, action: PayloadAction<'basic' | 'advanced'>) => {
+      state.searchDepth = action.payload;
+      saveToStorage(state);
+    },
+    setChunksPerSource: (state, action: PayloadAction<number>) => {
+      state.chunksPerSource = action.payload;
+      saveToStorage(state);
+    },
+    toggleIncludeRawContent: (state) => {
+      state.includeRawContent = !state.includeRawContent;
+      saveToStorage(state);
+    },
+    toggleIncludeAnswer: (state) => {
+      state.includeAnswer = !state.includeAnswer;
+      saveToStorage(state);
+    },
+    setMinScore: (state, action: PayloadAction<number>) => {
+      state.minScore = action.payload;
+      saveToStorage(state);
+    },
+    toggleQueryValidation: (state) => {
+      state.enableQueryValidation = !state.enableQueryValidation;
+      saveToStorage(state);
+    },
+    togglePostProcessing: (state) => {
+      state.enablePostProcessing = !state.enablePostProcessing;
+      saveToStorage(state);
+    },
+    toggleSmartSearch: (state) => {
+      state.enableSmartSearch = !state.enableSmartSearch;
+      saveToStorage(state);
+    },
+    setTimeRange: (state, action: PayloadAction<'day' | 'week' | 'month' | 'year'>) => {
+      state.timeRange = action.payload;
+      saveToStorage(state);
+    },
+    setNewsSearchDays: (state, action: PayloadAction<number>) => {
+      state.newsSearchDays = action.payload;
       saveToStorage(state);
     },
     addCustomProvider: (state, action: PayloadAction<WebSearchCustomProvider>) => {
@@ -257,6 +352,24 @@ const webSearchSlice = createSlice({
     resetProviders: (state) => {
       state.providers = getDefaultProviders();
       saveToStorage(state);
+    },
+    // 🚀 强制刷新提供商列表
+    refreshProviders: (state) => {
+      const currentProviders = getDefaultProviders();
+      // 保留现有的API密钥配置
+      state.providers = currentProviders.map(newProvider => {
+        const existingProvider = state.providers.find(p => p.id === newProvider.id);
+        if (existingProvider) {
+          return {
+            ...newProvider,
+            apiKey: existingProvider.apiKey || newProvider.apiKey,
+            basicAuthUsername: existingProvider.basicAuthUsername || newProvider.basicAuthUsername,
+            basicAuthPassword: existingProvider.basicAuthPassword || newProvider.basicAuthPassword
+          };
+        }
+        return newProvider;
+      });
+      saveToStorage(state);
     }
   }
 });
@@ -282,7 +395,20 @@ export const {
   removeExcludeDomain,
   setContentLimit,
   updateProvider,
-  resetProviders
+  resetProviders,
+  refreshProviders,
+
+  // 🚀 新增：Tavily最佳实践相关actions
+  setSearchDepth,
+  setChunksPerSource,
+  toggleIncludeRawContent,
+  toggleIncludeAnswer,
+  setMinScore,
+  toggleQueryValidation,
+  togglePostProcessing,
+  toggleSmartSearch,
+  setTimeRange,
+  setNewsSearchDays
 } = webSearchSlice.actions;
 
 export default webSearchSlice.reducer;
