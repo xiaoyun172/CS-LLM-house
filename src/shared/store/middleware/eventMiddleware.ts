@@ -22,12 +22,10 @@ export const eventMiddleware: Middleware = _store => next => action => {
   } else if (type === 'messages/removeMessage') {
     EventEmitter.emit(EVENT_NAMES.MESSAGE_DELETED, payload);
   } else if (type === 'messages/setTopicStreaming') {
+    // 移除重复的事件发送，避免与流式处理器的事件冲突
+    // 流式事件应该只由实际的流式处理器发送
     const { topicId, streaming } = payload;
-    if (streaming) {
-      EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, { topicId, streaming });
-    } else {
-      EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, { topicId, streaming });
-    }
+    console.log(`[EventMiddleware] 话题流式状态变化: ${topicId}, streaming: ${streaming}`);
   }
 
   // 块相关事件

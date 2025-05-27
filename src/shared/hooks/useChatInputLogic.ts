@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTheme, useMediaQuery } from '@mui/material';
 import type { SiliconFlowImageFormat, ImageContent, FileContent } from '../types';
+import { useKnowledgeContext } from './useKnowledgeContext';
 
 interface UseChatInputLogicProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
@@ -44,6 +45,9 @@ export const useChatInputLogic = ({
 }: UseChatInputLogicProps) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 知识库上下文处理
+  const { applyKnowledgeContext, clearStoredKnowledgeContext, hasKnowledgeContext } = useKnowledgeContext();
 
   // 主题和响应式
   const theme = useTheme();
@@ -111,6 +115,10 @@ export const useChatInputLogic = ({
       }
       return;
     }
+
+    // 注意：不在这里搜索知识库！
+    // 的逻辑是：用户消息先发送，然后在AI处理前搜索知识库
+    // 知识库搜索应该在消息处理阶段进行，而不是在发送阶段
 
     // 创建正确的图片格式
     const formattedImages: SiliconFlowImageFormat[] = [...images, ...files.filter(f => f.mimeType.startsWith('image/'))].map(img => ({

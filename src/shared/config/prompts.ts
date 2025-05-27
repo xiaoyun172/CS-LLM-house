@@ -52,3 +52,42 @@ export const DEFAULT_TOPIC_PROMPT = '我是您的AI助手，可以回答问题�
  * 话题命名提示词
  */
 export const TOPIC_NAMING_PROMPT = '你是一个话题生成专家。根据对话内容生成一个简洁、精确、具有描述性的标题。标题应简洁、简洁、简洁，不超过10个字或5个词。你需要包含标题文本，不需要解释或扩展。';
+
+/**
+ * 知识库引用提示词模板
+ * 参考的REFERENCE_PROMPT
+ */
+export const REFERENCE_PROMPT = `请基于参考资料回答问题
+
+## 引用规则：
+- 请在适当的地方引用上下文，在句子末尾标注引用编号
+- 请使用 [编号] 的格式来引用对应的参考资料
+- 如果一个句子来自多个上下文，请列出所有相关的引用编号，例如 [1][2]
+- 请在回答的相应部分列出引用，而不是在末尾统一列出
+
+## 我的问题是：
+
+{question}
+
+## 参考资料：
+
+{references}
+
+请用与用户问题相同的语言回答。`;
+
+/**
+ * 简化版知识库引用提示词
+ * 用于移动端的简洁显示
+ */
+export const SIMPLE_REFERENCE_PROMPT = `基于以下知识库内容回答问题：
+
+{references}
+
+问题：{question}`;
+
+/**
+ * 知识库内容格式化模板
+ */
+export const KNOWLEDGE_CONTENT_TEMPLATE = `--- 知识库参考内容 ---
+{content}
+--- 请基于以上内容回答问题 ---`;

@@ -20,6 +20,7 @@ import type { Model, MCPTool } from '../../types';
 import type { FileType } from '../../types';
 import type { RootState, AppDispatch } from '../index';
 import { mcpService } from '../../services/MCPService';
+import { MobileKnowledgeService } from '../../services/MobileKnowledgeService';
 
 // 移除未使用的导入 - MCP 工具注入现在由提供商层处理
 
@@ -172,14 +173,17 @@ export const sendMessage = (
  */
 const processAssistantResponse = async (
   dispatch: AppDispatch,
-  _getState: () => RootState,
+  getState: () => RootState,
   assistantMessage: Message,
   topicId: string,
   model: Model,
   toolsEnabled?: boolean
 ) => {
   try {
-    // 1. 获取 MCP 工具（如果启用）
+    // 1. 检查是否有知识库需要搜索（风格）
+    await processKnowledgeSearch(assistantMessage, topicId, dispatch);
+
+    // 2. 获取 MCP 工具（如果启用）
     let mcpTools: MCPTool[] = [];
     if (toolsEnabled) {
       try {
@@ -441,13 +445,10 @@ const processAssistantResponse = async (
         console.log(`[MCP] 当前模式: ${mcpMode}`);
 
         // 使用Provider的sendChatMessage方法，避免重复调用
+        // 🔥 修复重复处理问题：只使用onChunk回调，移除onUpdate避免双重处理
         response = await apiProvider.sendChatMessage(
           convertedMessages,
           {
-            onUpdate: (content: string, reasoning?: string) => {
-              // 传递推理内容给ResponseHandler（兼容旧接口）
-              responseHandler.handleChunk(content, reasoning);
-            },
             onChunk: (chunk: import('../../types/chunk').Chunk) => {
               // 使用新的 Chunk 事件处理（最佳实例架构）
               responseHandler.handleChunkEvent(chunk);
@@ -579,8 +580,35 @@ const prepareMessagesForApi = async (
       continue;
     }
 
-    // 获取消息内容 - 简单版本，直接使用文本内容
-    const content = getMainTextContent(message);
+    // 获取消息内容 - 检查是否有知识库缓存（风格）
+    let content = getMainTextContent(message);
+
+    // 如果是用户消息，检查是否有知识库搜索结果
+    if (message.role === 'user') {
+      const cacheKey = `knowledge-search-${message.id}`;
+      const cachedReferences = window.sessionStorage.getItem(cacheKey);
+
+      if (cachedReferences && content) {
+        try {
+          const references = JSON.parse(cachedReferences);
+          if (references && references.length > 0) {
+            // 应用REFERENCE_PROMPT格式（风格）
+            const { REFERENCE_PROMPT } = require('../../config/prompts');
+            const referenceContent = `\`\`\`json\n${JSON.stringify(references, null, 2)}\n\`\`\``;
+            content = REFERENCE_PROMPT
+              .replace('{question}', content)
+              .replace('{references}', referenceContent);
+
+            console.log(`[prepareMessagesForApi] 为消息 ${message.id} 应用了知识库上下文，引用数量: ${references.length}`);
+
+            // 清除缓存
+            window.sessionStorage.removeItem(cacheKey);
+          }
+        } catch (error) {
+          console.error('[prepareMessagesForApi] 解析知识库缓存失败:', error);
+        }
+      }
+    }
 
     // 检查是否有文件或图片块
     const imageBlocks = findImageBlocks(message);
@@ -774,12 +802,12 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
         // 传入具体内容，确保版本保存正确的内容
         // 增加modelId参数，确保版本记录正确的模型信息
         await versionService.saveCurrentAsVersion(
-          messageId, 
-          currentContent, 
-          { 
-            ...model, 
-            id: model.id || message.modelId 
-          }, 
+          messageId,
+          currentContent,
+          {
+            ...model,
+            id: model.id || message.modelId
+          },
           'regenerate'
         );
         console.log(`[regenerateMessage] 当前内容已保存为版本，内容长度: ${currentContent.length}`);
@@ -885,6 +913,98 @@ export const regenerateMessage = (messageId: string, topicId: string, model: Mod
   }
 };
 
+/**
+ * 处理知识库搜索（风格）
+ * 在AI处理消息前搜索知识库并缓存结果
+ */
+const processKnowledgeSearch = async (
+  assistantMessage: Message,
+  topicId: string,
+  dispatch: AppDispatch
+) => {
+  try {
+    // 检查是否有选中的知识库
+    const knowledgeContextData = window.sessionStorage.getItem('selectedKnowledgeBase');
+    if (!knowledgeContextData) {
+      return; // 没有选中知识库，直接返回
+    }
 
+    const contextData = JSON.parse(knowledgeContextData);
+    if (!contextData.isSelected || !contextData.searchOnSend) {
+      return; // 不需要搜索，直接返回
+    }
 
+    console.log('[processKnowledgeSearch] 检测到知识库选择，开始搜索...');
 
+    // 设置消息状态为搜索中
+    dispatch(newMessagesActions.updateMessage({
+      id: assistantMessage.id,
+      changes: {
+        status: AssistantMessageStatus.SEARCHING
+      }
+    }));
+
+    // 获取用户消息内容
+    const topic = await DataRepository.topics.getById(topicId);
+    if (!topic || !topic.messages) {
+      console.warn('[processKnowledgeSearch] 无法获取话题消息');
+      return;
+    }
+
+    // 找到最后一条用户消息
+    const userMessage = topic.messages
+      .filter(m => m.role === 'user')
+      .pop();
+
+    if (!userMessage) {
+      console.warn('[processKnowledgeSearch] 未找到用户消息');
+      return;
+    }
+
+    // 获取用户消息的文本内容
+    const userContent = getMainTextContent(userMessage);
+    if (!userContent) {
+      console.warn('[processKnowledgeSearch] 用户消息内容为空');
+      return;
+    }
+
+    // 搜索知识库
+    const knowledgeService = MobileKnowledgeService.getInstance();
+    const searchResults = await knowledgeService.search({
+      knowledgeBaseId: contextData.knowledgeBase.id,
+      query: userContent.trim(),
+      threshold: 0.6,
+      limit: 5
+    });
+
+    console.log(`[processKnowledgeSearch] 搜索到 ${searchResults.length} 个相关内容`);
+
+    if (searchResults.length > 0) {
+      // 转换为KnowledgeReference格式
+      const references = searchResults.map((result, index) => ({
+        id: index + 1,
+        content: result.content,
+        type: 'file' as const,
+        similarity: result.similarity,
+        knowledgeBaseId: contextData.knowledgeBase.id,
+        knowledgeBaseName: contextData.knowledgeBase.name,
+        sourceUrl: `knowledge://${contextData.knowledgeBase.id}/${result.documentId || index}`
+      }));
+
+      // 缓存搜索结果（模拟的window.keyv）
+      const cacheKey = `knowledge-search-${userMessage.id}`;
+      window.sessionStorage.setItem(cacheKey, JSON.stringify(references));
+
+      console.log(`[processKnowledgeSearch] 知识库搜索结果已缓存: ${cacheKey}`);
+    }
+
+    // 清除知识库选择状态
+    window.sessionStorage.removeItem('selectedKnowledgeBase');
+
+  } catch (error) {
+    console.error('[processKnowledgeSearch] 知识库搜索失败:', error);
+
+    // 清除知识库选择状态
+    window.sessionStorage.removeItem('selectedKnowledgeBase');
+  }
+};

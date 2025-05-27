@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Box, IconButton, Typography, Collapse } from '@mui/material';
+import { Box, IconButton, Typography, Collapse, Chip } from '@mui/material';
 import MCPToolsButton from './chat/MCPToolsButton';
 import WebSearchProviderSelector from './WebSearchProviderSelector';
+import KnowledgeSelector from './chat/KnowledgeSelector';
 import { useChatInputLogic } from '../shared/hooks/useChatInputLogic';
-import { useTopicManagement } from '../shared/hooks/useTopicManagement';
 import { useFileUpload } from '../shared/hooks/useFileUpload';
 import { useUrlScraper } from '../shared/hooks/useUrlScraper';
 import { useInputStyles } from '../shared/hooks/useInputStyles';
+import { useKnowledgeContext } from '../shared/hooks/useKnowledgeContext';
 import { getBasicIcons, getExpandedIcons } from '../shared/config/inputIcons';
 
 import AddIcon from '@mui/icons-material/Add';
@@ -18,6 +19,7 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../shared/store';
 import type { SiliconFlowImageFormat, ImageContent, FileContent } from '../shared/types';
 import { dexieStorage } from '../shared/services/DexieStorageService';
+
 
 interface CompactChatInputProps {
   onSendMessage: (message: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
@@ -60,8 +62,10 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [showProviderSelector, setShowProviderSelector] = useState(false);
+  const [showKnowledgeSelector, setShowKnowledgeSelector] = useState(false);
   const [inputHeight, setInputHeight] = useState(40); // 输入框容器高度
   const [isFullExpanded, setIsFullExpanded] = useState(false); // 是否全展开
+  const [isActivated, setIsActivated] = useState(false); // 冷激活状态
 
   // 文件和图片上传相关状态
   const [images, setImages] = useState<ImageContent[]>([]);
@@ -74,7 +78,7 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
 
   // 使用自定义hooks
   const { styles, isDarkMode, inputBoxStyle } = useInputStyles();
-  const { handleCreateTopic } = useTopicManagement();
+  const { hasKnowledgeContext, getKnowledgeContextSummary, clearStoredKnowledgeContext } = useKnowledgeContext();
 
   // URL解析功能
   const {
@@ -95,7 +99,6 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
   // 聊天输入逻辑
   const {
     message,
-    setMessage,
     textareaRef,
     canSendMessage,
     handleSubmit,
@@ -155,9 +158,43 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     }
   };
 
+  // 处理知识库按钮点击
+  const handleKnowledgeClick = () => {
+    setShowKnowledgeSelector(true);
+  };
+
+  // 处理知识库选择（风格：只选择，不搜索）
+  const handleKnowledgeSelect = (knowledgeBase: any) => {
+    console.log('选择了知识库:', knowledgeBase);
+
+    // 存储选中的知识库信息，等待用户输入问题后再搜索
+    window.sessionStorage.setItem('selectedKnowledgeBase', JSON.stringify({
+      knowledgeBase: {
+        id: knowledgeBase.id,
+        name: knowledgeBase.name
+      },
+      isSelected: true,
+      searchOnSend: true // 标记需要在发送时搜索
+    }));
+
+    console.log(`[知识库选择] 已选择知识库: ${knowledgeBase.name}，将在发送消息时自动搜索相关内容`);
+
+    // 关闭知识库选择器
+    setShowKnowledgeSelector(false);
+  };
+
   // 自动调整文本框和容器高度
   useEffect(() => {
     if (textareaRef.current) {
+      // 冷激活状态下使用固定的小高度
+      if (!isActivated && !message.trim()) {
+        const coldHeight = 24; // 冷激活状态的固定高度
+        textareaRef.current.style.height = `${coldHeight}px`;
+        setInputHeight(coldHeight + 16); // 容器高度
+        return;
+      }
+
+      // 激活状态下的动态高度计算
       // 重置高度以获取真实的scrollHeight
       textareaRef.current.style.height = 'auto';
 
@@ -179,12 +216,34 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
       const containerHeight = textareaHeight + 16; // 8px上下padding
       setInputHeight(containerHeight);
     }
-  }, [message, isFullExpanded]);
+  }, [message, isFullExpanded, isActivated]);
+
+  // 处理输入框激活
+  const handleInputFocus = () => {
+    setIsActivated(true);
+  };
+
+  // 处理输入框失活
+  const handleInputBlur = () => {
+    // 如果没有内容且不在加载状态，可以回到冷激活状态
+    if (!message.trim() && !isLoading && !isStreaming) {
+      setIsActivated(false);
+    }
+  };
+
+  // 处理输入框点击（确保激活）
+  const handleInputClick = () => {
+    setIsActivated(true);
+  };
 
   // 处理输入变化，包含URL检测
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     handleChange(e);
     detectUrlInMessage(e.target.value);
+    // 有内容时保持激活状态
+    if (e.target.value.trim()) {
+      setIsActivated(true);
+    }
   };
 
   // 处理键盘事件，包含全展开功能
@@ -247,7 +306,8 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     uploadingMedia,
     toggleToolsEnabled,
     handleImageUpload,
-    handleFileUpload
+    handleFileUpload,
+    handleKnowledgeClick
   });
 
   return (
@@ -270,6 +330,26 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
         background: isDarkMode ? '#666' : '#999',
       },
     }}>
+      {/* 知识库状态显示 */}
+      {hasKnowledgeContext() && (
+        <Box sx={{ mb: 1, px: 1 }}>
+          <Chip
+            label={`📚 ${getKnowledgeContextSummary()}`}
+            onDelete={() => clearStoredKnowledgeContext()}
+            size="small"
+            color="primary"
+            variant="outlined"
+            sx={{
+              fontSize: '0.75rem',
+              height: 24,
+              '& .MuiChip-label': {
+                px: 1
+              }
+            }}
+          />
+        </Box>
+      )}
+
       {/* 输入框区域 */}
       <Box
         sx={{
@@ -277,15 +357,23 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
           alignItems: 'flex-start', // 改为顶部对齐，适应多行文本
           background: isDarkMode ? '#2A2A2A' : '#FFFFFF', // 不透明背景
           border: styles.border,
-          borderRadius: `${styles.borderRadius} ${styles.borderRadius} 0 0`, // 只有上边圆角
+          borderRadius: isActivated || expanded || message.trim().length > 0
+            ? `${styles.borderRadius} ${styles.borderRadius} 0 0` // 激活时只有上边圆角
+            : styles.borderRadius, // 冷激活时全圆角
           boxShadow: styles.boxShadow,
           padding: '8px 12px',
           marginBottom: '0', // 移除间距，让它们贴合
-          borderBottom: 'none', // 移除底部边框
+          borderBottom: isActivated || expanded || message.trim().length > 0 ? 'none' : styles.border, // 冷激活时保留底部边框
           minHeight: '40px', // 最小高度
           height: `${inputHeight}px`, // 动态高度
-          transition: 'height 0.2s ease', // 平滑过渡
+          transition: 'all 0.2s ease', // 平滑过渡
+          cursor: !isActivated && !message.trim() ? 'pointer' : 'text', // 冷激活时显示指针
+          '&:hover': !isActivated && !message.trim() ? {
+            borderColor: isDarkMode ? '#555' : '#ddd',
+            boxShadow: `0 2px 8px ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+          } : {}
         }}
+        onClick={!isActivated ? handleInputClick : undefined} // 冷激活时整个区域可点击
       >
         <Box sx={{ flex: 1, marginRight: '8px', paddingTop: '4px' }}>
           <textarea
@@ -301,21 +389,27 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
               fontFamily: 'inherit',
               color: isDarkMode ? '#ffffff' : '#000000',
               minHeight: '24px',
-              overflow: 'auto', // 始终允许滚动
+              overflow: isActivated ? 'auto' : 'hidden', // 冷激活时隐藏滚动条
               padding: '0',
               scrollbarWidth: 'thin', // Firefox
               scrollbarColor: isDarkMode ? '#555 transparent' : '#ccc transparent', // Firefox
+              transition: 'all 0.2s ease', // 添加过渡动画
             }}
             placeholder={
-              imageGenerationMode
-                ? "输入图像生成提示词... (Ctrl+Enter 全展开)"
-                : webSearchActive
-                  ? "输入网络搜索内容... (Ctrl+Enter 全展开)"
-                  : "和ai助手说点什么... (Ctrl+Enter 全展开)"
+              !isActivated
+                ? "和ai助手说点什么..." // 冷激活状态的简化placeholder
+                : imageGenerationMode
+                  ? "输入图像生成提示词... (Ctrl+Enter 全展开)"
+                  : webSearchActive
+                    ? "输入网络搜索内容... (Ctrl+Enter 全展开)"
+                    : "和ai助手说点什么... (Ctrl+Enter 全展开)"
             }
             value={message}
             onChange={handleInputChange}
             onKeyDown={handleInputKeyDown}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
+            onClick={handleInputClick}
             disabled={isLoading && !allowConsecutiveMessages}
           />
         </Box>
@@ -480,21 +574,23 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
         </Box>
       )}
 
-      {/* 功能图标行 - 优化视觉层次和对比度 */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 12px', // 增加padding
-          background: isDarkMode ? '#2A2A2A' : '#FFFFFF',
-          border: styles.border,
-          borderTop: 'none',
-          borderRadius: expanded ? 'none' : `0 0 ${styles.borderRadius} ${styles.borderRadius}`, // 展开时移除下圆角
-          boxShadow: styles.boxShadow,
-          minHeight: '40px', // 增加高度，与输入框保持一致
-        }}
-      >
+      {/* 功能图标行 - 优化视觉层次和对比度，冷激活时可选择性显示 */}
+      <Collapse in={isActivated || expanded || message.trim().length > 0}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 12px', // 增加padding
+            background: isDarkMode ? '#2A2A2A' : '#FFFFFF',
+            border: styles.border,
+            borderTop: 'none',
+            borderRadius: expanded ? 'none' : `0 0 ${styles.borderRadius} ${styles.borderRadius}`, // 展开时移除下圆角
+            boxShadow: styles.boxShadow,
+            minHeight: '40px', // 增加高度，与输入框保持一致
+            transition: 'all 0.2s ease', // 添加过渡动画
+          }}
+        >
         {/* 基础功能图标 */}
         {basicIcons.map((item, index) => {
           // 如果是工具按钮，使用 MCPToolsButton 组件
@@ -558,7 +654,8 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
         >
           {expanded ? <CloseIcon fontSize="small" /> : <AddIcon fontSize="small" />}
         </IconButton>
-      </Box>
+        </Box>
+      </Collapse>
 
       {/* 扩展功能面板 - 优化为紧凑的横向布局 */}
       <Collapse in={expanded}>
@@ -663,6 +760,14 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
         open={showProviderSelector}
         onClose={() => setShowProviderSelector(false)}
         onProviderSelect={handleProviderSelect}
+      />
+
+      {/* 知识库选择器 */}
+      <KnowledgeSelector
+        open={showKnowledgeSelector}
+        onClose={() => setShowKnowledgeSelector(false)}
+        onSelect={handleKnowledgeSelect}
+        searchQuery={message}
       />
     </Box>
   );

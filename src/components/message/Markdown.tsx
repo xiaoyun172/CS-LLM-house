@@ -261,7 +261,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
               rel="noopener noreferrer"
             />
           ),
-          // 🔥 升级：自定义表格渲染 - 参考电脑版实现 + 移动端优化
+          // 🔥 升级：自定义表格渲染 - 参考实现 + 移动端优化
           table: ({ children, ...props }: any) => (
             <Box
               sx={{

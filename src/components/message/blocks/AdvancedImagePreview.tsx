@@ -41,7 +41,7 @@ interface ImageTransform {
 
 /**
  * 🔥 升级版高级图片预览组件
- * 参考电脑版实现，提供完整的图片预览工具栏功能
+ * 参考实现，提供完整的图片预览工具栏功能
  */
 const AdvancedImagePreview: React.FC<AdvancedImagePreviewProps> = ({
   src,

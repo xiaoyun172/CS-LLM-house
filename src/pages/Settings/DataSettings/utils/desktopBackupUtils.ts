@@ -1,11 +1,11 @@
-// 处理电脑版备份数据的工具函数
+// 处理备份数据的工具函数
 import { v4 as uuidv4 } from 'uuid';
 import type { ChatTopic } from '../../../../shared/types';
 import type { Assistant } from '../../../../shared/types/Assistant';
 import type { Message, MessageBlock } from '../../../../shared/types/newMessage';
 
 /**
- * 电脑版备份数据结构
+ * 备份数据结构
  */
 interface DesktopBackupData {
   time: number;
@@ -36,7 +36,7 @@ interface DesktopBackupData {
 }
 
 /**
- * 转换电脑版备份数据为移动端格式
+ * 转换备份数据为移动端格式
  */
 export async function convertDesktopBackup(backupData: DesktopBackupData): Promise<{
   topics: ChatTopic[];
@@ -59,15 +59,15 @@ export async function convertDesktopBackup(backupData: DesktopBackupData): Promi
     // 创建助手ID映射表
     const assistantMap = new Map<string, Assistant>();
 
-    // 0. 首先处理电脑版的助手数据
+    // 0. 首先处理的助手数据
     if (backupData.indexedDB.assistants) {
-      console.log(`发现 ${backupData.indexedDB.assistants.length} 个电脑版助手`);
+      console.log(`发现 ${backupData.indexedDB.assistants.length} 个助手`);
       for (const desktopAssistant of backupData.indexedDB.assistants) {
         if (desktopAssistant.id) {
           const mobileAssistant: Assistant = {
             id: desktopAssistant.id,
             name: desktopAssistant.name || `助手 ${desktopAssistant.id}`,
-            description: desktopAssistant.description || '从电脑版导入的助手',
+            description: desktopAssistant.description || '从导入的助手',
             systemPrompt: desktopAssistant.systemPrompt || '你是一个有用的AI助手。',
             icon: null,
             isSystem: false,
@@ -75,7 +75,7 @@ export async function convertDesktopBackup(backupData: DesktopBackupData): Promi
             topics: []
           };
           assistantMap.set(desktopAssistant.id, mobileAssistant);
-          console.log(`添加电脑版助手: ${mobileAssistant.name} (${mobileAssistant.id})`);
+          console.log(`添加助手: ${mobileAssistant.name} (${mobileAssistant.id})`);
         }
       }
     }
@@ -156,7 +156,7 @@ export async function convertDesktopBackup(backupData: DesktopBackupData): Promi
 
             // 收集助手信息（只有在助手映射表中不存在时才创建）
             if (msgAssistantId && msgAssistantId !== 'imported_assistant' && !assistantMap.has(msgAssistantId)) {
-              // 如果电脑版没有提供助手数据，则根据模型信息创建助手
+              // 如果没有提供助手数据，则根据模型信息创建助手
               let assistantName = `助手 ${msgAssistantId}`;
               if (desktopMessage.model?.name) {
                 assistantName = desktopMessage.model.name;
@@ -168,7 +168,7 @@ export async function convertDesktopBackup(backupData: DesktopBackupData): Promi
               assistantMap.set(msgAssistantId, {
                 id: msgAssistantId,
                 name: assistantName,
-                description: '从电脑版导入的助手（基于模型信息）',
+                description: '从导入的助手（基于模型信息）',
                 icon: null,
                 isSystem: false,
                 topicIds: [],
@@ -205,7 +205,7 @@ export async function convertDesktopBackup(backupData: DesktopBackupData): Promi
       const importedAssistant: Assistant = {
         id: 'imported_assistant',
         name: '导入的助手',
-        description: '从电脑版导入的对话助手',
+        description: '从导入的对话助手',
         icon: null,
         isSystem: false,
         topicIds: defaultTopics.map(t => t.id),
@@ -231,13 +231,13 @@ export async function convertDesktopBackup(backupData: DesktopBackupData): Promi
 
     return result;
   } catch (error) {
-    console.error('转换电脑版备份数据失败:', error);
-    throw new Error('转换电脑版备份数据失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    console.error('转换备份数据失败:', error);
+    throw new Error('转换备份数据失败: ' + (error instanceof Error ? error.message : '未知错误'));
   }
 }
 
 /**
- * 检测是否为电脑版备份格式
+ * 检测是否为备份格式
  */
 export function isDesktopBackupFormat(data: any): boolean {
   return (
@@ -298,7 +298,7 @@ export function extractMessageContent(
 }
 
 /**
- * 从电脑版备份中提取话题名称
+ * 从备份中提取话题名称
  * 通过分析消息块内容来生成合适的话题名称
  */
 export function extractTopicNameFromMessages(
@@ -328,7 +328,7 @@ export function extractTopicNameFromMessages(
 }
 
 /**
- * 验证电脑版备份数据的完整性
+ * 验证备份数据的完整性
  */
 export function validateDesktopBackupData(data: DesktopBackupData): {
   isValid: boolean;

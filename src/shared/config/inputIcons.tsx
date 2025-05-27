@@ -6,6 +6,7 @@ import BuildIcon from '@mui/icons-material/Build';
 import ImageIcon from '@mui/icons-material/Image';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 
 export interface IconConfig {
   icon: React.ReactElement;
@@ -22,7 +23,7 @@ interface GetIconConfigsProps {
   webSearchActive: boolean;
   imageGenerationMode: boolean;
   uploadingMedia: boolean;
-  
+
   // 回调函数
   onNewTopic?: () => void;
   onClearTopic?: () => void;
@@ -31,6 +32,7 @@ interface GetIconConfigsProps {
   toggleImageGenerationMode?: () => void;
   handleImageUpload: (source: 'camera' | 'photos') => void;
   handleFileUpload: () => void;
+  handleKnowledgeClick?: () => void;
 }
 
 // 基础功能图标配置
@@ -84,8 +86,9 @@ export const getExpandedIcons = ({
   uploadingMedia,
   toggleToolsEnabled,
   handleImageUpload,
-  handleFileUpload
-}: Pick<GetIconConfigsProps, 'toolsEnabled' | 'uploadingMedia' | 'toggleToolsEnabled' | 'handleImageUpload' | 'handleFileUpload'>): IconConfig[] => [
+  handleFileUpload,
+  handleKnowledgeClick
+}: Pick<GetIconConfigsProps, 'toolsEnabled' | 'uploadingMedia' | 'toggleToolsEnabled' | 'handleImageUpload' | 'handleFileUpload' | 'handleKnowledgeClick'>): IconConfig[] => [
   {
     icon: <PhotoCameraIcon />,
     label: '拍照上传',
@@ -106,6 +109,12 @@ export const getExpandedIcons = ({
     onClick: handleFileUpload,
     color: '#9C27B0',
     disabled: uploadingMedia
+  },
+  {
+    icon: <MenuBookIcon />,
+    label: '知识库',
+    onClick: handleKnowledgeClick || (() => {}),
+    color: '#059669'
   },
   {
     icon: <BuildIcon />,

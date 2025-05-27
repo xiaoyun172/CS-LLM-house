@@ -20,8 +20,17 @@ export const EVENT_NAMES = {
   TOPIC_MOVED: 'TOPIC_MOVED',
   MESSAGE_ERROR: 'message:error',
   STREAMING_STARTED: 'streaming:started',
-  STREAMING_ENDED: 'streaming:ended'
-};
+  STREAMING_ENDED: 'streaming:ended',
+
+  // 知识库相关事件
+  KNOWLEDGE_BASE_CREATED: 'knowledge_base:created',
+  KNOWLEDGE_BASE_UPDATED: 'knowledge_base:updated',
+  KNOWLEDGE_BASE_DELETED: 'knowledge_base:deleted',
+  KNOWLEDGE_DOCUMENT_PROCESSED: 'knowledge_document:processed',
+  KNOWLEDGE_DOCUMENTS_ADDED: 'knowledge_documents:added',
+  KNOWLEDGE_DOCUMENT_DELETED: 'knowledge_document:deleted',
+  KNOWLEDGE_SEARCH_COMPLETED: 'knowledge_search:completed',
+} as const;
 
 // 提供一个更简洁的事件服务使用方式
 export class EventService {

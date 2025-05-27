@@ -7,6 +7,7 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import SearchIcon from '@mui/icons-material/Search';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../shared/store';
 import { TopicService } from '../shared/services/TopicService';
@@ -15,6 +16,7 @@ import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
 import { updateSettings } from '../shared/store/settingsSlice';
 import WebSearchProviderSelector from './WebSearchProviderSelector';
 import MCPToolsButton from './chat/MCPToolsButton';
+import KnowledgeSelector from './chat/KnowledgeSelector';
 
 interface ChatToolbarProps {
   onClearTopic?: () => void;
@@ -45,6 +47,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const [scrollLeft, setScrollLeft] = useState(0);
   const [showProviderSelector, setShowProviderSelector] = useState(false);
   const [clearConfirmMode, setClearConfirmMode] = useState(false);
+  const [showKnowledgeSelector, setShowKnowledgeSelector] = useState(false);
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const dispatch = useDispatch();
@@ -296,6 +299,19 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
     }
   };
 
+  // 处理知识库按钮点击
+  const handleKnowledgeClick = () => {
+    setShowKnowledgeSelector(true);
+  };
+
+  // 处理知识库选择
+  const handleKnowledgeSelect = (knowledgeBase: any, searchResults: any[]) => {
+    console.log('选择了知识库:', knowledgeBase, '搜索结果:', searchResults);
+    // ChatToolbar只负责显示选择器，实际的知识库处理由CompactChatInput负责
+    // 这里只需要关闭选择器
+    setShowKnowledgeSelector(false);
+  };
+
   // 气泡按钮数据
   const buttons = [
     {
@@ -325,6 +341,14 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
       onClick: toggleImageGenerationMode,
       color: '#FFFFFF',
       bgColor: imageGenerationMode ? (isDarkMode ? '#424242' : '#9C27B0') : isDarkMode ? '#1E1E1E' : '#FFFFFF'
+    },
+    {
+      id: 'knowledge',
+      icon: <MenuBookIcon sx={getIconStyle(false, '#059669')} />,
+      label: '知识库',
+      onClick: handleKnowledgeClick,
+      color: '#FFFFFF',
+      bgColor: isDarkMode ? '#1E1E1E' : '#FFFFFF'
     }
   ];
 
@@ -541,6 +565,13 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
         open={showProviderSelector}
         onClose={() => setShowProviderSelector(false)}
         onProviderSelect={handleProviderSelect}
+      />
+
+      {/* 知识库选择器 */}
+      <KnowledgeSelector
+        open={showKnowledgeSelector}
+        onClose={() => setShowKnowledgeSelector(false)}
+        onSelect={handleKnowledgeSelect}
       />
     </Box>
   );

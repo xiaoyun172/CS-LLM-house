@@ -188,6 +188,32 @@ export * from './messages';
  */
 export async function initializeServices(): Promise<void> {
   try {
+    // 初始化开发者工具服务
+    try {
+      const { default: EnhancedConsoleService } = await import('./EnhancedConsoleService');
+      const { default: EnhancedNetworkService } = await import('./EnhancedNetworkService');
+      
+      // 初始化控制台拦截
+      EnhancedConsoleService.getInstance();
+      console.log('控制台拦截服务初始化完成');
+      
+      // 初始化网络拦截
+      EnhancedNetworkService.getInstance();
+      console.log('网络拦截服务初始化完成');
+    } catch (devToolsError) {
+      console.warn('开发者工具服务初始化失败:', devToolsError);
+    }
+
+    // 初始化TTS服务配置
+    try {
+      const { TTSService } = await import('./TTSService');
+      const ttsService = TTSService.getInstance();
+      await ttsService.initializeConfig();
+      console.log('TTS服务配置初始化完成');
+    } catch (ttsError) {
+      console.warn('TTS服务配置初始化失败:', ttsError);
+    }
+
     // 系统提示词服务现在通过Redux thunk初始化
     console.log('服务初始化完成');
   } catch (error) {

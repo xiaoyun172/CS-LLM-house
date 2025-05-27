@@ -285,6 +285,30 @@ export function isWebSearchModel(model: Model): boolean {
 }
 
 /**
+ * 检查模型是否支持嵌入向量
+ * @param model 模型对象
+ * @returns 是否支持嵌入向量
+ */
+export function isEmbeddingModel(model: Model): boolean {
+  // 首先检查模型类型是否包含嵌入类型
+  if (model.modelTypes && model.modelTypes.includes('embedding')) {
+    return true;
+  }
+
+  const modelId = model.id;
+
+  // 检查常见的嵌入模型ID模式
+  return Boolean(
+    modelId.includes('embedding') ||
+    modelId.includes('text-embedding') ||
+    modelId.includes('embed') ||
+    modelId === 'text-embedding-3-small' ||
+    modelId === 'text-embedding-3-large' ||
+    modelId === 'text-embedding-ada-002'
+  );
+}
+
+/**
  * 检查是否为Gemma模型
  * @param model 模型对象
  * @returns 是否为Gemma模型

@@ -12,6 +12,9 @@ const TopToolbarSettings = lazy(() => import('../pages/Settings/TopToolbarSettin
 const TopToolbarDIYSettings = lazy(() => import('../pages/Settings/TopToolbarDIYSettings'));
 const TopToolbarTestPage = lazy(() => import('../pages/Settings/TopToolbarTestPage'));
 const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSettings'));
+// 导入知识库页面
+const KnowledgeBasePage = lazy(() => import('../pages/KnowledgeBase'));
+const KnowledgeSettings = lazy(() => import('../pages/Settings/KnowledgeSettings'));
 
 const DefaultModelSettingsPage = lazy(() => import('../pages/Settings/DefaultModelSettings/index'));
 const ModelProviderSettings = lazy(() => import('../pages/Settings/ModelProviderSettings'));
@@ -98,8 +101,10 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/mcp-server" element={<MCPServerSettings />} />
         <Route path="/settings/mcp-server/:serverId" element={<MCPServerDetail />} />
         <Route path="/settings/model-combo" element={<ModelComboSettings />} />
+        <Route path="/settings/knowledge" element={<KnowledgeSettings />} />
         <Route path="/devtools" element={<DevToolsPage />} />
         <Route path="/vue-demo" element={<VueDemoPage />} />
+        <Route path="/knowledge/*" element={<KnowledgeBasePage />} />
       </Routes>
     </Suspense>
   );

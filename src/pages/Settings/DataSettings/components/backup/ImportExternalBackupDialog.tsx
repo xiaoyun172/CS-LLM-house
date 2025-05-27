@@ -104,7 +104,7 @@ const ImportExternalBackupDialog: React.FC<ImportExternalBackupDialogProps> = ({
   const getSourceName = (source: string): string => {
     switch (source) {
       case 'desktop':
-        return 'Cherry Stuido 电脑版';
+        return 'Cherry Studio ';
       case 'chatboxai':
         return 'ChatboxAI';
       default:
@@ -165,7 +165,7 @@ const ImportExternalBackupDialog: React.FC<ImportExternalBackupDialogProps> = ({
 
             <Box sx={{ mb: 2 }}>
               <Chip
-                label="Cherry Stuido 电脑版"
+                label="Cherry Studio "
                 color="secondary"
                 sx={{ mr: 1, mb: 1 }}
               />
@@ -178,8 +178,8 @@ const ImportExternalBackupDialog: React.FC<ImportExternalBackupDialogProps> = ({
 
             <Alert severity="info" sx={{ mb: 3 }}>
               <AlertTitle>如何导入</AlertTitle>
-              • <strong>Cherry Stuido 电脑版</strong>：支持导入电脑版的完整备份文件，包含所有对话记录和消息块数据<br/>
-              • <strong>ChatboxAI</strong>：从 ChatboxAI 导出的备份文件将被转换为 AetherLink 格式<br/>
+              • <strong>Cherry Studio </strong>：支持导入的完整备份文件，包含所有对话记录和消息块数据<br/>
+              • <strong>ChatboxAI</strong>：从 ChatboxAI 导出的备份文件将被转换为 AetherLink 格式，支持多线程对话和附件<br/>
               • 导入的数据将创建对应的助手和对话，保持原有的对话结构
             </Alert>
 

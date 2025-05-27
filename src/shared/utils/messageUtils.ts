@@ -11,7 +11,8 @@ import type {
   TableMessageBlock,
   MultiModelMessageBlock,
   ChartMessageBlock,
-  MathMessageBlock
+  MathMessageBlock,
+  KnowledgeReferenceMessageBlock
 } from '../types/newMessage.ts';
 import {
   MessageBlockType,
@@ -574,7 +575,10 @@ export function getMainTextContent(message: Message): string {
         }
 
         // 兼容性处理：同时支持 MAIN_TEXT、UNKNOWN 和字符串类型的块类型
-        const blockType = typeof block.type === 'string' ? block.type : block.type;
+        const blockType = block && typeof block === 'object' ? 
+          (typeof (block as any).type === 'string' ? (block as any).type : MessageBlockType.UNKNOWN) : 
+          MessageBlockType.UNKNOWN;
+        
         if (blockType === MessageBlockType.MAIN_TEXT ||
             blockType === MessageBlockType.UNKNOWN ||
             blockType === 'main_text' ||
@@ -1214,5 +1218,40 @@ export function resetAssistantMessage(
 
     // --- 应用传入的更新 ---
     ...updates  // 应用任何特定的更新
+  };
+}
+
+/**
+ * 创建知识库引用块
+ */
+export function createKnowledgeReferenceBlock(
+  messageId: string,
+  content: string,
+  knowledgeBaseId: string,
+  options?: {
+    source?: string;
+    similarity?: number;
+    fileName?: string;
+    fileId?: string;
+    knowledgeDocumentId?: string;
+    searchQuery?: string;
+  }
+): KnowledgeReferenceMessageBlock {
+  return {
+    id: uuid(),
+    messageId,
+    type: MessageBlockType.KNOWLEDGE_REFERENCE,
+    content,
+    knowledgeBaseId,
+    source: options?.source,
+    similarity: options?.similarity,
+    createdAt: new Date().toISOString(),
+    status: MessageBlockStatus.SUCCESS,
+    metadata: {
+      fileName: options?.fileName,
+      fileId: options?.fileId,
+      knowledgeDocumentId: options?.knowledgeDocumentId,
+      searchQuery: options?.searchQuery
+    }
   };
 }

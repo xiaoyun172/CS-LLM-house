@@ -70,6 +70,12 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
     store.dispatch(updateOneBlock({ id: blockId, changes }));
   }, 100); // 100ms节流，与最佳实例保持一致
 
+  // 🔥 新增：创建响应处理器实例，用于事件转换
+  let responseHandlerInstance: any = null;
+
+  // 🔥 新增：事件监听器清理函数
+  let eventCleanupFunctions: (() => void)[] = [];
+
   // 实现最佳实例的回调系统
   const callbacks = {
     onTextChunk: (text: string) => {
@@ -147,6 +153,7 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
         if (lastBlockType === MessageBlockType.UNKNOWN) {
           // 第一次收到思考内容，转换占位符块为思考块（立即执行，不节流）
           lastBlockType = MessageBlockType.THINKING;
+          thinkingBlockId = lastBlockId;
 
           const initialChanges = {
             type: MessageBlockType.THINKING,
@@ -178,7 +185,21 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
     }
   };
 
-  return {
+  // 🔥 移除重复的事件监听器，避免双重处理
+  // ResponseHandler应该只通过直接回调处理流式数据，不需要监听全局事件
+  // 这样可以避免同一个内容被处理两次的问题
+  const setupEventListeners = () => {
+    console.log(`[ResponseHandler] 跳过事件监听器设置，使用直接回调处理流式数据`);
+
+    // 返回空的清理函数
+    eventCleanupFunctions = [];
+
+    return () => {
+      eventCleanupFunctions.forEach(cleanup => cleanup());
+    };
+  };
+
+  responseHandlerInstance = {
     /**
      * 处理基于最佳实例架构的 Chunk 事件
      * @param chunk Chunk 事件对象
@@ -1291,6 +1312,16 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
       throw error;
     }
   };
+
+  // 🔥 新增：设置事件监听器
+  setupEventListeners();
+
+  // 🔥 新增：添加清理方法到返回对象
+  responseHandlerInstance.cleanup = () => {
+    eventCleanupFunctions.forEach(cleanup => cleanup());
+  };
+
+  return responseHandlerInstance;
 }
 
 export default createResponseHandler;
@@ -1313,18 +1344,7 @@ export const setResponseState = ({ topicId, status, loading }: { topicId: string
     loading
   }));
 
-  // 发送事件通知
-  if (streaming) {
-    EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
-      topicId,
-      status,
-      streaming
-    });
-  } else {
-    EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
-      topicId,
-      status,
-      streaming
-    });
-  }
+  // 移除重复的事件发送，避免与流式处理器的事件冲突
+  // 流式事件应该只由实际的流式处理器发送
+  console.log(`[ResponseHandler] 设置响应状态: topicId=${topicId}, status=${status}, loading=${loading}`);
 };

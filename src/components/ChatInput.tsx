@@ -314,21 +314,30 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const getResponsiveStyles = () => {
     if (isMobile) {
       return {
-        padding: '0px 8px 8px 8px', // 保留底部padding用于间距
-        maxWidth: '100%',
-        margin: '0'
+        paddingTop: '0px',
+        paddingBottom: '4px', // 减少底部padding，避免与屏幕底部间隙
+        maxWidth: 'calc(100% - 24px)', // 确保有足够的左右边距
+        marginTop: '0',
+        marginLeft: 'auto', // 水平居中
+        marginRight: 'auto' // 水平居中
       };
     } else if (isTablet) {
       return {
-        padding: '0px 16px 12px 16px', // 保留底部padding用于间距
-        maxWidth: '100%', // 改为100%，由外部容器控制最大宽度
-        margin: '0'
+        paddingTop: '0px',
+        paddingBottom: '4px', // 减少底部padding，避免与屏幕底部间隙
+        maxWidth: 'calc(100% - 40px)', // 确保有足够的左右边距
+        marginTop: '0',
+        marginLeft: 'auto', // 水平居中
+        marginRight: 'auto' // 水平居中
       };
     } else {
       return {
-        padding: '0px 10px 10px 10px', // 保留底部padding用于间距
-        maxWidth: '100%', // 改为100%，由外部容器控制最大宽度
-        margin: '0'
+        paddingTop: '0px',
+        paddingBottom: '6px', // 减少底部padding，避免与屏幕底部间隙
+        maxWidth: 'calc(100% - 32px)', // 确保有足够的左右边距
+        marginTop: '0',
+        marginLeft: 'auto', // 水平居中
+        marginRight: 'auto' // 水平居中
       };
     }
   };
@@ -347,10 +356,19 @@ const ChatInput: React.FC<ChatInputProps> = ({
       zIndex: 1000,
       boxShadow: 'none',
       transition: 'all 0.3s ease',
-      marginBottom: isKeyboardVisible ? '0' : '0',
+      marginBottom: isKeyboardVisible ? '0' : (isMobile ? '0' : isTablet ? '0' : '0'),
+      paddingBottom: isKeyboardVisible && isMobile ? 'env(safe-area-inset-bottom)' : '0',
       // 确保没有任何背景色或边框
       border: 'none',
-      outline: 'none'
+      outline: 'none',
+      // 添加安全区域支持，确保不被刘海屏等遮挡
+      paddingLeft: `max(env(safe-area-inset-left), ${isMobile ? '8px' : isTablet ? '12px' : '10px'})`,
+      paddingRight: `max(env(safe-area-inset-right), ${isMobile ? '8px' : isTablet ? '12px' : '10px'})`,
+      // 确保在所有设备上正确显示和居中
+      minHeight: 'auto',
+      maxHeight: '50vh', // 限制最大高度，避免遮挡过多内容
+      overflow: 'visible',
+      boxSizing: 'border-box' // 确保padding计算正确
     }}>
       {/* URL解析状态显示 */}
       {urlScraperStatus !== 'idle' && (

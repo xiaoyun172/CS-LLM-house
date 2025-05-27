@@ -18,7 +18,8 @@ export const MessageBlockType = {
   MULTI_MODEL: 'multi_model',
   CHART: 'chart',
   MATH: 'math',
-  SEARCH_RESULTS: 'search_results'
+  SEARCH_RESULTS: 'search_results',
+  KNOWLEDGE_REFERENCE: 'knowledge_reference'
 } as const;
 
 export type MessageBlockType = typeof MessageBlockType[keyof typeof MessageBlockType];
@@ -211,6 +212,21 @@ export interface SearchResultsMessageBlock extends BaseMessageBlock {
   query: string;
 }
 
+// 知识库引用块
+export interface KnowledgeReferenceMessageBlock extends BaseMessageBlock {
+  type: typeof MessageBlockType.KNOWLEDGE_REFERENCE;
+  content: string;
+  knowledgeBaseId: string;
+  source?: string;
+  similarity?: number;
+  metadata?: {
+    fileName?: string;
+    fileId?: string;
+    knowledgeDocumentId?: string;
+    searchQuery?: string;
+  };
+}
+
 // 消息块联合类型
 export type MessageBlock =
   | PlaceholderMessageBlock
@@ -228,7 +244,8 @@ export type MessageBlock =
   | ModelComparisonMessageBlock
   | ChartMessageBlock
   | MathMessageBlock
-  | SearchResultsMessageBlock;
+  | SearchResultsMessageBlock
+  | KnowledgeReferenceMessageBlock;
 
 // 助手消息状态枚举
 export const AssistantMessageStatus = {

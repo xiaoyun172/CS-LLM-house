@@ -120,7 +120,7 @@ export const useChatFeatures = (
         searchingMessage.id
       );
 
-      // 🚀 电脑版风格：搜索结果通过搜索结果块显示
+      // 🚀 风格：搜索结果通过搜索结果块显示
       let resultsContent = '';
 
       if (searchResults.length === 0) {

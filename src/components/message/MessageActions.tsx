@@ -90,7 +90,7 @@ const deleteButtonStyle = (errorColor: string) => ({
   color: errorColor
 });
 
-const MessageActions: React.FC<MessageActionsProps> = ({
+const MessageActions: React.FC<MessageActionsProps> = React.memo(({
   message,
   topicId,
   messageIndex = 0,
@@ -149,54 +149,37 @@ const MessageActions: React.FC<MessageActionsProps> = ({
     loaded: false
   });
 
-  // 初始化TTS服务 - 优化：只加载一次配置并缓存
+  // 初始化TTS服务 - 使用全局配置初始化，避免重复加载
   useEffect(() => {
-    const loadTTSSettings = async () => {
+    const initializeTTS = async () => {
       try {
         const ttsService = TTSService.getInstance();
-
-        // 从 Dexie 加载TTS配置
-        const [apiKey, model, voice, enabled] = await Promise.all([
-          getStorageItem<string>('siliconflow_api_key'),
-          getStorageItem<string>('tts_model'),
-          getStorageItem<string>('tts_voice'),
-          getStorageItem<string>('enable_tts')
-        ]);
-
-        // 缓存配置
-        ttsConfigRef.current = {
-          apiKey: apiKey || '',
-          model: model || 'FunAudioLLM/CosyVoice2-0.5B',
-          voice: voice || 'alex',
-          loaded: true
-        };
-
-        const isEnabled = enabled !== 'false'; // 默认启用
-
-        console.log('🔧 聊天界面加载TTS配置:', {
-          hasApiKey: !!ttsConfigRef.current.apiKey,
-          model: ttsConfigRef.current.model,
-          voice: ttsConfigRef.current.voice,
-          enabled: isEnabled
-        });
-
-        // 设置TTS配置
-        if (ttsConfigRef.current.apiKey) {
-          ttsService.setApiKey(ttsConfigRef.current.apiKey);
+        
+        // 使用TTSService的全局配置初始化
+        const success = await ttsService.initializeConfig();
+        
+        if (success) {
+          // 标记本地配置已加载
+          ttsConfigRef.current.loaded = true;
+          
+          // 从存储获取启用状态
+          const enabled = await getStorageItem<string>('enable_tts');
+          const isEnabled = enabled !== 'false'; // 默认启用
+          setEnableTTS(isEnabled);
+        } else {
+          console.warn('TTS配置初始化失败，使用默认设置');
+          setEnableTTS(true); // 默认启用
         }
-        if (ttsConfigRef.current.model && ttsConfigRef.current.voice) {
-          ttsService.setDefaultVoice(ttsConfigRef.current.model, `${ttsConfigRef.current.model}:${ttsConfigRef.current.voice}`);
-        }
-
-        // 更新启用状态
-        setEnableTTS(isEnabled);
       } catch (error) {
-        console.error('加载TTS设置失败:', error);
+        console.error('TTS初始化失败:', error);
         setEnableTTS(true); // 默认启用
       }
     };
 
-    loadTTSSettings();
+    // 如果本地配置未加载，则初始化
+    if (!ttsConfigRef.current.loaded) {
+      initializeTTS();
+    }
   }, []);
 
   // 监听TTS播放状态变化 - 优化：减少轮询频率，使用更高效的检查机制
@@ -1076,6 +1059,17 @@ const MessageActions: React.FC<MessageActionsProps> = ({
       </Dialog>
     </>
   );
-};
+}, (prevProps, nextProps) => {
+  // 自定义比较函数，只在关键props变化时重新渲染
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.blocks?.length === nextProps.message.blocks?.length &&
+    prevProps.message.currentVersionId === nextProps.message.currentVersionId &&
+    prevProps.message.versions?.length === nextProps.message.versions?.length &&
+    prevProps.topicId === nextProps.topicId &&
+    prevProps.messageIndex === nextProps.messageIndex &&
+    prevProps.renderMode === nextProps.renderMode
+  );
+});
 
 export default MessageActions;

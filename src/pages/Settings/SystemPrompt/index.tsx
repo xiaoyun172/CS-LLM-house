@@ -5,7 +5,8 @@ import {
   Toolbar,
   Typography,
   IconButton,
-  Container
+  Container,
+  CircularProgress
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
@@ -13,8 +14,16 @@ import { DefaultPromptSection } from './DefaultPromptSection';
 import { TemplateList } from './TemplateList';
 import { TemplateEditDialog } from './TemplateEditDialog';
 import { styles } from './styles';
-import { SystemPromptService } from '../../../shared/services/SystemPromptService';
 import type { SystemPromptTemplate } from '../../../shared/services/SystemPromptService';
+import { useAppSelector, useAppDispatch } from '../../../shared/store';
+import {
+  setDefaultSystemPrompt,
+  setUseDefaultPrompt,
+  addPromptTemplate,
+  updatePromptTemplate,
+  deletePromptTemplate,
+  loadSystemPrompts
+} from '../../../shared/store/slices/systemPromptsSlice';
 
 /**
  * 系统提示词管理 - 主页面UI组件
@@ -22,26 +31,22 @@ import type { SystemPromptTemplate } from '../../../shared/services/SystemPrompt
  */
 const SystemPromptSettings: React.FC = () => {
   const navigate = useNavigate();
-  const promptService = SystemPromptService.getInstance();
+  const dispatch = useAppDispatch();
+  
+  // 从Redux状态获取数据
+  const { templates, defaultPrompt, useDefaultPrompt, loading, error } = useAppSelector(
+    (state) => state.systemPrompts
+  );
 
   // 状态管理
-  const [templates, setTemplates] = useState<SystemPromptTemplate[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<SystemPromptTemplate | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [defaultPrompt, setDefaultPrompt] = useState('');
-  const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
 
   // 初始化加载数据
   useEffect(() => {
-    const initializeData = async () => {
-      // 直接获取数据，不再调用initialize()，因为它现在通过Redux thunk初始化
-      setTemplates(promptService.getTemplates());
-      setDefaultPrompt(promptService.getDefaultPrompt());
-      setUseDefaultPrompt(promptService.getUseDefaultPrompt());
-    };
-
-    initializeData();
-  }, []);
+    // 确保系统提示词数据已加载
+    dispatch(loadSystemPrompts());
+  }, [dispatch]);
 
   // 返回上一页
   const handleBack = () => {
@@ -79,51 +84,115 @@ const SystemPromptSettings: React.FC = () => {
   const handleSaveTemplate = async (template: SystemPromptTemplate) => {
     if (template.id) {
       // 更新现有模板
-      await promptService.updateTemplate(template);
+      dispatch(updatePromptTemplate(template));
     } else {
       // 添加新模板
-      await promptService.addTemplate(template.name, template.content, template.isDefault);
+      dispatch(addPromptTemplate({
+        ...template,
+        id: crypto.randomUUID(), // 使用随机ID
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }));
     }
-
-    // 重新加载模板列表
-    setTemplates(promptService.getTemplates());
-    setDefaultPrompt(promptService.getDefaultPrompt());
 
     setShowEditDialog(false);
   };
 
   // 删除模板
   const handleDeleteTemplate = async (id: string) => {
-    await promptService.deleteTemplate(id);
-    setTemplates(promptService.getTemplates());
-    setDefaultPrompt(promptService.getDefaultPrompt());
+    dispatch(deletePromptTemplate(id));
   };
 
   // 设置默认模板
   const handleSetDefaultTemplate = async (id: string) => {
-    await promptService.setDefaultTemplate(id);
-    setTemplates(promptService.getTemplates());
-    setDefaultPrompt(promptService.getDefaultPrompt());
+    // 找到模板
+    const template = templates.find(t => t.id === id);
+    if (!template) return;
+    
+    // 更新所有模板，将当前模板设为默认
+    const updatedTemplates = templates.map(t => ({
+      ...t,
+      isDefault: t.id === id
+    }));
+    
+    // 更新默认提示词内容
+    dispatch(setDefaultSystemPrompt(template.content));
+    
+    // 更新每个模板
+    updatedTemplates.forEach(template => {
+      dispatch(updatePromptTemplate(template));
+    });
   };
 
   // 复制模板
   const handleDuplicateTemplate = async (template: SystemPromptTemplate) => {
-    await promptService.duplicateTemplate(template.id);
-    setTemplates(promptService.getTemplates());
+    const now = Date.now();
+    const duplicatedTemplate: SystemPromptTemplate = {
+      id: crypto.randomUUID(),
+      name: `${template.name} (复制)`,
+      content: template.content,
+      isDefault: false,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    dispatch(addPromptTemplate(duplicatedTemplate));
   };
 
   // 处理默认提示词变更
   const handleChangeDefaultPrompt = async (value: string) => {
-    await promptService.setDefaultPrompt(value);
-    setDefaultPrompt(value);
-    setTemplates(promptService.getTemplates());
+    dispatch(setDefaultSystemPrompt(value));
+    
+    // 同时更新默认模板的内容
+    const defaultTemplate = templates.find(t => t.isDefault);
+    if (defaultTemplate) {
+      dispatch(updatePromptTemplate({
+        ...defaultTemplate,
+        content: value,
+        updatedAt: Date.now()
+      }));
+    }
   };
 
   // 处理是否使用默认提示词变更
   const handleToggleUseDefaultPrompt = async (value: boolean) => {
-    await promptService.setUseDefaultPrompt(value);
-    setUseDefaultPrompt(value);
+    dispatch(setUseDefaultPrompt(value));
   };
+
+  // 显示加载状态
+  if (loading) {
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh' 
+      }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // 显示错误状态
+  if (error) {
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        flexDirection: 'column',
+        p: 3
+      }}>
+        <Typography color="error" variant="h6" gutterBottom>
+          加载系统提示词数据失败
+        </Typography>
+        <Typography color="text.secondary">
+          {error}
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={styles.container}>

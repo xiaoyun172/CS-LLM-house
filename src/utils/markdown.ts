@@ -119,7 +119,7 @@ export function isValidPlantUML(code: string | null): boolean {
 }
 
 /**
- * 移除SVG空行 - 参考电脑版实现
+ * 移除SVG空行 - 参考实现
  */
 export function removeSvgEmptyLines(text: string): string {
   const svgPattern = /(<svg[\s\S]*?<\/svg>)/g;

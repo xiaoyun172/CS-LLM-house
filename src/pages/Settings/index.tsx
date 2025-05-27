@@ -18,7 +18,6 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
 import StorageIcon from '@mui/icons-material/Storage';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import InfoIcon from '@mui/icons-material/Info';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -28,6 +27,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CodeIcon from '@mui/icons-material/Code';
 import ForumIcon from '@mui/icons-material/Forum';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -71,9 +71,9 @@ const SettingsPage: React.FC = () => {
     {
       title: '其他设置',
       items: [
+        { id: 'knowledge-settings', title: '知识库设置', description: '管理知识库配置和嵌入模型', icon: <MenuBookIcon />, path: '/settings/knowledge', color: '#059669' },
         { id: 'data-settings', title: '数据设置', description: '管理数据存储和隐私选项', icon: <StorageIcon />, path: '/settings/data', color: '#0ea5e9' },
         { id: 'voice-settings', title: '语音功能', description: '语音识别和文本转语音设置', icon: <RecordVoiceOverIcon />, path: '/settings/voice', color: '#8b5cf6' },
-        { id: 'pdf-settings', title: 'PDF设置', description: 'PDF阅读和导出选项', icon: <PictureAsPdfIcon />, path: '/settings/pdf', color: '#ef4444' },
         { id: 'features', title: '功能模块', description: '启用或禁用应用功能', icon: <ExtensionIcon />, path: '/settings/features', color: '#22c55e' },
         { id: 'vue-demo', title: 'Vue 组件演示', description: 'Vue与Capacitor功能演示', icon: <CodeIcon />, path: '/vue-demo', color: '#42b983' },
         { id: 'about', title: '关于我们', description: '应用信息和技术支持', icon: <InfoIcon />, path: '/settings/about', color: '#64748b' },
