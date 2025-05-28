@@ -177,6 +177,15 @@ function App() {
     // 初始化状态栏
     const setupStatusBar = async () => {
       try {
+        // 检测是否为Web环境
+        const isWeb = !window.Capacitor || window.Capacitor.platform === 'web';
+        
+        // 只在非Web环境下使用StatusBar插件
+        if (isWeb) {
+          console.log('[App] 在Web环境中跳过状态栏初始化');
+          return;
+        }
+        
         // 设置状态栏不覆盖WebView
         await StatusBar.setOverlaysWebView({ overlay: false });
 

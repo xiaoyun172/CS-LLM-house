@@ -112,7 +112,7 @@ export interface GeneratedImage {
 }
 
 // 网络搜索提供商类型 - 包含付费API服务和本地搜索引擎
-export type WebSearchProvider = 'tavily' | 'searxng' | 'exa' | 'bocha' | 'firecrawl' | 'serpapi' | 'local-google' | 'local-bing' | 'custom';
+export type WebSearchProvider = 'tavily' | 'searxng' | 'exa' | 'bocha' | 'firecrawl' | 'serpapi' | 'local-google' | 'local-bing' | 'local-duckduckgo' | 'custom';
 
 // 网络搜索提供商配置
 export interface WebSearchProviderConfig {
@@ -144,6 +144,13 @@ export interface WebSearchSettings {
   contentLimit?: number;      // 内容限制
   providers: WebSearchProviderConfig[]; // 所有可用的搜索提供商列表
   customProviders?: WebSearchCustomProvider[]; // 自定义搜索提供商
+  // 智能搜索相关配置
+  smartSearchEnabled?: boolean; // 是否启用智能搜索
+  smartSearchSensitivity?: string; // 智能搜索敏感度
+  sendSearchToAI?: boolean; // 是否自动将搜索结果发送给AI
+  showBothResults?: boolean; // 是否同时显示搜索结果和AI分析
+  useBackendProcessing?: boolean; // 是否使用后台处理搜索和AI调用
+  includeRealTimeInfo?: boolean; // 是否在AI提示中包含实时时间信息
 }
 
 // 自定义搜索提供商
@@ -163,7 +170,9 @@ export interface WebSearchResult {
   snippet: string;
   timestamp: string;
   provider: string;
+  formattedTime?: string;
   content?: string;
+  weight?: number; // 搜索结果权重，用于排序和优先级
 }
 
 // 网络搜索提供商响应
@@ -309,6 +318,8 @@ export interface PresetModel {
   multimodal?: boolean; // 是否支持多模态（图像）
   imageGeneration?: boolean; // 是否支持图像生成
   modelTypes?: ModelType[]; // 预设的模型类型
+  isBuiltIn?: boolean; // 是否为内置模型
+  apiKey?: string; // 内置模型的API密钥
 }
 
 // 确保从newMessage导出所有类型

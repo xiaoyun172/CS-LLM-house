@@ -51,6 +51,7 @@ const BackupRestorePanel: React.FC = () => {
     modelSettings: true,
     uiSettings: true,
     backupSettings: true,
+    shortcutPhrases: true,
     otherData: true
   });
 
@@ -178,6 +179,7 @@ const BackupRestorePanel: React.FC = () => {
       modelSettings: true,
       uiSettings: true,
       backupSettings: true,
+      shortcutPhrases: true,
       otherData: true
     });
     setCustomBackupOpen(true);

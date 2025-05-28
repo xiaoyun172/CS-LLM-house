@@ -224,6 +224,52 @@ const ModelManagementDialog: React.FC<ModelManagementDialogProps> = ({
     }
   }, [open]); // 只依赖open状态，不依赖provider
 
+  // 如果提供商禁止添加模型，显示限制信息
+  if (provider?.disableAddModel) {
+    return (
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            maxHeight: '90vh'
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 600 }}>
+          模型管理受限
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{
+            p: 2,
+            bgcolor: (theme) => alpha(theme.palette.warning.main, 0.1),
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: (theme) => alpha(theme.palette.warning.main, 0.3),
+            textAlign: 'center'
+          }}>
+            <Typography variant="h6" color="warning.main" sx={{ fontWeight: 500, mb: 2 }}>
+              🚫 操作受限
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+              提供商 <strong>{provider.name}</strong> 不允许添加或管理模型。
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              您只能使用该提供商预配置的模型。
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose} variant="contained">
+            我知道了
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog
       open={open}

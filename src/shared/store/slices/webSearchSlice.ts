@@ -1,13 +1,20 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import type { WebSearchSettings, WebSearchCustomProvider, WebSearchProvider, WebSearchProviderConfig } from '../../types';
+import type { WebSearchSettings, WebSearchCustomProvider, WebSearchProviderConfig, WebSearchProvider } from '../../types';
 import { getStorageItem, setStorageItem } from '../../utils/storage';
+import { SmartSearchSensitivity } from '../../../pages/ChatPage/hooks/useChatFeatures';
+import type { SmartSearchSensitivityType } from '../../../pages/ChatPage/hooks/useChatFeatures';
 
 // 存储键名
 const STORAGE_KEY = 'webSearchSettings';
 
 // 默认提供商配置 - 包含付费服务和本地搜索引擎
 const getDefaultProviders = (): WebSearchProviderConfig[] => [
+  {
+    id: 'local-duckduckgo',
+    name: 'DuckDuckGo',
+    url: 'https://duckduckgo.com/?q=%s'
+  },
   {
     id: 'tavily',
     name: 'Tavily',
@@ -61,7 +68,14 @@ const loadFromStorage = async (): Promise<WebSearchSettings> => {
         ...savedSettings,
         searchWithTime: savedSettings.searchWithTime ?? false,
         excludeDomains: savedSettings.excludeDomains ?? [],
-        providers: savedSettings.providers ?? getDefaultProviders()
+        providers: savedSettings.providers ?? getDefaultProviders(),
+        // 智能搜索相关配置
+        smartSearchEnabled: savedSettings.smartSearchEnabled ?? true,
+        smartSearchSensitivity: savedSettings.smartSearchSensitivity ?? SmartSearchSensitivity.MEDIUM,
+        sendSearchToAI: savedSettings.sendSearchToAI ?? true,
+        showBothResults: savedSettings.showBothResults ?? false,
+        useBackendProcessing: savedSettings.useBackendProcessing ?? true,
+        includeRealTimeInfo: savedSettings.includeRealTimeInfo ?? true
       };
     }
   } catch (error) {
@@ -71,7 +85,7 @@ const loadFromStorage = async (): Promise<WebSearchSettings> => {
   // 默认初始状态
   return {
     enabled: false,
-    provider: 'tavily',
+    provider: 'local-duckduckgo' as WebSearchProvider,
     apiKey: '',
     includeInContext: true,
     maxResults: 5,
@@ -81,14 +95,21 @@ const loadFromStorage = async (): Promise<WebSearchSettings> => {
     searchWithTime: false,
     excludeDomains: [],
     providers: getDefaultProviders(),
-    customProviders: []
+    customProviders: [],
+    // 智能搜索相关配置
+    smartSearchEnabled: true,
+    smartSearchSensitivity: SmartSearchSensitivity.MEDIUM,
+    sendSearchToAI: true,
+    showBothResults: false,
+    useBackendProcessing: true,
+    includeRealTimeInfo: true
   };
 };
 
 // 定义初始状态（首次加载使用默认值）
 const initialState: WebSearchSettings = {
   enabled: false,
-  provider: 'tavily',
+  provider: 'local-duckduckgo' as WebSearchProvider,
   apiKey: '',
   includeInContext: true,
   maxResults: 5,
@@ -98,7 +119,14 @@ const initialState: WebSearchSettings = {
   searchWithTime: false,
   excludeDomains: [],
   providers: getDefaultProviders(),
-  customProviders: []
+  customProviders: [],
+  // 智能搜索相关配置
+  smartSearchEnabled: true,
+  smartSearchSensitivity: SmartSearchSensitivity.MEDIUM,
+  sendSearchToAI: true,
+  showBothResults: false,
+  useBackendProcessing: true,
+  includeRealTimeInfo: true
 };
 
 // 延迟加载数据，避免循环导入
@@ -136,7 +164,14 @@ const saveToStorage = (state: WebSearchSettings) => {
     excludeDomains: [...(state.excludeDomains || [])],
     providers: state.providers.map(p => ({ ...p })),
     customProviders: (state.customProviders || []).map(p => ({ ...p })),
-    contentLimit: state.contentLimit
+    contentLimit: state.contentLimit,
+    // 智能搜索相关配置
+    smartSearchEnabled: state.smartSearchEnabled,
+    smartSearchSensitivity: state.smartSearchSensitivity,
+    sendSearchToAI: state.sendSearchToAI,
+    showBothResults: state.showBothResults,
+    useBackendProcessing: state.useBackendProcessing,
+    includeRealTimeInfo: state.includeRealTimeInfo
   };
 
   setStorageItem(STORAGE_KEY, serializableState).catch(error => {
@@ -267,6 +302,31 @@ const webSearchSlice = createSlice({
     resetProviders: (state) => {
       state.providers = getDefaultProviders();
       saveToStorage(state);
+    },
+    // 智能搜索相关操作
+    toggleSmartSearchEnabled: (state) => {
+      state.smartSearchEnabled = !state.smartSearchEnabled;
+      saveToStorage(state);
+    },
+    setSmartSearchSensitivity: (state, action: PayloadAction<SmartSearchSensitivityType>) => {
+      state.smartSearchSensitivity = action.payload;
+      saveToStorage(state);
+    },
+    toggleSendSearchToAI: (state) => {
+      state.sendSearchToAI = !state.sendSearchToAI;
+      saveToStorage(state);
+    },
+    toggleShowBothResults: (state) => {
+      state.showBothResults = !state.showBothResults;
+      saveToStorage(state);
+    },
+    toggleUseBackendProcessing: (state) => {
+      state.useBackendProcessing = !state.useBackendProcessing;
+      saveToStorage(state);
+    },
+    toggleIncludeRealTimeInfo: (state) => {
+      state.includeRealTimeInfo = !state.includeRealTimeInfo;
+      saveToStorage(state);
     }
   }
 });
@@ -291,8 +351,13 @@ export const {
   addExcludeDomain,
   removeExcludeDomain,
   setContentLimit,
-  updateProvider,
-  resetProviders
+  // 智能搜索相关操作
+  toggleSmartSearchEnabled,
+  setSmartSearchSensitivity,
+  toggleSendSearchToAI,
+  toggleShowBothResults,
+  toggleUseBackendProcessing,
+  toggleIncludeRealTimeInfo
 } = webSearchSlice.actions;
 
 export default webSearchSlice.reducer;

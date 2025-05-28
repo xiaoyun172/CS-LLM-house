@@ -54,6 +54,7 @@ import {
   selectShortcutsError
 } from '../../shared/store/slices/shortcutsSlice';
 import type { ShortcutConfig, KeyCombination, ShortcutCategory } from '../../shared/types/shortcuts';
+import { shortcutsService } from '../../shared/services/ShortcutsService';
 
 /**
  * 快捷键分类信息
@@ -98,6 +99,12 @@ const ShortcutsPage: React.FC = () => {
   const [importText, setImportText] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  
+  // 快捷键录制相关状态
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedCombo, setRecordedCombo] = useState<KeyCombination | null>(null);
+  const [validationError, setValidationError] = useState<string>('');
+  // 使用全局的快捷键服务实例
 
   // 加载快捷键配置
   useEffect(() => {
@@ -131,18 +138,72 @@ const ShortcutsPage: React.FC = () => {
 
   const handleEditShortcut = (shortcut: ShortcutConfig) => {
     setEditingShortcut(shortcut);
+    setRecordedCombo(null);
+    setValidationError('');
+    setIsRecording(false);
     setEditDialogOpen(true);
   };
 
   const handleSaveShortcut = () => {
     if (editingShortcut) {
+      const finalShortcut = recordedCombo 
+        ? { ...editingShortcut, combination: recordedCombo }
+        : editingShortcut;
+        
       dispatch(updateShortcut({
         id: editingShortcut.id,
-        updates: editingShortcut
+        updates: finalShortcut
       }));
       setEditDialogOpen(false);
       setEditingShortcut(null);
+      setRecordedCombo(null);
+      setValidationError('');
+      setIsRecording(false);
     }
+  };
+
+  // 开始录制快捷键
+  const startRecording = () => {
+    setIsRecording(true);
+    setRecordedCombo(null);
+    setValidationError('');
+  };
+
+  // 停止录制快捷键
+  const stopRecording = () => {
+    setIsRecording(false);
+  };
+
+  // 处理快捷键录制
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (!isRecording) return;
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const combo: KeyCombination = {
+      key: event.key,
+      ctrl: event.ctrlKey,
+      alt: event.altKey,
+      shift: event.shiftKey,
+      meta: event.metaKey
+    };
+    
+    setRecordedCombo(combo);
+    
+    // 验证快捷键
+    const validation = shortcutsService.validate({
+      id: editingShortcut?.id,
+      combination: combo
+    });
+    
+    if (!validation.isValid) {
+      setValidationError(validation.error || '快捷键无效');
+    } else {
+      setValidationError('');
+    }
+    
+    setIsRecording(false);
   };
 
   const handleResetDefaults = () => {
@@ -407,6 +468,7 @@ const ShortcutsPage: React.FC = () => {
         onClose={() => setEditDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        onKeyDown={handleKeyDown}
       >
         <DialogTitle>编辑快捷键</DialogTitle>
         <DialogContent>
@@ -432,11 +494,79 @@ const ShortcutsPage: React.FC = () => {
                 multiline
                 rows={2}
               />
+              
+              {/* 快捷键设置区域 */}
+              <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  快捷键组合
+                </Typography>
+                
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    当前：
+                  </Typography>
+                  <Chip
+                    label={formatKeyCombo(editingShortcut.combination)}
+                    size="small"
+                    variant="outlined"
+                  />
+                </Box>
+                
+                {recordedCombo && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                当前快捷键：{formatKeyCombo(editingShortcut.combination)}
+                      新设置：
               </Typography>
+                    <Chip
+                      label={formatKeyCombo(recordedCombo)}
+                      size="small"
+                      color={validationError ? 'error' : 'success'}
+                      variant="outlined"
+                    />
+                  </Box>
+                )}
+                
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    variant={isRecording ? 'contained' : 'outlined'}
+                    color={isRecording ? 'secondary' : 'primary'}
+                    onClick={isRecording ? stopRecording : startRecording}
+                    size="small"
+                  >
+                    {isRecording ? '按下快捷键...' : '录制新快捷键'}
+                  </Button>
+                  {recordedCombo && (
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setRecordedCombo(null);
+                        setValidationError('');
+                      }}
+                      size="small"
+                    >
+                      清除
+                    </Button>
+                  )}
+                </Box>
+                
+                {validationError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {validationError}
+                  </Alert>
+                )}
+                
+                {isRecording && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    请按下您想要设置的快捷键组合...
+                  </Alert>
+                )}
+              </Box>
+              
               <Alert severity="info">
-                快捷键组合的修改需要重新录制，暂时只支持修改名称和描述。
+                <Typography variant="body2">
+                  <strong>提示：</strong>为避免与浏览器快捷键冲突，建议使用 Alt + 字母 的组合。
+                  系统会自动检测并提示可能的冲突。
+                </Typography>
               </Alert>
             </Box>
           )}
@@ -445,7 +575,11 @@ const ShortcutsPage: React.FC = () => {
           <Button onClick={() => setEditDialogOpen(false)}>
             取消
           </Button>
-          <Button onClick={handleSaveShortcut} variant="contained">
+          <Button 
+            onClick={handleSaveShortcut} 
+            variant="contained"
+            disabled={!!validationError}
+          >
             保存
           </Button>
         </DialogActions>

@@ -10,6 +10,7 @@ import ChatInput from '../../../components/ChatInput';
 import CompactChatInput from '../../../components/CompactChatInput';
 import { Sidebar } from '../../../components/TopicManagement';
 import ChatToolbar from '../../../components/ChatToolbar';
+import SearchProgressIndicator from '../../../components/SearchProgressIndicator';
 import { ModelSelector } from './ModelSelector';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../../../shared/store';
@@ -17,6 +18,7 @@ import type { SiliconFlowImageFormat } from '../../../shared/types';
 import { EventEmitter, EVENT_NAMES } from '../../../shared/services/EventService';
 import { TopicService } from '../../../shared/services/TopicService';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
+import type { SearchProgressStatus } from '../../../shared/services/WebSearchBackendService';
 
 // 所有从父组件传入的props类型
 interface ChatPageUIProps {
@@ -50,6 +52,17 @@ interface ChatPageUIProps {
   handleMessageSend: (content: string, images?: any[], toolsEnabled?: boolean, files?: any[]) => void;
   handleMultiModelSend?: (content: string, models: any[], images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => void;
   handleStopResponseClick: () => void;
+  smartSearchEnabled?: boolean;
+  toggleSmartSearch?: () => void;
+  showBothResults?: boolean;
+  toggleShowBothResults?: () => void;
+  searchProgress?: {
+    visible: boolean;
+    status: SearchProgressStatus;
+    query?: string;
+    error?: string;
+  };
+  handleSearchProgressClose?: () => void;
 }
 
 export const ChatPageUI: React.FC<ChatPageUIProps> = ({
@@ -82,7 +95,13 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
   handleMCPModeChange,
   handleMessageSend,
   handleMultiModelSend,
-  handleStopResponseClick
+  handleStopResponseClick,
+  smartSearchEnabled,
+  toggleSmartSearch,
+  showBothResults,
+  toggleShowBothResults,
+  searchProgress,
+  handleSearchProgressClose
 }) => {
   const dispatch = useDispatch();
 
@@ -386,6 +405,10 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                       toggleWebSearch={toggleWebSearch}
                       toolsEnabled={toolsEnabled}
                       onToolsEnabledChange={toggleToolsEnabled}
+                      smartSearchEnabled={smartSearchEnabled}
+                      toggleSmartSearch={toggleSmartSearch}
+                      showBothResults={showBothResults}
+                      toggleShowBothResults={toggleShowBothResults}
                     />
                   </Box>
                 )}
@@ -465,6 +488,10 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
                       toggleWebSearch={toggleWebSearch}
                       toolsEnabled={toolsEnabled}
                       onToolsEnabledChange={toggleToolsEnabled}
+                      smartSearchEnabled={smartSearchEnabled}
+                      toggleSmartSearch={toggleSmartSearch}
+                      showBothResults={showBothResults}
+                      toggleShowBothResults={toggleShowBothResults}
                     />
                   </Box>
                 )}
@@ -478,6 +505,17 @@ export const ChatPageUI: React.FC<ChatPageUIProps> = ({
           )}
         </Box>
       </Box>
+      
+      {/* 搜索进度指示器 */}
+      {searchProgress && searchProgress.visible && (
+        <SearchProgressIndicator 
+          status={searchProgress.status}
+          query={searchProgress.query}
+          error={searchProgress.error}
+          visible={searchProgress.visible}
+          onClose={handleSearchProgressClose}
+        />
+      )}
     </Box>
   );
 };

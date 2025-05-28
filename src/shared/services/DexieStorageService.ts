@@ -500,8 +500,22 @@ class DexieStorageService extends Dexie {
     return block;
   }
 
+  /**
+   * 获取指定消息的所有消息块
+   * @param messageId 消息ID
+   * @returns 消息块数组
+   */
   async getMessageBlocksByMessageId(messageId: string): Promise<MessageBlock[]> {
-    return await this.message_blocks.where('messageId').equals(messageId).toArray();
+    return this.message_blocks.where({ messageId }).toArray();
+  }
+  
+  /**
+   * 获取指定消息的所有消息块（getMessageBlocks别名）
+   * @param messageId 消息ID
+   * @returns 消息块数组
+   */
+  async getMessageBlocks(messageId: string): Promise<MessageBlock[]> {
+    return this.getMessageBlocksByMessageId(messageId);
   }
 
   async deleteMessageBlock(id: string): Promise<void> {

@@ -17,12 +17,15 @@ export interface ToolInputSchema {
 /**
  * 工具定义
  */
-export interface Tool {
+export interface ToolDefinition {
   id: string;
   name: string;
   description?: string;
   inputSchema: ToolInputSchema;
   provider?: string;
+  type?: 'web_search';
+  query?: string;
+  maxResults?: number;
 }
 
 /**
@@ -54,7 +57,7 @@ export interface ToolCallResponse {
  */
 interface BaseToolResponse {
   id: string; // 唯一ID
-  tool: Tool;
+  tool: ToolDefinition;
   arguments: Record<string, unknown> | undefined;
   status: 'pending' | 'running' | 'completed' | 'error';
   response?: any;
@@ -164,3 +167,13 @@ export const CODE_TOOL = {
     }
   }
 };
+
+// 搜索工具定义
+export interface WebSearchTool {
+  type: 'web_search';
+  query: string;
+  maxResults?: number;
+}
+
+// 保留为别名，保持与之前的代码兼容
+export type Tool = ToolDefinition;

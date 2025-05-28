@@ -1,4 +1,4 @@
-import type { MCPServer, MCPTool, MCPPrompt, MCPResource, MCPCallToolResponse } from '../types';
+import type { MCPServer, MCPTool, MCPPrompt, MCPResource, MCPCallToolResponse, MCPServerType } from '../types';
 import { getStorageItem, setStorageItem } from '../utils/storage';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -96,6 +96,13 @@ export class MCPService {
    */
   public getServers(): MCPServer[] {
     return [...this.servers];
+  }
+
+  /**
+   * 列出所有服务器（与getServers功能相同，但用于兼容其他代码）
+   */
+  public async listServers(): Promise<MCPServer[]> {
+    return this.getServers();
   }
 
   /**
@@ -641,6 +648,46 @@ export class MCPService {
     const promises = Array.from(this.clients.keys()).map(key => this.closeClient(key));
     await Promise.all(promises);
     console.log('[MCP] 所有连接已清理');
+  }
+
+  /**
+   * 初始化搜索服务器，确保DuckDuckGo搜索服务可用
+   */
+  public async initializeSearchService(): Promise<void> {
+    try {
+      console.log('[MCP] 初始化DuckDuckGo搜索服务');
+      
+      // 检查是否已添加DuckDuckGo搜索服务器
+      const servers = await this.listServers();
+      const duckduckgoServer = servers.find((server: MCPServer) => server.name === '@aether/duckduckgo-search');
+      
+      if (!duckduckgoServer) {
+        // 如果服务器未添加，添加并启用搜索服务
+        console.log('[MCP] 添加DuckDuckGo搜索服务器');
+        
+        const newServer: MCPServer = {
+          id: 'builtin-duckduckgo-search',
+          name: '@aether/duckduckgo-search',
+          type: 'inMemory' as MCPServerType,
+          description: '基于DuckDuckGo的免费网络搜索服务，无需API密钥，在对话中提供实时搜索结果',
+          isActive: true,
+          provider: 'AetherAI',
+          logoUrl: '',
+          tags: ['搜索', 'DuckDuckGo', '免费']
+        };
+        
+        await this.addServer(newServer);
+        console.log('[MCP] DuckDuckGo搜索服务器已添加');
+      } else if (!duckduckgoServer.isActive) {
+        // 如果服务器存在但未激活，则激活它
+        console.log('[MCP] 激活DuckDuckGo搜索服务器');
+        await this.toggleServer(duckduckgoServer.id, true);
+      }
+      
+      console.log('[MCP] DuckDuckGo搜索服务初始化完成');
+    } catch (error) {
+      console.error('[MCP] 初始化DuckDuckGo搜索服务失败:', error);
+    }
   }
 }
 

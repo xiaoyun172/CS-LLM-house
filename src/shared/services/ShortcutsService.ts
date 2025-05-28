@@ -46,7 +46,7 @@ const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
     id: 'new_topic',
     name: '新建话题',
     description: '创建新的聊天话题',
-    combination: { key: 'n', ctrl: true },
+    combination: { key: 'n', alt: true },
     action: 'new_topic',
     enabled: true,
     isDefault: true,
@@ -70,7 +70,7 @@ const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
     id: 'toggle_sidebar',
     name: '切换侧边栏',
     description: '显示或隐藏侧边栏',
-    combination: { key: 'b', ctrl: true },
+    combination: { key: 's', alt: true },
     action: 'toggle_sidebar',
     enabled: true,
     isDefault: true,
@@ -82,7 +82,7 @@ const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
     id: 'open_settings',
     name: '打开设置',
     description: '打开应用设置页面',
-    combination: { key: ',', ctrl: true },
+    combination: { key: ',', alt: true },
     action: 'open_settings',
     enabled: true,
     isDefault: true,
@@ -94,7 +94,7 @@ const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
     id: 'regenerate_response',
     name: '重新生成',
     description: '重新生成最后一条AI回复',
-    combination: { key: 'r', ctrl: true },
+    combination: { key: 'r', alt: true },
     action: 'regenerate_response',
     enabled: true,
     isDefault: true,
@@ -114,6 +114,47 @@ const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
+];
+
+/**
+ * 常见浏览器快捷键黑名单
+ */
+const BROWSER_SHORTCUT_BLACKLIST: KeyCombination[] = [
+  // Chrome/Edge 常见快捷键
+  { key: 'n', ctrl: true },      // 新建窗口
+  { key: 't', ctrl: true },      // 新建标签页
+  { key: 'w', ctrl: true },      // 关闭标签页
+  { key: 'r', ctrl: true },      // 刷新页面
+  { key: 'f', ctrl: true },      // 查找
+  { key: 'h', ctrl: true },      // 历史记录
+  { key: 'j', ctrl: true },      // 下载页面
+  { key: 'k', ctrl: true },      // 地址栏搜索
+  { key: 'l', ctrl: true },      // 地址栏焦点
+  { key: 'o', ctrl: true },      // 打开文件
+  { key: 'p', ctrl: true },      // 打印
+  { key: 's', ctrl: true },      // 保存页面
+  { key: 'u', ctrl: true },      // 查看源代码
+  { key: 'b', ctrl: true },      // 书签栏
+  { key: 'd', ctrl: true },      // 书签当前页
+  { key: 'e', ctrl: true },      // 搜索栏
+  { key: 'g', ctrl: true },      // 查找下一个
+  { key: 'i', ctrl: true },      // 开发者工具
+  { key: 'z', ctrl: true },      // 撤销
+  { key: 'y', ctrl: true },      // 重做
+  { key: 'a', ctrl: true },      // 全选
+  { key: 'c', ctrl: true },      // 复制
+  { key: 'v', ctrl: true },      // 粘贴
+  { key: 'x', ctrl: true },      // 剪切
+  { key: '+', ctrl: true },      // 放大
+  { key: '-', ctrl: true },      // 缩小
+  { key: '0', ctrl: true },      // 重置缩放
+  { key: 'F5' },                 // 刷新
+  { key: 'F12' },                // 开发者工具
+  // Alt组合键（较少冲突但仍需注意）
+  { key: 'F4', alt: true },      // 关闭窗口
+  { key: 'Tab', alt: true },     // 切换窗口
+  { key: 'Left', alt: true },    // 后退
+  { key: 'Right', alt: true },   // 前进
 ];
 
 /**
@@ -298,6 +339,34 @@ class ShortcutsService implements ShortcutManager {
   }
 
   /**
+   * 检查是否与浏览器快捷键冲突
+   */
+  checkBrowserConflicts(combination: KeyCombination): { hasConflict: boolean; description?: string } {
+    for (const browserShortcut of BROWSER_SHORTCUT_BLACKLIST) {
+      if (browserShortcut.key.toLowerCase() === combination.key.toLowerCase() &&
+          !!browserShortcut.ctrl === !!combination.ctrl &&
+          !!browserShortcut.alt === !!combination.alt &&
+          !!browserShortcut.shift === !!combination.shift &&
+          !!browserShortcut.meta === !!combination.meta) {
+        
+        // 生成冲突描述
+        let description = '与浏览器快捷键冲突: ';
+        const parts: string[] = [];
+        if (combination.ctrl) parts.push('Ctrl');
+        if (combination.alt) parts.push('Alt');
+        if (combination.shift) parts.push('Shift');
+        if (combination.meta) parts.push('Cmd');
+        parts.push(combination.key);
+        description += parts.join(' + ');
+        
+        return { hasConflict: true, description };
+      }
+    }
+    
+    return { hasConflict: false };
+  }
+
+  /**
    * 验证快捷键
    */
   validate(config: Partial<ShortcutConfig>): ShortcutValidation {
@@ -309,6 +378,7 @@ class ShortcutsService implements ShortcutManager {
       return { isValid: false, error: '必须指定按键' };
     }
 
+    // 检查与其他快捷键的冲突
     const conflicts = this.checkConflicts(config.combination, config.id);
     if (conflicts.length > 0) {
       return {
@@ -316,6 +386,16 @@ class ShortcutsService implements ShortcutManager {
         error: '快捷键冲突',
         conflicts
       };
+    }
+
+    // 检查与浏览器快捷键的冲突
+    const browserConflict = this.checkBrowserConflicts(config.combination);
+    if (browserConflict.hasConflict) {
+      return {
+        isValid: false,
+        error: browserConflict.description || '与浏览器快捷键冲突',
+        isBrowserConflict: true
+      } as ShortcutValidation;
     }
 
     return { isValid: true };

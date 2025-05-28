@@ -32,6 +32,26 @@ export const presetModels: PresetModel[] = [
     defaultBaseUrl: 'https://api.openai.com/v1',
   },
 
+  // Gemini 模型（通过OpenAI兼容API）
+  {
+    id: 'gemini-2.5-flash-preview-05-20',
+    name: 'Gemini 2.5 Flash Preview 05-20',
+    provider: 'openai',
+    description: 'Google Gemini 2.5 Flash预览版（05-20版本），通过OpenAI兼容API提供服务，具有强大的推理能力。',
+    capabilities: ['复杂推理', '内容生成', '代码辅助', '思考过程', '快速响应'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://apixiaoyun.deno.dev',
+  },
+  {
+    id: 'gemini-2.5-flash-preview-04-17',
+    name: 'Gemini 2.5 Flash Preview 04-17',
+    provider: 'openai',
+    description: 'Google Gemini 2.5 Flash预览版（04-17版本），通过OpenAI兼容API提供服务，具有强大的推理能力。',
+    capabilities: ['复杂推理', '内容生成', '代码辅助', '思考过程', '快速响应'],
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://apixiaoyun.deno.dev',
+  },
+
   // SiliconFlow 模型
   {
     id: 'deepseek-ai/DeepSeek-V3',

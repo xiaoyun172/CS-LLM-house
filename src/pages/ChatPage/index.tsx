@@ -10,7 +10,6 @@ import { useChatFeatures } from './hooks/useChatFeatures.ts';
 import { ChatPageUI } from './components/ChatPageUI.tsx';
 import {
   selectMessagesForTopic,
-  selectTopicLoading,
   selectTopicStreaming
 } from '../../shared/store/selectors/messageSelectors';
 import { dexieStorage } from '../../shared/services/DexieStorageService';
@@ -76,9 +75,6 @@ const ChatPage: React.FC = () => {
   const isStreaming = useSelector((state: RootState) =>
     currentTopic ? selectTopicStreaming(state, currentTopic.id) : false
   );
-  const isLoading = useSelector((state: RootState) =>
-    currentTopic ? selectTopicLoading(state, currentTopic.id) : false
-  );
 
   // 布局相关钩子
   const {
@@ -116,14 +112,16 @@ const ChatPage: React.FC = () => {
     webSearchActive,
     imageGenerationMode,
     toolsEnabled,
-    mcpMode,
+    smartSearchEnabled,
+    searchProgress,
     toggleWebSearch,
     toggleImageGenerationMode,
     toggleToolsEnabled,
-    handleMCPModeChange,
-    handleStopResponseClick,
+    toggleSmartSearch,
     handleMessageSend,
-    handleMultiModelSend
+    handleMultiModelSend,
+    handleStopResponseClick,
+    handleSearchProgressClose
   } = useChatFeatures(currentTopic, currentMessages, selectedModel, handleSendMessage);
 
   // 在主题切换时加载消息
@@ -239,7 +237,6 @@ const ChatPage: React.FC = () => {
       currentTopic={currentTopic}
       currentMessages={currentMessages}
       isStreaming={isStreaming}
-      isLoading={isLoading}
       isMobile={isMobile}
       drawerOpen={drawerOpen}
       setDrawerOpen={setDrawerOpen}
@@ -258,14 +255,16 @@ const ChatPage: React.FC = () => {
       webSearchActive={webSearchActive}
       imageGenerationMode={imageGenerationMode}
       toolsEnabled={toolsEnabled}
-      mcpMode={mcpMode}
       toggleWebSearch={toggleWebSearch}
       toggleImageGenerationMode={toggleImageGenerationMode}
       toggleToolsEnabled={toggleToolsEnabled}
-      handleMCPModeChange={handleMCPModeChange}
       handleMessageSend={handleMessageSend}
       handleMultiModelSend={handleMultiModelSend}
       handleStopResponseClick={handleStopResponseClick}
+      smartSearchEnabled={smartSearchEnabled}
+      toggleSmartSearch={toggleSmartSearch}
+      searchProgress={searchProgress}
+      handleSearchProgressClose={handleSearchProgressClose}
     />
   );
 };

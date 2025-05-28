@@ -7,6 +7,8 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import SearchIcon from '@mui/icons-material/Search';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import CompareIcon from '@mui/icons-material/Compare';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../shared/store';
 import { TopicService } from '../shared/services/TopicService';
@@ -15,6 +17,7 @@ import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
 import { updateSettings } from '../shared/store/settingsSlice';
 import WebSearchProviderSelector from './WebSearchProviderSelector';
 import MCPToolsButton from './chat/MCPToolsButton';
+import { useNavigate } from 'react-router-dom';
 
 interface ChatToolbarProps {
   onClearTopic?: () => void;
@@ -24,6 +27,10 @@ interface ChatToolbarProps {
   toggleWebSearch?: () => void; // 切换网络搜索模式
   toolsEnabled?: boolean; // 是否启用工具调用
   onToolsEnabledChange?: (enabled: boolean) => void; // 切换工具调用
+  smartSearchEnabled?: boolean; // 是否启用智能搜索
+  toggleSmartSearch?: () => void; // 切换智能搜索模式
+  showBothResults?: boolean; // 是否同时显示搜索结果和AI分析
+  toggleShowBothResults?: () => void; // 切换同时显示模式
 }
 
 /**
@@ -37,7 +44,11 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   toggleImageGenerationMode,
   webSearchActive = false,
   toggleWebSearch,
-  onToolsEnabledChange
+  onToolsEnabledChange,
+  smartSearchEnabled = false,
+  toggleSmartSearch,
+  showBothResults = false,
+  toggleShowBothResults
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -48,6 +59,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   // 从Redux获取网络搜索设置
   const webSearchSettings = useSelector((state: RootState) => state.webSearch);
@@ -210,6 +222,57 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
     }
   };
 
+  // 处理网络搜索按钮点击
+  const handleWebSearchClick = () => {
+    // 如果正在搜索中，则关闭搜索状态
+    if (webSearchActive && toggleWebSearch) {
+      toggleWebSearch();
+      return;
+    }
+    
+    // 如果搜索功能未启用，则导航到设置页面
+    if (!webSearchEnabled) {
+      navigate('/settings/web-search');
+      return;
+    }
+    
+    // 如果有有效的当前提供商，直接激活搜索模式
+    if (toggleWebSearch && currentProvider && webSearchSettings?.providers?.some(p => p.id === currentProvider && getProviderStatus(p).available)) {
+      toggleWebSearch();
+      return;
+    }
+    
+    // 其他情况，显示提供商选择器
+    setShowProviderSelector(true);
+  };
+
+  // 检查提供商状态的辅助函数
+  const getProviderStatus = (provider: any) => {
+    // 本地搜索提供商不需要配置
+    if (provider.id === 'local-google' || provider.id === 'local-bing') {
+      return { available: true };
+    }
+
+    // 检查API密钥
+    if (provider.apiKey && provider.apiKey.trim()) {
+      return { available: true };
+    }
+
+    // 检查自托管服务（如Searxng）
+    if (provider.apiHost && provider.apiHost.trim()) {
+      return { available: true };
+    }
+
+    // 检查基础认证（用于Searxng）
+    if ('basicAuthUsername' in provider && 'basicAuthPassword' in provider) {
+      if (provider.basicAuthUsername && provider.basicAuthPassword) {
+        return { available: true };
+      }
+    }
+
+    return { available: false };
+  };
+
   // 优化的拖动滑动处理 - 增加齿轮感和流畅度
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     // 移除折叠状态检查，因为折叠时工具栏已经隐藏
@@ -296,6 +359,24 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
     }
   };
 
+  // 处理智能搜索按钮点击
+  const handleSmartSearchClick = () => {
+    if (toggleSmartSearch) {
+      toggleSmartSearch();
+    } else {
+      navigate('/settings/web-search');
+    }
+  };
+
+  // 处理同时显示搜索结果和AI分析按钮点击
+  const handleShowBothResultsClick = () => {
+    if (toggleShowBothResults) {
+      toggleShowBothResults();
+    } else {
+      navigate('/settings/web-search');
+    }
+  };
+
   // 气泡按钮数据
   const buttons = [
     {
@@ -328,16 +409,41 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
     }
   ];
 
-  // 处理网络搜索按钮点击
-  const handleWebSearchClick = () => {
-    if (webSearchActive) {
-      // 如果当前处于搜索模式，则关闭搜索
-      toggleWebSearch?.();
-    } else {
-      // 如果当前不在搜索模式，显示提供商选择器
-      setShowProviderSelector(true);
-    }
-  };
+  // 如果toggleWebSearch存在，添加网络搜索按钮
+  if (toggleWebSearch) {
+    buttons.push({
+      id: 'web-search',
+      icon: <SearchIcon sx={getIconStyle(webSearchActive, '#3b82f6', '#FFFFFF')} />,
+      label: webSearchActive ? '关闭搜索' : '网络搜索',
+      onClick: handleWebSearchClick,
+      color: '#FFFFFF',
+      bgColor: webSearchActive ? (isDarkMode ? '#424242' : '#3b82f6') : isDarkMode ? '#1E1E1E' : '#FFFFFF'
+    });
+  }
+
+  // 如果toggleSmartSearch存在，添加智能搜索按钮
+  if (toggleSmartSearch) {
+    buttons.push({
+      id: 'smart-search',
+      icon: <SmartToyIcon sx={getIconStyle(smartSearchEnabled, '#FF9800', '#FFFFFF')} />,
+      label: smartSearchEnabled ? '关闭智能搜索' : '智能搜索',
+      onClick: handleSmartSearchClick,
+      color: '#FFFFFF',
+      bgColor: smartSearchEnabled ? (isDarkMode ? '#424242' : '#FF9800') : isDarkMode ? '#1E1E1E' : '#FFFFFF'
+    });
+  }
+
+  // 如果toggleShowBothResults存在，添加同时显示按钮
+  if (toggleShowBothResults) {
+    buttons.push({
+      id: 'show-both-results',
+      icon: <CompareIcon sx={getIconStyle(showBothResults, '#8E24AA', '#FFFFFF')} />,
+      label: showBothResults ? '关闭同显模式' : '同显模式',
+      onClick: handleShowBothResultsClick,
+      color: '#FFFFFF',
+      bgColor: showBothResults ? (isDarkMode ? '#424242' : '#8E24AA') : isDarkMode ? '#1E1E1E' : '#FFFFFF'
+    });
+  }
 
   // 处理提供商选择
   const handleProviderSelect = (providerId: string) => {
@@ -347,19 +453,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
     }
   };
 
-  // 如果网络搜索已启用，添加网络搜索按钮
-  if (webSearchEnabled && toggleWebSearch) {
-    const providerName = webSearchSettings?.providers?.find(p => p.id === currentProvider)?.name || '搜索';
-
-    buttons.push({
-      id: 'web-search',
-      icon: <SearchIcon sx={getIconStyle(webSearchActive, '#3b82f6', '#FFFFFF')} />,
-      label: webSearchActive ? '关闭搜索' : providerName,
-      onClick: handleWebSearchClick,
-      color: '#FFFFFF',
-      bgColor: webSearchActive ? (isDarkMode ? '#424242' : '#3b82f6') : isDarkMode ? '#1E1E1E' : '#FFFFFF'
-    });
-  }
+  // 网络搜索按钮现在已经添加到buttons数组中，无需额外条件判断
 
   return (
     <Box
@@ -489,7 +583,13 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
                 background: button.bgColor || toolbarStyles.buttonBg,
                 backdropFilter: toolbarStyles.backdropFilter,
                 WebkitBackdropFilter: toolbarStyles.backdropFilter,
-                color: isDarkMode ? '#FFFFFF' : button.id === 'new-topic' ? '#4CAF50' : button.id === 'clear-topic' ? (clearConfirmMode ? '#FFFFFF' : '#2196F3') : button.id === 'generate-image' ? (imageGenerationMode ? '#FFFFFF' : '#9C27B0') : button.id === 'web-search' ? (webSearchActive ? '#FFFFFF' : '#3b82f6') : button.color,
+                color: isDarkMode ? '#FFFFFF' : button.id === 'new-topic' ? '#4CAF50' : 
+                      button.id === 'clear-topic' ? (clearConfirmMode ? '#FFFFFF' : '#2196F3') : 
+                      button.id === 'generate-image' ? (imageGenerationMode ? '#FFFFFF' : '#9C27B0') : 
+                      button.id === 'web-search' ? (webSearchActive ? '#FFFFFF' : '#3b82f6') : 
+                      button.id === 'smart-search' ? (smartSearchEnabled ? '#FFFFFF' : '#FF9800') : 
+                      button.id === 'show-both-results' ? (showBothResults ? '#FFFFFF' : '#8E24AA') : 
+                      button.color,
                 border: `1px solid ${toolbarStyles.buttonBorder}`,
                 borderRadius: toolbarStyles.borderRadius,
                 padding: '6px 12px',
@@ -505,10 +605,14 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
                   boxShadow: toolbarStyles.hoverShadow ? `0 2px 4px ${toolbarStyles.hoverShadow}` : 'none',
                   background: button.id === 'web-search' && webSearchActive
                     ? button.bgColor
+                    : button.id === 'smart-search' && smartSearchEnabled
+                      ? button.bgColor
                     : button.id === 'generate-image' && imageGenerationMode
                       ? button.bgColor
                       : button.id === 'clear-topic' && clearConfirmMode
                         ? (isDarkMode ? '#b71c1c' : '#d32f2f')
+                          : button.id === 'show-both-results' && showBothResults
+                            ? button.bgColor
                         : toolbarStyles.hoverBg,
                   transform: inputBoxStyle === 'modern' ? 'translateY(-1px) translateZ(0)' : 'translateZ(0)'
                 },

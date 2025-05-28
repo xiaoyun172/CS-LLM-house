@@ -113,6 +113,8 @@ export interface ShortcutValidation {
   error?: string;
   /** 冲突信息 */
   conflicts?: ShortcutConflict[];
+  /** 是否与浏览器快捷键冲突 */
+  isBrowserConflict?: boolean;
 }
 
 /**
@@ -132,6 +134,8 @@ export interface ShortcutManager {
   toggle(id: string, enabled: boolean): void;
   /** 检查快捷键冲突 */
   checkConflicts(combination: KeyCombination, excludeId?: string): ShortcutConflict[];
+  /** 检查浏览器快捷键冲突 */
+  checkBrowserConflicts?(combination: KeyCombination): { hasConflict: boolean; description?: string };
   /** 验证快捷键 */
   validate(config: Partial<ShortcutConfig>): ShortcutValidation;
   /** 重置为默认设置 */

@@ -668,6 +668,22 @@ const ModelProviderSettings: React.FC = () => {
                 <Typography variant="subtitle2" gutterBottom color="text.secondary">
                   API密钥
                 </Typography>
+                {provider.hideApiKey ? (
+                  <Box sx={{
+                    p: 2,
+                    bgcolor: (theme) => alpha(theme.palette.warning.main, 0.1),
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: (theme) => alpha(theme.palette.warning.main, 0.3)
+                  }}>
+                    <Typography variant="body2" color="warning.main" sx={{ fontWeight: 500 }}>
+                      🔒 API密钥已预配置
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      此提供商的API密钥已由系统预配置，无需手动输入。
+                    </Typography>
+                  </Box>
+                ) : (
                 <TextField
                   fullWidth
                   placeholder="输入API密钥"
@@ -682,6 +698,7 @@ const ModelProviderSettings: React.FC = () => {
                     }
                   }}
                 />
+                )}
               </Box>
 
               <Box sx={{ mb: 3 }}>
@@ -808,6 +825,7 @@ const ModelProviderSettings: React.FC = () => {
                 >
                   点击✓测试单个模型
                 </Typography>
+                {!provider.disableAddModel && (
                 <Button
                   variant="outlined"
                   startIcon={<AutofpsSelectIcon />}
@@ -825,6 +843,8 @@ const ModelProviderSettings: React.FC = () => {
                 >
                   自动获取
                 </Button>
+                )}
+                {!provider.disableAddModel && (
                 <Button
                   startIcon={<AddIcon />}
                   onClick={() => setOpenAddModelDialog(true)}
@@ -839,9 +859,28 @@ const ModelProviderSettings: React.FC = () => {
                 >
                   手动添加
                 </Button>
+                )}
               </>
             )}
           </Box>
+
+          {provider.disableAddModel && (
+            <Box sx={{
+              mb: 2,
+              p: 2,
+              bgcolor: (theme) => alpha(theme.palette.info.main, 0.1),
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: (theme) => alpha(theme.palette.info.main, 0.3)
+            }}>
+              <Typography variant="body2" color="info.main" sx={{ fontWeight: 500 }}>
+                ℹ️ 模型管理限制
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                此提供商不允许添加新模型，仅可使用预配置的模型。
+              </Typography>
+            </Box>
+          )}
 
           <List sx={{ width: '100%' }}>
             {provider.models.map((model) => (
@@ -896,6 +935,8 @@ const ModelProviderSettings: React.FC = () => {
                         >
                           {testingModelId === model.id ? <CircularProgress size={16} color="success" /> : <VerifiedIcon color="success" />}
                         </IconButton>
+                        {!provider.disableAddModel && (
+                          <>
                         <IconButton
                           aria-label="edit"
                           onClick={() => openModelEditDialog(model)}
@@ -921,6 +962,8 @@ const ModelProviderSettings: React.FC = () => {
                         >
                           <DeleteIcon color="error" />
                         </IconButton>
+                          </>
+                        )}
                       </Box>
                     )
                   }

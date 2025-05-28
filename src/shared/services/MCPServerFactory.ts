@@ -6,6 +6,7 @@ import { ThinkingServer } from './mcpServers/ThinkingServer';
 import { FileSystemServer } from './mcpServers/FileSystemServer';
 import { DifyKnowledgeServer } from './mcpServers/DifyKnowledgeServer';
 import { LocalGoogleSearchServer } from './mcpServers/LocalGoogleSearchServer';
+import { DuckDuckGoSearchServer } from './mcpServers/DuckDuckGoSearchServer';
 
 /**
  * 创建内存 MCP 服务器
@@ -43,6 +44,10 @@ export function createInMemoryMCPServer(name: string, args: string[] = [], envs:
 
     case '@aether/local-google-search': {
       return new LocalGoogleSearchServer().server;
+    }
+
+    case '@aether/duckduckgo-search': {
+      return new DuckDuckGoSearchServer().server;
     }
 
     default:
@@ -133,6 +138,16 @@ export function getBuiltinMCPServers() {
       provider: 'AetherAI',
       logoUrl: '',
       tags: ['搜索', 'Google', 'Bing', '免费']
+    },
+    {
+      id: 'builtin-duckduckgo-search',
+      name: '@aether/duckduckgo-search',
+      type: 'inMemory' as const,
+      description: '基于DuckDuckGo的免费网络搜索服务，无需API密钥，在对话中提供实时搜索结果',
+      isActive: false,
+      provider: 'AetherAI',
+      logoUrl: '',
+      tags: ['搜索', 'DuckDuckGo', '免费']
     }
   ];
 }
@@ -148,7 +163,8 @@ export function isBuiltinServer(serverName: string): boolean {
     '@aether/fetch',
     '@aether/filesystem',
     '@aether/dify-knowledge',
-    '@aether/local-google-search'
+    '@aether/local-google-search',
+    '@aether/duckduckgo-search'
   ];
   return builtinNames.includes(serverName);
 }

@@ -16,6 +16,8 @@ export interface ModelProvider {
   models: Model[];
   providerType?: string;
   isSystem?: boolean; // 标记是否为系统供应商
+  disableAddModel?: boolean; // 禁止添加新模型（手动或自动）
+  hideApiKey?: boolean; // 隐藏API密钥显示（保密）
 }
 
 interface SettingsState {
@@ -77,6 +79,14 @@ interface SettingsState {
 
   // 工具栏折叠状态
   toolbarCollapsed?: boolean; // 工具栏是否折叠
+  
+  // 搜索设置
+  search?: {
+    enabled: boolean;              // 是否启用搜索功能
+    customEndpoint?: string;       // 自定义API端点(可选)
+    maxResults: number;            // 默认结果数量
+    includeInConversation: boolean; // 是否在对话中包含搜索结果
+  };
 }
 
 // 初始预设供应商
@@ -183,6 +193,22 @@ const initialProviders: ModelProvider[] = [
       { id: 'glm-4v-plus', name: 'GLM-4V-Plus', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4V增强版' },
       { id: 'glm-4-alltools', name: 'GLM-4-AllTools', provider: 'zhipu', enabled: true, isDefault: false, description: 'GLM-4全工具版，支持网络搜索等工具' }
     ]
+  },
+  {
+    id: 'xiaoyun',
+    name: '小云AI',
+    avatar: '云',
+    color: '#00bcd4',
+    isEnabled: true,
+    apiKey: 'AIzaSyC_y4M2Wx2Oj1KEbPQ9R2nWZXFfJOd1iZQ',
+    baseUrl: 'https://apixiaoyun.deno.dev',
+    providerType: 'openai',
+    disableAddModel: true, // 禁止添加新模型
+    hideApiKey: true, // API密钥保密
+    models: [
+      { id: 'gemini-2.5-flash-preview-05-20', name: 'Gemini 2.5 Flash Preview 05-20', provider: 'xiaoyun', enabled: true, isDefault: false, description: 'Google Gemini 2.5 Flash预览版（05-20版本），具有强大的推理能力' },
+      { id: 'gemini-2.5-flash-preview-04-17', name: 'Gemini 2.5 Flash Preview 04-17', provider: 'xiaoyun', enabled: true, isDefault: false, description: 'Google Gemini 2.5 Flash预览版（04-17版本），具有强大的推理能力' }
+    ]
   }
 ];
 
@@ -246,7 +272,14 @@ const getInitialState = (): SettingsState => {
     userMessageMaxWidth: 80,   // 默认用户消息最大宽度80%
 
     // 工具栏默认设置
-    toolbarCollapsed: false    // 默认工具栏不折叠
+    toolbarCollapsed: false,    // 默认工具栏不折叠
+    
+    // 搜索默认设置
+    search: {
+      enabled: true,              // 默认启用搜索功能
+      maxResults: 3,              // 默认返回3条结果
+      includeInConversation: true // 默认在对话中包含搜索结果
+    }
   };
 
   // 设置默认模型
@@ -272,6 +305,16 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
         const modelComboProvider = initialProviders.find(p => p.id === 'model-combo');
         if (modelComboProvider) {
           providers = [modelComboProvider, ...providers];
+        }
+      }
+
+      // 确保xiaoyun提供商始终存在（新增逻辑）
+      const hasXiaoyunProvider = providers.some(p => p.id === 'xiaoyun');
+      if (!hasXiaoyunProvider) {
+        // 如果没有xiaoyun提供商，从初始配置中添加
+        const xiaoyunProvider = initialProviders.find(p => p.id === 'xiaoyun');
+        if (xiaoyunProvider) {
+          providers = [...providers, xiaoyunProvider];
         }
       }
 
@@ -324,6 +367,15 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
       // 如果没有工具栏折叠设置，使用默认值
       if (savedSettings.toolbarCollapsed === undefined) {
         savedSettings.toolbarCollapsed = false;
+      }
+
+      // 如果没有搜索设置，使用默认值
+      if (!savedSettings.search) {
+        savedSettings.search = {
+          enabled: true,
+          maxResults: 3,
+          includeInConversation: true
+        };
       }
 
       return {
@@ -556,6 +608,53 @@ const settingsSlice = createSlice({
     setTopicNamingModelId: (state, action: PayloadAction<string>) => {
       state.topicNamingModelId = action.payload;
     },
+    
+    // 搜索设置相关的action creators
+    setSearchEnabled: (state, action: PayloadAction<boolean>) => {
+      if (!state.search) {
+        state.search = {
+          enabled: action.payload,
+          maxResults: 3,
+          includeInConversation: true
+        };
+      } else {
+        state.search.enabled = action.payload;
+      }
+    },
+    setSearchCustomEndpoint: (state, action: PayloadAction<string | undefined>) => {
+      if (!state.search) {
+        state.search = {
+          enabled: true,
+          maxResults: 3,
+          includeInConversation: true,
+          customEndpoint: action.payload
+        };
+      } else {
+        state.search.customEndpoint = action.payload;
+      }
+    },
+    setSearchMaxResults: (state, action: PayloadAction<number>) => {
+      if (!state.search) {
+        state.search = {
+          enabled: true,
+          maxResults: action.payload,
+          includeInConversation: true
+        };
+      } else {
+        state.search.maxResults = action.payload;
+      }
+    },
+    setSearchIncludeInConversation: (state, action: PayloadAction<boolean>) => {
+      if (!state.search) {
+        state.search = {
+          enabled: true,
+          maxResults: 3,
+          includeInConversation: action.payload
+        };
+      } else {
+        state.search.includeInConversation = action.payload;
+      }
+    },
   },
   extraReducers: (builder) => {
     // 处理加载设置
@@ -618,6 +717,12 @@ export const {
   setEnableTopicNaming,
   setTopicNamingPrompt,
   setTopicNamingModelId,
+  
+  // 搜索设置相关的actions
+  setSearchEnabled,
+  setSearchCustomEndpoint,
+  setSearchMaxResults,
+  setSearchIncludeInConversation,
 } = settingsSlice.actions;
 
 // 重用现有的action creators，但添加异步保存

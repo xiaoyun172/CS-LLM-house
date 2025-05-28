@@ -140,10 +140,55 @@ const WelcomePage: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+        background: `
+          linear-gradient(135deg, 
+            rgba(147, 51, 234, 0.1) 0%, 
+            rgba(79, 70, 229, 0.08) 25%,
+            rgba(59, 130, 246, 0.06) 50%,
+            rgba(16, 185, 129, 0.08) 75%,
+            rgba(139, 92, 246, 0.1) 100%
+          ),
+          radial-gradient(circle at 20% 30%, rgba(147, 51, 234, 0.15) 0%, transparent 50%),
+          radial-gradient(circle at 80% 70%, rgba(59, 130, 246, 0.12) 0%, transparent 50%),
+          radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 50%)
+        `,
         py: 4,
-        backgroundImage: 'radial-gradient(circle at 25px 25px, rgba(147, 51, 234, 0.1) 2%, transparent 0%), radial-gradient(circle at 75px 75px, rgba(147, 51, 234, 0.05) 2%, transparent 0%)',
-        backgroundSize: '100px 100px',
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: `
+            radial-gradient(circle at 25% 25%, rgba(147, 51, 234, 0.08) 2px, transparent 2px),
+            radial-gradient(circle at 75% 75%, rgba(59, 130, 246, 0.06) 1px, transparent 1px)
+          `,
+          backgroundSize: '60px 60px, 40px 40px',
+          animation: 'float 20s ease-in-out infinite',
+          '@keyframes float': {
+            '0%, 100%': { transform: 'translate(0, 0) rotate(0deg)' },
+            '33%': { transform: 'translate(10px, -10px) rotate(1deg)' },
+            '66%': { transform: 'translate(-5px, 5px) rotate(-1deg)' },
+          },
+        },
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          top: '10%',
+          right: '10%',
+          width: '200px',
+          height: '200px',
+          background: 'radial-gradient(circle, rgba(147, 51, 234, 0.1) 0%, transparent 70%)',
+          borderRadius: '50%',
+          animation: 'pulse 4s ease-in-out infinite',
+          '@keyframes pulse': {
+            '0%, 100%': { transform: 'scale(1)', opacity: 0.5 },
+            '50%': { transform: 'scale(1.1)', opacity: 0.8 },
+          },
+        },
       }}
     >
       <Container maxWidth="sm">

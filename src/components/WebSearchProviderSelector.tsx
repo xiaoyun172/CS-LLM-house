@@ -97,6 +97,8 @@ const WebSearchProviderSelector: React.FC<WebSearchProviderSelectorProps> = ({
         return '🌍';
       case 'local-bing':
         return '🔎';
+      case 'local-duckduckgo':
+        return '🦆';
       default:
         return '🔍';
     }

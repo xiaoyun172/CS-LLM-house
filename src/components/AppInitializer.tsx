@@ -8,12 +8,14 @@ import { newMessagesActions } from '../shared/store/slices/newMessagesSlice';
 import { setCurrentAssistant } from '../shared/store/slices/assistantsSlice';
 import { initGroups } from '../shared/store/slices/groupsSlice';
 import { useModelComboSync } from '../shared/hooks/useModelComboSync';
+import { mcpService } from '../shared/services/MCPService';
 
 /**
  * 应用初始化组件
  * 负责处理应用启动时的初始化逻辑，包括：
  * 1. 确保选中了一个助手
  * 2. 确保选中了该助手下的一个话题
+ * 3. 初始化搜索服务
  */
 const AppInitializer = () => {
   const dispatch = useAppDispatch();
@@ -31,6 +33,9 @@ const AppInitializer = () => {
     const initializeApp = async () => {
       // 确保加载分组数据
       dispatch(initGroups());
+
+      // 初始化搜索服务
+      await mcpService.initializeSearchService();
 
       try {
         // 1. 确保选中了一个助手
