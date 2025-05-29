@@ -10,7 +10,7 @@ import SearchCacheService from './SearchCacheService';
 import type { WebSearchResult, WebSearchProviderConfig } from '../types';
 import store from '../store';
 import { newMessagesActions } from '../store/slices/newMessagesSlice';
-import { generateNewsSummary, generateDetailedNewsSummary } from '../utils/NewsSummaryGenerator';
+import { generateNewsSummary, generateDetailedNewsSummary } from '../utils/NewsSummaryGenerator.ts';
 import { updateOneBlock as updateMessageBlockAction, upsertManyBlocks as upsertManyMessageBlocksAction } from '../store/slices/messageBlocksSlice';
 
 // 搜索进度状态类型

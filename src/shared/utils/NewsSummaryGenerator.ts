@@ -128,45 +128,21 @@ function getCurrentChineseDate(): string {
 /**
  * 提取结果中的有用信息
  * @param result 搜索结果
- * @returns 提取的信息对象，包含乱码检测标志
+ * @returns 提取的信息对象
  */
 function extractNewsInfo(result: WebSearchResult): { 
   title: string, 
   content: string, 
   source: string, 
-  url: string,
-  hasPotentialEncoding: boolean // 标记是否可能存在编码问题
+  url: string
 } {
   if (!result) {
-    return { title: '无标题', content: '', source: '未知来源', url: '', hasPotentialEncoding: false };
+    return { title: '无标题', content: '', source: '未知来源', url: '' };
   }
   
   try {
     // 处理标题
     let title = result.title || '无标题';
-    
-    // 记录原始标题，用于调试
-    console.log('[NewsSummaryGenerator] 原始标题:', title);
-    
-    // 判断是否含有乱码的函数
-    const containsGarbledText = (text: string): boolean => {
-      // 1. 检测常见的乱码特征
-      const suspiciousPatterns = [
-        /æ\w+/, // 常见乱码模式
-        /â\w+/,
-        /\u00E6|\u00C6/, // æ,Æ
-        /\u00F8|\u00D8/, // ø,Ø
-        /\u00E5|\u00C5/, // å,Å
-        /\\u[0-9a-fA-F]{4}/g, // Unicode转义序列
-        /&#[0-9]+;/g, // HTML数字实体
-        /&[a-zA-Z]+;/g, // HTML命名实体
-        /[\u0080-\u009F]/, // 控制字符
-        /\?\?\?/ // 未知字符替换
-      ];
-      
-      // 如果匹配任何一个模式，返回true
-      return suspiciousPatterns.some(pattern => pattern.test(text));
-    };
     
     // 清理标题中的控制字符和不可打印字符
     title = title.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\uFEFF]/g, '');
@@ -182,55 +158,19 @@ function extractNewsInfo(result: WebSearchResult): {
       title = title.substring(0, 77) + '...';
     }
     
-    // 检测标题是否可能有乱码
-    const titleHasPotentialEncoding = containsGarbledText(title);
-    
     // 处理内容摘要
     let content = '';
-    let contentHasPotentialEncoding = false;
     
     if (result.snippet) {
-      console.log('[NewsSummaryGenerator] 原始摘要:', result.snippet);
-      
-      let decodedSnippet = result.snippet;
-      
-      try {
-        // 使用textarea元素解码HTML实体
-        const DOMElem = document.createElement('textarea');
-        DOMElem.innerHTML = decodedSnippet;
-        decodedSnippet = DOMElem.value;
-        console.log('[NewsSummaryGenerator] 解码后的摘要:', decodedSnippet);
-      } catch (e) {
-        console.error('[NewsSummaryGenerator] 解码HTML实体时出错:', e);
-        
-        // 如果DOM方法失败，使用正则表达式替换常见的HTML实体
-        decodedSnippet = decodedSnippet
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&amp;/g, '&')
-          .replace(/&#[0-9]+;/g, ' ');
-      }
+      content = result.snippet.trim();
       
       // 清理摘要中的控制字符和不可打印字符
-      content = decodedSnippet.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\uFEFF]/g, '');
+      content = content.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\uFEFF]/g, '');
       
       // 规范化空白字符
       content = content.replace(/\s+/g, ' ').trim();
       
-      // 移除可能导致问题的字符序列
-      content = content.replace(/\\u[0-9a-fA-F]{4}/g, ' ');
-      
-      // 检测内容是否可能有乱码
-      contentHasPotentialEncoding = containsGarbledText(content);
-      
-      // 如果内容中可能存在乱码，尝试清理或留空
-      if (contentHasPotentialEncoding) {
-        // 对于可能有乱码的内容，我们可以选择不显示
-        content = ''; // 或者设置为默认消息，如 "内容无法正确显示"
-      } else if (content.length > 120) {
-        // 内容正常但太长，截断它
+      if (content.length > 120) {
         content = content.substring(0, 117) + '...';
       }
     }
@@ -248,18 +188,10 @@ function extractNewsInfo(result: WebSearchResult): {
     
     const url = result.url || '';
 
-    console.log('[NewsSummaryGenerator] 清理后的标题:', title);
-    console.log('[NewsSummaryGenerator] 标题可能有乱码:', titleHasPotentialEncoding);
-    console.log('[NewsSummaryGenerator] 清理后的摘要:', content);
-    console.log('[NewsSummaryGenerator] 摘要可能有乱码:', contentHasPotentialEncoding);
-
-    // 如果标题或内容中有乱码，标记整个条目
-    const hasPotentialEncoding = titleHasPotentialEncoding || contentHasPotentialEncoding;
-
-    return { title, content, source, url, hasPotentialEncoding };
+    return { title, content, source, url };
   } catch (e) {
     console.error('提取新闻信息时出错:', e);
-    return { title: '无法解析的标题', content: '', source: '未知来源', url: '', hasPotentialEncoding: true };
+    return { title: '无法解析的标题', content: '', source: '未知来源', url: '' };
   }
 }
 
@@ -295,18 +227,13 @@ export function generateNewsSummary(results: WebSearchResult[], query?: string):
       summary += `== ${category} ==\n\n`;
       
       categoryResults.slice(0, 5).forEach((result, index) => {
-        const { title, content, source, hasPotentialEncoding } = extractNewsInfo(result);
-        
-        // 如果整条新闻可能有编码问题，跳过它
-        if (hasPotentialEncoding && title === '无法解析的标题') {
-          return;
-        }
+        const { title, content, source } = extractNewsInfo(result);
         
         // 使用数字+点作为新闻条目的前缀
         summary += `${index + 1}. ${title}\n`;
         
-        // 只有当内容不为空且没有乱码时才显示摘要
-        if (content && !hasPotentialEncoding) {
+        // 只有当内容不为空时才显示摘要
+        if (content) {
           summary += `   ${content}\n`;
         }
         
@@ -356,18 +283,13 @@ export function generateDetailedNewsSummary(results: WebSearchResult[]): string 
       summary += `== ${category} ==\n\n`;
       
       categoryResults.slice(0, 5).forEach((result, index) => {
-        const { title, content, source, url, hasPotentialEncoding } = extractNewsInfo(result);
-        
-        // 如果整条新闻可能有编码问题，跳过它
-        if (hasPotentialEncoding && title === '无法解析的标题') {
-          return;
-        }
+        const { title, content, source, url } = extractNewsInfo(result);
         
         // 使用数字+点作为新闻条目的前缀
         summary += `${index + 1}. ${title}\n`;
         
-        // 只有当内容不为空且没有乱码时才显示摘要
-        if (content && !hasPotentialEncoding) {
+        // 只有当内容不为空时才显示摘要
+        if (content) {
           summary += `   ${content}\n`;
         }
         
