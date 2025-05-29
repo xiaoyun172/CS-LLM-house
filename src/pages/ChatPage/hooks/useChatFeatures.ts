@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
+import { updateOneBlock } from '../../../shared/store/slices/messageBlocksSlice';
 import { multiModelService } from '../../../shared/services/MultiModelService';
 import { ApiProviderRegistry } from '../../../shared/services/messages/ApiProvider';
 import { dexieStorage } from '../../../shared/services/DexieStorageService';
@@ -9,25 +10,17 @@ import {
   createAssistantMessage
 } from '../../../shared/utils/messageUtils';
 import {
+  MessageBlockType,
+  MessageBlockStatus,
   AssistantMessageStatus
 } from '../../../shared/types/newMessage.ts';
 
 
-import WebSearchBackendService, { type SearchProgressStatus } from '../../../shared/services/WebSearchBackendService';
+import EnhancedWebSearchService from '../../../shared/services/EnhancedWebSearchService';
 import { abortCompletion } from '../../../shared/utils/abortController';
 import store from '../../../shared/store';
+import { TopicService } from '../../../shared/services/TopicService';
 import type { SiliconFlowImageFormat } from '../../../shared/types';
-import { shouldPerformSearch } from '../../../shared/utils/SmartSearchUtils';
-
-// 智能搜索敏感度级别
-export const SmartSearchSensitivity = {
-  LOW: 'low',        // 低敏感度 - 只有非常明确的查询才触发搜索
-  MEDIUM: 'medium',  // 中敏感度 - 默认级别，平衡精度和召回率
-  HIGH: 'high'       // 高敏感度 - 倾向于更多触发搜索，可能有误触发
-} as const;
-
-// 定义智能搜索敏感度类型
-export type SmartSearchSensitivityType = typeof SmartSearchSensitivity[keyof typeof SmartSearchSensitivity];
 
 /**
  * 处理聊天特殊功能相关的钩子
@@ -47,38 +40,10 @@ export const useChatFeatures = (
     const saved = localStorage.getItem('mcp-tools-enabled');
     return saved !== null ? JSON.parse(saved) : true; // 默认启用
   });
-  // 添加智能搜索模式开关状态 - 从 localStorage 读取并持久化
-  const [smartSearchEnabled, setSmartSearchEnabled] = useState(() => {
-    const saved = localStorage.getItem('smart-search-enabled');
-    return saved !== null ? JSON.parse(saved) : false; // 默认禁用
-  });
-  // 添加搜索结果自动发送给AI的开关状态 - 从 localStorage 读取并持久化
-  const [sendSearchToAI, setSendSearchToAI] = useState(() => {
-    const saved = localStorage.getItem('send-search-to-ai');
-    return saved !== null ? JSON.parse(saved) : true; // 默认启用
-  });
-  // 添加智能搜索敏感度设置 - 从 localStorage 读取
-  const [smartSearchSensitivity, setSmartSearchSensitivity] = useState<SmartSearchSensitivityType>(() => {
-    const saved = localStorage.getItem('smart-search-sensitivity');
-    return (saved as SmartSearchSensitivityType) || SmartSearchSensitivity.MEDIUM; // 默认中等敏感度
-  });
-  // 添加正在进行自动搜索的状态
-  const [autoSearching, setAutoSearching] = useState(false);
-  // 添加同时显示搜索结果和AI分析的状态
-  const [showBothResults, setShowBothResults] = useState(() => {
-    const saved = localStorage.getItem('show-both-results');
-    return saved !== null ? JSON.parse(saved) : false; // 默认不启用
-  });
-  
-  // 添加搜索进度状态跟踪
-  const [searchProgress, setSearchProgress] = useState<{
-    visible: boolean;
-    status: SearchProgressStatus;
-    query?: string;
-    error?: string;
-  }>({
-    visible: false,
-    status: 'preparing'
+  // MCP 工具调用模式 - 从 localStorage 读取
+  const [mcpMode, setMcpMode] = useState<'prompt' | 'function'>(() => {
+    const saved = localStorage.getItem('mcp-mode');
+    return (saved as 'prompt' | 'function') || 'function';
   });
 
   // 切换图像生成模式
@@ -100,81 +65,269 @@ export const useChatFeatures = (
   };
 
   // 处理图像生成提示词
-  const handleImagePrompt = (prompt: string) => {
+  const handleImagePrompt = (prompt: string, images?: SiliconFlowImageFormat[], files?: any[]) => {
     if (!currentTopic || !prompt.trim() || !selectedModel) return;
 
     console.log(`[useChatFeatures] 处理图像生成提示词: ${prompt}`);
     console.log(`[useChatFeatures] 使用模型: ${selectedModel.id}`);
 
-    // 使用正常的消息发送流程，让messageThunk处理图像生成
-    handleSendMessage(prompt, undefined, false); // 禁用工具，因为图像生成不需要工具
+    // 直接使用正常的消息发送流程，让messageThunk处理图像生成
+    // 不再调用handleSendMessage，避免重复发送
+    handleSendMessage(prompt, images, false, files); // 禁用工具，因为图像生成不需要工具
   };
 
   // 处理网络搜索请求
   const handleWebSearch = async (query: string) => {
     if (!currentTopic || !query.trim()) return;
 
+    // 使用新的块系统创建用户消息
+    const { message: userMessage, blocks: userBlocks } = createUserMessage({
+      content: query,
+      assistantId: currentTopic.assistantId,
+      topicId: currentTopic.id,
+      modelId: selectedModel?.id,
+      model: selectedModel || undefined
+    });
+
+    // 保存用户消息和块
+    await TopicService.saveMessageAndBlocks(userMessage, userBlocks);
+
     try {
-      console.log(`[useChatFeatures] 处理网络搜索: ${query}`);
-      
-      // 设置搜索进度状态为可见，初始化查询和状态
-      setSearchProgress({
-        visible: true,
-        status: 'preparing',
-        query: query
+      // 创建助手消息和块
+      const { message: searchingMessage, blocks: searchingBlocks } = createAssistantMessage({
+        assistantId: currentTopic.assistantId,
+        topicId: currentTopic.id,
+        askId: userMessage.id,
+        modelId: selectedModel?.id,
+        model: selectedModel || undefined,
+        status: AssistantMessageStatus.SEARCHING // 设置初始状态为SEARCHING
       });
-      
-      // 搜索进度回调函数
-      const progressCallback = (status: SearchProgressStatus, message?: string) => {
-        console.log(`[SearchProgress] ${status}: ${message || ''}`);
-        setSearchProgress(prev => ({
-          ...prev,
-          status,
-          error: status === 'error' ? message : undefined
-        }));
-      };
-      
-      // 使用后台服务处理搜索和AI调用集成，传入进度回调
-      const { userMessageId, assistantMessageId } = await WebSearchBackendService.processSearchAndSendToAI(
+
+      // 更新主文本块内容
+      const mainTextBlock = searchingBlocks.find((block: any) => block.type === MessageBlockType.MAIN_TEXT);
+      if (mainTextBlock && 'content' in mainTextBlock) {
+        mainTextBlock.content = "正在搜索网络，请稍候...";
+        mainTextBlock.status = MessageBlockStatus.PROCESSING; // 使用PROCESSING状态
+      }
+
+      // 保存助手消息和块
+      await TopicService.saveMessageAndBlocks(searchingMessage, searchingBlocks);
+
+      // 使用增强版搜索服务 - 支持最佳实例所有提供商
+      const searchResults = await EnhancedWebSearchService.searchWithStatus(
         query,
         currentTopic.id,
-        selectedModel?.id,
-        selectedModel,
-        progressCallback
+        searchingMessage.id
       );
-      
-      console.log(`[useChatFeatures] 搜索和AI处理完成，用户消息ID: ${userMessageId}，助手消息ID: ${assistantMessageId}`);
-      
-      // 标记自动搜索已完成
-      if (autoSearching) {
-        setAutoSearching(false);
+
+      // 🚀 风格：搜索结果通过搜索结果块显示
+      let resultsContent = '';
+
+      if (searchResults.length === 0) {
+        resultsContent = "没有找到相关结果。";
+      } else {
+        // 🚀 消息内容为空，搜索结果完全通过块显示
+        resultsContent = '';
+
+        // 🚀 创建搜索结果块
+        const searchResultsBlock = {
+          id: `search-results-${Date.now()}`,
+          type: MessageBlockType.SEARCH_RESULTS,
+          messageId: searchingMessage.id,
+          content: '',
+          status: MessageBlockStatus.SUCCESS,
+          searchResults: searchResults,
+          query: query,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        // 🚀 将搜索结果块插入到消息块列表的开头（在主文本块之前）
+        const updatedMessage = await dexieStorage.getMessage(searchingMessage.id);
+        if (updatedMessage) {
+          // 将搜索结果块ID插入到blocks数组的开头
+          const updatedBlocks = [searchResultsBlock.id, ...(updatedMessage.blocks || [])];
+          await dexieStorage.updateMessage(searchingMessage.id, { blocks: updatedBlocks });
+          await dexieStorage.saveMessageBlock(searchResultsBlock);
+        }
       }
-      
+
+      // 更新主文本块内容
+      if (mainTextBlock && mainTextBlock.id) {
+        TopicService.updateMessageBlockFields(mainTextBlock.id, {
+          content: resultsContent,
+          status: MessageBlockStatus.SUCCESS
+        });
+      }
+
+      // 🚀 不再创建引用块，搜索结果通过搜索结果块显示
+
+      // 更新消息状态为成功
+      store.dispatch({
+        type: 'normalizedMessages/updateMessageStatus',
+        payload: {
+          topicId: currentTopic.id,
+          messageId: searchingMessage.id,
+          status: AssistantMessageStatus.SUCCESS
+        }
+      });
+
       // 关闭网络搜索模式
       setWebSearchActive(false);
-      
-      // 3秒后自动隐藏搜索进度指示器（通过组件内的useEffect完成）
+
+      // 🚀 新增：基于搜索结果让AI进行回复（在同一个消息块内追加）
+      if (mainTextBlock && mainTextBlock.id) {
+        await handleAIResponseAfterSearch(
+          query,
+          searchResults,
+          currentTopic,
+          selectedModel,
+          searchingMessage.id,
+          mainTextBlock.id
+        );
+      }
+
     } catch (error) {
-      console.error("[useChatFeatures] 网络搜索处理失败:", error);
-      
-      // 更新搜索进度状态为错误
-      setSearchProgress(prev => ({
-        ...prev,
-        status: 'error',
-        error: `搜索失败: ${error instanceof Error ? error.message : String(error)}`
-      }));
-      
-      // 关闭网络搜索模式和自动搜索状态
-      setWebSearchActive(false);
-      setAutoSearching(false);
-      
-      // 显示错误消息
+      console.error("网络搜索失败:", error);
+
+      // 创建错误消息
+      const { message: errorMessage, blocks: errorBlocks } = createAssistantMessage({
+        assistantId: currentTopic.assistantId,
+        topicId: currentTopic.id,
+        askId: userMessage.id,
+        modelId: selectedModel?.id,
+        model: selectedModel || undefined,
+        status: AssistantMessageStatus.ERROR // 设置状态为ERROR
+      });
+
+      // 更新主文本块内容
+      const mainTextBlock = errorBlocks.find((block: any) => block.type === MessageBlockType.MAIN_TEXT);
+      if (mainTextBlock && 'content' in mainTextBlock) {
+        mainTextBlock.content = `网络搜索失败: ${error instanceof Error ? error.message : String(error)}`;
+        mainTextBlock.status = MessageBlockStatus.ERROR;
+      }
+
+      // 保存错误消息和块
+      await TopicService.saveMessageAndBlocks(errorMessage, errorBlocks);
+
+      // 设置错误状态
       store.dispatch({
         type: 'normalizedMessages/setError',
         payload: {
-          error: `网络搜索处理失败: ${error instanceof Error ? error.message : String(error)}`
+          error: `网络搜索失败: ${error instanceof Error ? error.message : String(error)}`
         }
       });
+
+      // 关闭网络搜索模式
+      setWebSearchActive(false);
+    }
+  };
+
+  // 🚀 新增：基于搜索结果让AI进行回复（在同一个消息块内追加内容）
+  const handleAIResponseAfterSearch = async (
+    originalQuery: string,
+    searchResults: any[],
+    topic: any,
+    model: any,
+    existingMessageId: string,
+    existingMainTextBlockId: string
+  ) => {
+    if (!topic || !model || searchResults.length === 0 || !existingMessageId || !existingMainTextBlockId) return;
+
+    try {
+      console.log(`[useChatFeatures] 开始基于搜索结果生成AI回复，追加到现有消息`);
+
+      // 构建包含搜索结果的提示词
+      let searchContext = `用户问题：${originalQuery}\n\n`;
+      searchContext += `网络搜索结果：\n`;
+
+      searchResults.forEach((result, index) => {
+        searchContext += `${index + 1}. 标题：${result.title}\n`;
+        searchContext += `   链接：${result.url}\n`;
+        searchContext += `   内容：${result.snippet}\n\n`;
+      });
+
+      searchContext += `请基于以上搜索结果，对用户的问题进行详细、准确的回答。请引用相关的搜索结果，并提供有价值的分析和见解。`;
+
+      // 获取当前搜索结果内容
+      const currentBlock = store.getState().messageBlocks.entities[existingMainTextBlockId];
+      const currentContent = (currentBlock as any)?.content || '';
+
+      // 在现有内容后添加分隔符和AI分析标题
+      const aiAnalysisHeader = '\n\n---\n\n## 🤖 AI 智能分析\n\n';
+
+      // 先更新块内容，添加AI分析标题
+      await TopicService.updateMessageBlockFields(existingMainTextBlockId, {
+        content: currentContent + aiAnalysisHeader,
+        status: MessageBlockStatus.PROCESSING
+      });
+
+      // 调用AI API
+      const { sendChatRequest } = await import('../../../shared/api');
+
+      // 构建消息历史
+      const messages = [{
+        role: 'user' as const,
+        content: searchContext
+      }];
+
+      console.log(`[useChatFeatures] 调用AI API进行搜索结果分析`);
+
+      // 调用AI API
+      const response = await sendChatRequest({
+        messages,
+        modelId: model.id,
+        onChunk: async (content: string) => {
+          // 实时更新块内容：搜索结果 + AI分析标题 + AI回复内容
+          const updatedContent = currentContent + aiAnalysisHeader + content;
+
+          // 同时更新数据库和Redux状态
+          await TopicService.updateMessageBlockFields(existingMainTextBlockId, {
+            content: updatedContent,
+            status: MessageBlockStatus.PROCESSING
+          });
+
+          // 强制更新Redux状态以触发UI重新渲染
+          dispatch(updateOneBlock({
+            id: existingMainTextBlockId,
+            changes: {
+              content: updatedContent,
+              status: MessageBlockStatus.PROCESSING,
+              updatedAt: new Date().toISOString()
+            }
+          }));
+        }
+      });
+
+      // 处理最终响应
+      let finalAIContent = '';
+      if (response.success && response.content) {
+        finalAIContent = response.content;
+      } else if (response.error) {
+        finalAIContent = `AI分析失败: ${response.error}`;
+      }
+
+      // 更新最终内容和状态
+      const finalContent = currentContent + aiAnalysisHeader + finalAIContent;
+      await TopicService.updateMessageBlockFields(existingMainTextBlockId, {
+        content: finalContent,
+        status: MessageBlockStatus.SUCCESS
+      });
+
+      // 更新消息状态为成功
+      store.dispatch({
+        type: 'normalizedMessages/updateMessageStatus',
+        payload: {
+          topicId: topic.id,
+          messageId: existingMessageId,
+          status: AssistantMessageStatus.SUCCESS
+        }
+      });
+
+      console.log(`[useChatFeatures] AI搜索结果分析完成`);
+
+    } catch (error) {
+      console.error('[useChatFeatures] AI搜索结果分析失败:', error);
     }
   };
 
@@ -203,48 +356,25 @@ export const useChatFeatures = (
       payload: { topicId: currentTopic.id, streaming: false }
     });
 
-    // 更新所有正在处理的消息状态为成功
+    // 更新所有正在处理的消息状态为成功，并添加中断标记
     streamingMessages.forEach(message => {
+      console.log(`[handleStopResponseClick] 更新消息状态为成功: ${message.id}`);
+
       dispatch(newMessagesActions.updateMessage({
         id: message.id,
         changes: {
-          status: AssistantMessageStatus.SUCCESS
+          status: AssistantMessageStatus.SUCCESS,
+          updatedAt: new Date().toISOString()
         }
       }));
     });
-    
-    // 如果正在自动搜索，也取消
-    if (autoSearching) {
-      setAutoSearching(false);
-      
-      // 隐藏搜索进度指示器
-      setSearchProgress(prev => ({
-        ...prev,
-        visible: false
-      }));
-    }
-  };
-
-  // 处理搜索进度指示器关闭事件
-  const handleSearchProgressClose = () => {
-    setSearchProgress(prev => ({
-      ...prev,
-      visible: false
-    }));
-  };
-
-  // 处理智能搜索敏感度改变
-  const handleSmartSearchSensitivityChange = (sensitivity: SmartSearchSensitivityType) => {
-    setSmartSearchSensitivity(sensitivity);
-    localStorage.setItem('smart-search-sensitivity', sensitivity);
-    console.log(`[useChatFeatures] 智能搜索敏感度设置为: ${sensitivity}`);
   };
 
   // 处理消息发送
   const handleMessageSend = async (content: string, images?: SiliconFlowImageFormat[], toolsEnabled?: boolean, files?: any[]) => {
     // 如果处于图像生成模式，则调用图像生成处理函数
     if (imageGenerationMode) {
-      handleImagePrompt(content);
+      handleImagePrompt(content, images, files);
       // 关闭图像生成模式
       setImageGenerationMode(false);
       return;
@@ -254,37 +384,6 @@ export const useChatFeatures = (
     if (webSearchActive) {
       handleWebSearch(content);
       return;
-    }
-    
-    // 如果启用了智能搜索，则检查是否需要自动搜索
-    if (smartSearchEnabled && !autoSearching) {
-      // 根据敏感度调整智能搜索触发条件
-      let triggerThreshold = 0;
-      switch (smartSearchSensitivity) {
-        case SmartSearchSensitivity.LOW:
-          triggerThreshold = 3; // 需要更多触发条件
-          break;
-        case SmartSearchSensitivity.MEDIUM:
-          triggerThreshold = 2; // 默认触发条件
-          break;
-        case SmartSearchSensitivity.HIGH:
-          triggerThreshold = 1; // 更容易触发
-          break;
-        default:
-          triggerThreshold = 2;
-      }
-      
-      // 使用智能搜索工具判断是否需要搜索，传入敏感度参数
-      const needsSearch = shouldPerformSearch(content, triggerThreshold);
-      
-      if (needsSearch) {
-        console.log(`[useChatFeatures] 智能搜索触发（敏感度:${smartSearchSensitivity}），自动进行网络搜索`);
-        // 标记正在进行自动搜索
-        setAutoSearching(true);
-        // 执行网络搜索
-        handleWebSearch(content);
-        return;
-      }
     }
 
     // 正常的消息发送处理，传递工具开关状态和文件
@@ -297,41 +396,11 @@ export const useChatFeatures = (
     setToolsEnabled(newValue);
     localStorage.setItem('mcp-tools-enabled', JSON.stringify(newValue));
   };
-  
-  // 切换智能搜索开关
-  const toggleSmartSearch = () => {
-    const newValue = !smartSearchEnabled;
-    setSmartSearchEnabled(newValue);
-    localStorage.setItem('smart-search-enabled', JSON.stringify(newValue));
-    console.log(`[useChatFeatures] 智能搜索模式 ${newValue ? '启用' : '禁用'}`);
-    
-    // 如果启用智能搜索，显示简短提示
-    if (newValue) {
-      // 这里可以添加一个事件或回调来提示用户，如果需要的话
-    }
-  };
-  
-  // 切换搜索结果自动发送给AI的开关
-  const toggleSendSearchToAI = () => {
-    const newValue = !sendSearchToAI;
-    setSendSearchToAI(newValue);
-    localStorage.setItem('send-search-to-ai', JSON.stringify(newValue));
-    console.log(`[useChatFeatures] 搜索结果自动发送给AI ${newValue ? '启用' : '禁用'}`);
-  };
-  
-  // 切换同时显示搜索结果和AI分析的开关
-  const toggleShowBothResults = () => {
-    const newValue = !showBothResults;
-    setShowBothResults(newValue);
-    localStorage.setItem('show-both-results', JSON.stringify(newValue));
-    console.log(`[useChatFeatures] 同时显示搜索结果和AI分析 ${newValue ? '启用' : '禁用'}`);
-    
-    // 如果启用同时显示功能，必须启用发送搜索结果给AI
-    if (newValue && !sendSearchToAI) {
-      setSendSearchToAI(true);
-      localStorage.setItem('send-search-to-ai', JSON.stringify(true));
-      console.log('[useChatFeatures] 自动启用发送搜索结果给AI（同时显示功能需要）');
-    }
+
+  // 切换 MCP 模式
+  const handleMCPModeChange = (mode: 'prompt' | 'function') => {
+    setMcpMode(mode);
+    localStorage.setItem('mcp-mode', mode);
   };
 
   // 处理多模型发送
@@ -517,23 +586,14 @@ export const useChatFeatures = (
     webSearchActive,
     imageGenerationMode,
     toolsEnabled,
-    smartSearchEnabled,
-    sendSearchToAI,
-    autoSearching,
-    smartSearchSensitivity,
-    showBothResults,
-    searchProgress,
+    mcpMode,
     toggleWebSearch,
     toggleImageGenerationMode,
     toggleToolsEnabled,
-    toggleSmartSearch,
-    toggleSendSearchToAI,
-    toggleShowBothResults,
-    handleSmartSearchSensitivityChange,
+    handleMCPModeChange,
     handleWebSearch,
     handleImagePrompt,
     handleStopResponseClick,
-    handleSearchProgressClose,
     handleMessageSend,
     handleMultiModelSend
   };

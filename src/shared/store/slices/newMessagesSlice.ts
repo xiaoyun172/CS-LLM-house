@@ -335,28 +335,63 @@ export const selectTopicLoading = (state: RootState, topicId: string) =>
 export const selectTopicStreaming = (state: RootState, topicId: string) =>
   state.messages ? state.messages.streamingByTopic[topicId] || false : false;
 
-// 错误相关选择器
-export const selectErrors = (state: RootState) =>
-  state.messages ? state.messages.errors : [];
+// 错误相关选择器 - 使用 createSelector 进行记忆化
+export const selectErrors = createSelector(
+  [(state: RootState) => state.messages],
+  (messagesState) => {
+    // 添加转换逻辑避免直接返回输入
+    const errors = messagesState ? messagesState.errors : [];
+    return [...errors]; // 返回新数组避免直接返回输入
+  }
+);
 
-export const selectLastError = (state: RootState) => {
-  const errors = selectErrors(state);
-  return errors.length > 0 ? errors[errors.length - 1] : null;
-};
+export const selectLastError = createSelector(
+  [selectErrors],
+  (errors) => {
+    // 添加转换逻辑避免直接返回输入
+    return errors.length > 0 ? { ...errors[errors.length - 1] } : null;
+  }
+);
 
-export const selectErrorsByTopic = (state: RootState, topicId: string) =>
-  state.messages && state.messages.errorsByTopic[topicId]
-    ? state.messages.errorsByTopic[topicId]
-    : [];
+export const selectErrorsByTopic = createSelector(
+  [
+    (state: RootState) => state.messages,
+    (_state: RootState, topicId: string) => topicId
+  ],
+  (messagesState, topicId) => {
+    // 添加转换逻辑避免直接返回输入
+    const errors = messagesState && messagesState.errorsByTopic[topicId]
+      ? messagesState.errorsByTopic[topicId]
+      : [];
+    return [...errors]; // 返回新数组避免直接返回输入
+  }
+);
 
-// API Key 错误相关选择器
-export const selectApiKeyError = (state: RootState, topicId: string) =>
-  state.messages && state.messages.apiKeyErrors[topicId]
-    ? state.messages.apiKeyErrors[topicId]
-    : null;
+// API Key 错误相关选择器 - 使用 createSelector 进行记忆化
+export const selectApiKeyError = createSelector(
+  [
+    (state: RootState) => state.messages,
+    (_state: RootState, topicId: string) => topicId
+  ],
+  (messagesState, topicId) => {
+    // 添加转换逻辑避免直接返回输入
+    const error = messagesState && messagesState.apiKeyErrors[topicId]
+      ? messagesState.apiKeyErrors[topicId]
+      : null;
+    return error ? { ...error } : null; // 返回新对象避免直接返回输入
+  }
+);
 
-export const selectHasApiKeyError = (state: RootState, topicId: string) =>
-  Boolean(state.messages && state.messages.apiKeyErrors[topicId]);
+export const selectHasApiKeyError = createSelector(
+  [
+    (state: RootState) => state.messages,
+    (_state: RootState, topicId: string) => topicId
+  ],
+  (messagesState, topicId) => {
+    // 添加转换逻辑避免直接返回输入
+    return Boolean(messagesState && messagesState.apiKeyErrors[topicId]);
+  }
+);
 
 // 使用createSelector创建记忆化选择器
 export const selectOrderedMessagesByTopicId = createSelector(

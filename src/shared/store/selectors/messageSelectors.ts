@@ -14,10 +14,13 @@ export const selectMessageBlocksState = (state: RootState) => state.messageBlock
 // 选择特定主题的消息 - 使用 newMessagesSlice 中的选择器
 export const selectMessagesForTopic = selectMessagesByTopicId;
 
-// 选择消息块实体
+// 选择消息块实体 - 添加转换逻辑避免直接返回输入
 export const selectMessageBlockEntities = createSelector(
   [selectMessageBlocksState],
-  (messageBlocksState) => messageBlocksState.entities
+  (messageBlocksState) => {
+    // 确保返回的是一个新的对象引用，避免直接返回输入
+    return messageBlocksState?.entities ? { ...messageBlocksState.entities } : {};
+  }
 );
 
 // 选择特定消息的块
@@ -65,35 +68,47 @@ export const selectTopics = (_state: RootState) => {
   return [];
 };
 
-// 选择当前主题的消息
-export const selectMessagesForCurrentTopic = (state: RootState) => {
-  const currentTopicId = selectCurrentTopicId(state);
-  if (!currentTopicId) return [];
-
-  return selectMessagesForTopic(state, currentTopicId);
-};
+// 选择当前主题的消息 - 使用 createSelector 进行记忆化
+export const selectMessagesForCurrentTopic = createSelector(
+  [
+    selectCurrentTopicId,
+    (state: RootState) => state
+  ],
+  (currentTopicId, state) => {
+    if (!currentTopicId) return [];
+    return selectMessagesForTopic(state, currentTopicId);
+  }
+);
 
 // 选择主题是否正在加载
 export const selectIsTopicLoading = selectTopicLoading;
 
-// 选择当前主题是否正在加载
-export const selectIsCurrentTopicLoading = (state: RootState) => {
-  const currentTopicId = selectCurrentTopicId(state);
-  if (!currentTopicId) return false;
-
-  return selectTopicLoading(state, currentTopicId);
-};
+// 选择当前主题是否正在加载 - 使用 createSelector 进行记忆化
+export const selectIsCurrentTopicLoading = createSelector(
+  [
+    selectCurrentTopicId,
+    (state: RootState) => state
+  ],
+  (currentTopicId, state) => {
+    if (!currentTopicId) return false;
+    return selectTopicLoading(state, currentTopicId);
+  }
+);
 
 // 选择主题是否正在流式响应
 export const selectIsTopicStreaming = selectTopicStreaming;
 
-// 选择当前主题是否正在流式响应
-export const selectIsCurrentTopicStreaming = (state: RootState) => {
-  const currentTopicId = selectCurrentTopicId(state);
-  if (!currentTopicId) return false;
-
-  return selectTopicStreaming(state, currentTopicId);
-};
+// 选择当前主题是否正在流式响应 - 使用 createSelector 进行记忆化
+export const selectIsCurrentTopicStreaming = createSelector(
+  [
+    selectCurrentTopicId,
+    (state: RootState) => state
+  ],
+  (currentTopicId, state) => {
+    if (!currentTopicId) return false;
+    return selectTopicStreaming(state, currentTopicId);
+  }
+);
 
 // 选择系统提示词
 export const selectSystemPrompt = (_state: RootState) => {

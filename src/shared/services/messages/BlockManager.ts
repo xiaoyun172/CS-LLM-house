@@ -4,6 +4,8 @@ import { DataRepository } from '../DataRepository';
 import { upsertOneBlock } from '../../store/slices/messageBlocksSlice';
 import { MessageBlockType, MessageBlockStatus } from '../../types/newMessage';
 import type { MessageBlock } from '../../types/newMessage';
+import { createKnowledgeReferenceBlock } from '../../utils/messageUtils';
+import type { KnowledgeDocument } from '../../types/KnowledgeBase';
 
 /**
  * 块管理器模块
@@ -99,6 +101,79 @@ export const BlockManager = {
     await DataRepository.blocks.save(block);
 
     return block;
+  },
+
+  /**
+   * 创建知识库引用块
+   * @param messageId 消息ID
+   * @param content 文本内容
+   * @param knowledgeBaseId 知识库ID
+   * @param options 选项
+   * @returns 创建的块
+   */
+  async createKnowledgeReferenceBlock(
+    messageId: string,
+    content: string,
+    knowledgeBaseId: string,
+    options?: {
+      source?: string;
+      similarity?: number;
+      fileName?: string;
+      fileId?: string;
+      knowledgeDocumentId?: string;
+      searchQuery?: string;
+    }
+  ): Promise<MessageBlock> {
+    const block = createKnowledgeReferenceBlock(
+      messageId,
+      content,
+      knowledgeBaseId,
+      options
+    );
+
+    console.log(`[BlockManager] 创建知识库引用块 - ID: ${block.id}, 消息ID: ${messageId}`);
+
+    // 添加块到Redux
+    store.dispatch(upsertOneBlock(block));
+
+    // 保存块到数据库
+    await DataRepository.blocks.save(block);
+
+    return block;
+  },
+
+  /**
+   * 从搜索结果创建知识库引用块
+   * @param messageId 消息ID
+   * @param searchResult 搜索结果
+   * @param knowledgeBaseId 知识库ID
+   * @param searchQuery 搜索查询
+   * @returns 创建的块
+   */
+  async createKnowledgeReferenceBlockFromSearchResult(
+    messageId: string,
+    searchResult: {
+      documentId: string;
+      content: string;
+      similarity: number;
+      metadata: KnowledgeDocument['metadata'];
+    },
+    knowledgeBaseId: string,
+    searchQuery: string
+  ): Promise<MessageBlock> {
+    return this.createKnowledgeReferenceBlock(
+      messageId,
+      searchResult.content,
+      knowledgeBaseId,
+      {
+        source: searchResult.metadata.source,
+        similarity: searchResult.similarity,
+        fileName: searchResult.metadata.fileName,
+        fileId: searchResult.metadata.fileId,
+        knowledgeDocumentId: searchResult.documentId,
+        searchQuery
+      }
+    );
   }
 };
 

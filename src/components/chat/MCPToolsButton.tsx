@@ -297,19 +297,20 @@ const MCPToolsButton: React.FC<MCPToolsButtonProps> = () => {
                           </Box>
                         }
                         secondary={
-                          <Box>
+                          <Box component="div">
                             {server.description && (
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
                                 {server.description}
                               </Typography>
                             )}
                             {server.baseUrl && (
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography variant="caption" color="text.secondary" component="span" sx={{ display: 'block' }}>
                                 {server.baseUrl}
                               </Typography>
                             )}
                           </Box>
                         }
+                        secondaryTypographyProps={{ component: 'div' }}
                       />
                       <ListItemSecondaryAction>
                         <Switch

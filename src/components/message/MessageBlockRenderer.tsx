@@ -23,6 +23,8 @@ import ModelComparisonBlock from './blocks/ModelComparisonBlock';
 import ChartBlock from './blocks/ChartBlock';
 import FileBlock from './blocks/FileBlock';
 import PlaceholderBlock from './blocks/PlaceholderBlock';
+import SearchResultsBlock from './blocks/SearchResultsBlock';
+import KnowledgeReferenceBlock from './blocks/KnowledgeReferenceBlock';
 
 // 定义动画变体
 const blockWrapperVariants = {
@@ -226,6 +228,10 @@ const MessageBlockRenderer: React.FC<Props> = ({
                 // 工具块现在在 MainTextBlock 中原位置渲染，这里跳过
                 blockComponent = null;
                 break;
+              case MessageBlockType.SEARCH_RESULTS:
+                blockComponent = <SearchResultsBlock key={block.id} block={block as any} />;
+                break;
+              case MessageBlockType.KNOWLEDGE_REFERENCE:
               default:
                 console.warn('不支持的块类型:', (block as any).type, block);
                 break;

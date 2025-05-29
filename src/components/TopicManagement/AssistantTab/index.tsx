@@ -18,7 +18,8 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import type { Assistant } from '../../../shared/types/Assistant';
-import AssistantGroups from './AssistantGroups';
+import VirtualizedAssistantGroups from './VirtualizedAssistantGroups';
+import VirtualizedAssistantList from './VirtualizedAssistantList';
 import AssistantItem from './AssistantItem';
 import PresetAssistantItem from './PresetAssistantItem';
 import GroupDialog from '../GroupDialog';
@@ -63,7 +64,7 @@ export default function AssistantTab({
     editDialogOpen,
     editAssistantName,
     editAssistantPrompt,
-    
+
     // 处理函数
     handleCloseNotification,
     handleOpenAssistantDialog,
@@ -90,7 +91,7 @@ export default function AssistantTab({
     handleAddToGroup,
     handleEditNameChange,
     handleEditPromptChange,
-    
+
     // 数据
     predefinedAssistantsData
   } = useAssistantTabLogic(
@@ -131,8 +132,8 @@ export default function AssistantTab({
         </Box>
       </Box>
 
-      {/* 分组区域 */}
-      <AssistantGroups
+      {/* 分组区域 - 使用虚拟化组件 */}
+      <VirtualizedAssistantGroups
         assistantGroups={assistantGroups || []}
         userAssistants={userAssistants}
         assistantGroupMap={assistantGroupMap || {}}
@@ -144,22 +145,19 @@ export default function AssistantTab({
         onAddItem={handleOpenGroupDialog}
       />
 
-      {/* 未分组助手列表 */}
-      <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 1 }}>
-        未分组助手
-      </Typography>
-      <List sx={{ flexGrow: 1, overflow: 'auto' }}>
-        {(ungroupedAssistants || []).map((assistant: Assistant) => (
-          <AssistantItem
-            key={assistant.id}
-            assistant={assistant}
-            isSelected={currentAssistant?.id === assistant.id}
-            onSelectAssistant={handleSelectAssistantFromList}
-            onOpenMenu={handleOpenMenu}
-            onDeleteAssistant={handleDeleteAssistantAction}
-          />
-        ))}
-      </List>
+      {/* 未分组助手列表 - 使用虚拟化组件 */}
+      <VirtualizedAssistantList
+        assistants={ungroupedAssistants || []}
+        currentAssistant={currentAssistant}
+        onSelectAssistant={handleSelectAssistantFromList}
+        onOpenMenu={handleOpenMenu}
+        onDeleteAssistant={handleDeleteAssistantAction}
+        title="未分组助手"
+        height="calc(100vh - 400px)" // 动态计算高度
+        emptyMessage="暂无未分组助手"
+        itemHeight={72}
+
+      />
 
       {/* 助手选择对话框 */}
       <Dialog open={assistantDialogOpen} onClose={handleCloseAssistantDialog}>
@@ -214,17 +212,17 @@ export default function AssistantTab({
             dialog.style.border = '1px solid #ccc';
             dialog.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
             dialog.style.maxWidth = '400px';
-            
+
             const title = document.createElement('h3');
             title.textContent = '选择助手图标';
             title.style.marginTop = '0';
             title.style.marginBottom = '16px';
-            
+
             const container = document.createElement('div');
             container.style.display = 'grid';
             container.style.gridTemplateColumns = 'repeat(8, 1fr)';
             container.style.gap = '8px';
-            
+
             COMMON_EMOJIS.forEach((emoji: string) => {
               const button = document.createElement('button');
               button.textContent = emoji;
@@ -234,30 +232,30 @@ export default function AssistantTab({
               button.style.border = emoji === tempAssistant.emoji ? '2px solid #1976d2' : '1px solid #ddd';
               button.style.borderRadius = '4px';
               button.style.background = 'none';
-              
+
               button.onclick = () => {
                 handleSelectEmoji(emoji);
                 dialog.close();
               };
-              
+
               container.appendChild(button);
             });
-            
+
             const closeBtn = document.createElement('button');
             closeBtn.textContent = '关闭';
             closeBtn.style.marginTop = '16px';
             closeBtn.style.padding = '8px 12px';
             closeBtn.style.float = 'right';
             closeBtn.onclick = () => dialog.close();
-            
+
             dialog.appendChild(title);
             dialog.appendChild(container);
             dialog.appendChild(document.createElement('br'));
             dialog.appendChild(closeBtn);
-            
+
             document.body.appendChild(dialog);
             dialog.showModal();
-            
+
             dialog.addEventListener('close', () => {
               document.body.removeChild(dialog);
             });

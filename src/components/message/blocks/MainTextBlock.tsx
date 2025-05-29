@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
+import { Box } from '@mui/material';
 import type { RootState } from '../../../shared/store';
 import { messageBlocksSelectors } from '../../../shared/store/slices/messageBlocksSlice';
 import type { MainTextMessageBlock, ToolMessageBlock } from '../../../shared/types/newMessage';
@@ -21,8 +22,25 @@ const MainTextBlock: React.FC<Props> = ({ block, role, messageId }) => {
   // 获取工具块
   const blockEntities = useSelector((state: RootState) => messageBlocksSelectors.selectEntities(state));
 
+  // 获取用户输入渲染设置
+  const renderUserInputAsMarkdown = useSelector((state: RootState) => state.settings.renderUserInputAsMarkdown);
+
   // 处理内容和工具块的原位置渲染
   const renderedContent = useMemo(() => {
+    // 如果是用户消息且设置为不渲染markdown，则显示纯文本
+    if (isUserMessage && !renderUserInputAsMarkdown) {
+      return (
+        <Box sx={{
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          lineHeight: 1.6,
+          fontFamily: 'inherit'
+        }}>
+          {content}
+        </Box>
+      );
+    }
+
     // 🔥 使用工具解析器的检测函数，支持自动修复被分割的标签
     const hasTools = hasToolUseTags(content);
 
@@ -107,7 +125,7 @@ const MainTextBlock: React.FC<Props> = ({ block, role, messageId }) => {
     }
 
     return <>{parts}</>;
-  }, [content, isUserMessage, blockEntities, messageId]);
+  }, [content, isUserMessage, blockEntities, messageId, renderUserInputAsMarkdown]);
 
   if (!content.trim()) {
     return null;

@@ -146,18 +146,28 @@ const CodeBlockSettings: React.FC<CodeBlockSettingsProps> = ({ onSettingChange }
       <ListItem
         component="div"
         onClick={() => setExpanded(!expanded)}
-        sx={{ px: 2, py: 1.5, cursor: 'pointer' }}
+        sx={{
+          px: 2,
+          py: 1.5,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}
       >
-        <ListItemIcon sx={{ minWidth: '40px' }}>
-          <CodeOutlinedIcon sx={{ color: 'primary.main' }} />
-        </ListItemIcon>
-        <ListItemText
-          primary="代码块设置"
-          secondary="配置代码显示和编辑功能"
-          primaryTypographyProps={{ fontWeight: 'medium' }}
-        />
-        <IconButton size="small">
-          {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+        <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+          <CodeOutlinedIcon sx={{ color: 'primary.main', mr: 1.5 }} />
+          <Box>
+            <Typography variant="body2" fontWeight="medium">
+              代码块设置
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              配置代码显示和编辑功能
+            </Typography>
+          </Box>
+        </Box>
+        <IconButton size="small" sx={{ padding: '4px', ml: '4px' }}>
+          {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
         </IconButton>
       </ListItem>
 

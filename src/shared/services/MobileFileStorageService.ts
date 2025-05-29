@@ -13,6 +13,7 @@ import { getFileTypeByExtension, getFileMimeType } from '../utils/fileUtils';
 export const FileTypes = {
   IMAGE: 'image',
   TEXT: 'text',
+  CODE: 'code',
   DOCUMENT: 'document',
   VIDEO: 'video',
   AUDIO: 'audio',
@@ -208,12 +209,36 @@ export class MobileFileStorageService {
       // 保存文件到设备存储
       if (Capacitor.isNativePlatform()) {
         const filePath = `${this.storageDir}/${fileName}`;
-        await Filesystem.writeFile({
-          path: filePath,
-          data: processedData,
-          directory: Directory.Data,
-          encoding: Encoding.UTF8
-        });
+
+        // 对于文本、代码和文档文件，解码base64并以UTF8保存
+        if (fileType === FileTypes.TEXT || fileType === FileTypes.CODE || fileType === FileTypes.DOCUMENT) {
+          try {
+            const decodedContent = this.decodeBase64ToUTF8(processedData);
+            await Filesystem.writeFile({
+              path: filePath,
+              data: decodedContent,
+              directory: Directory.Data,
+              encoding: Encoding.UTF8
+            });
+          } catch (error) {
+            console.error('[MobileFileStorage] 解码文本文件失败，使用base64保存:', error);
+            // 降级：保存base64数据
+            await Filesystem.writeFile({
+              path: filePath,
+              data: processedData,
+              directory: Directory.Data,
+              encoding: Encoding.UTF8
+            });
+          }
+        } else {
+          // 对于其他文件类型，保存base64数据
+          await Filesystem.writeFile({
+            path: filePath,
+            data: processedData,
+            directory: Directory.Data,
+            encoding: Encoding.UTF8
+          });
+        }
       }
 
       // 创建文件记录
@@ -253,8 +278,8 @@ export class MobileFileStorageService {
         throw new Error('文件不存在');
       }
 
-      // 如果是文本类型文件，尝试解码base64内容
-      if (file.type === FileTypes.TEXT || file.type === FileTypes.DOCUMENT) {
+      // 如果是文本、代码或文档类型文件，尝试解码base64内容
+      if (file.type === FileTypes.TEXT || file.type === FileTypes.CODE || file.type === FileTypes.DOCUMENT) {
         if (file.base64Data) {
           try {
             // 检查base64数据是否包含data:前缀
@@ -281,6 +306,7 @@ export class MobileFileStorageService {
               directory: Directory.Data,
               encoding: Encoding.UTF8
             });
+            // 文件系统中的文本文件已经是解码后的内容，直接返回
             return result.data as string;
           } catch (error) {
             console.error('[MobileFileStorage] 从文件系统读取失败:', error);

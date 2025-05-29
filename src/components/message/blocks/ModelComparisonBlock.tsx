@@ -27,6 +27,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../../../shared/store';
 import type { ModelComparisonMessageBlock } from '../../../shared/types/newMessage';
 import { updateOneBlock } from '../../../shared/store/slices/messageBlocksSlice';
+import { handleUserSelection } from '../../../shared/utils/modelComparisonUtils';
 
 interface ModelComparisonBlockProps {
   block: ModelComparisonMessageBlock;
@@ -79,7 +80,6 @@ const ModelComparisonBlock: React.FC<ModelComparisonBlockProps> = ({ block }) =>
       dispatch(updateOneBlock({ id: block.id, changes: updatedBlock }));
 
       // 处理用户选择，更新消息历史
-      const { handleUserSelection } = await import('../../../shared/utils/modelComparisonUtils');
       await handleUserSelection(block.messageId, selectedResultId, content);
 
       console.log(`[ModelComparisonBlock] 用户选择了模型 ${modelId} (索引 ${resultIndex}) 的回答`);

@@ -70,7 +70,8 @@ export interface SerializableAssistant {
   name: string;
   description?: string; // 改为可选，与 Assistant 接口一致
   icon: null; // 存储时将图标设为null
+  emoji?: string; // 保留emoji字段用于持久化
   isSystem?: boolean;
   topicIds?: string[];
   systemPrompt?: string; // 助手系统提示词
-} 
+}

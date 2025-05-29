@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  TextField, 
-  Button, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  IconButton, 
-  AppBar, 
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  TextField,
+  Button,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  IconButton,
+  AppBar,
   Toolbar,
   Alert,
   FormControlLabel,
@@ -18,99 +18,105 @@ import {
   FormHelperText,
   Tabs,
   Tab,
-  Slider,
-  Stack
+
+  Chip
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+
 import { useNavigate } from 'react-router-dom';
 import { TTSService } from '../../shared/services/TTSService';
 import { getStorageItem, setStorageItem } from '../../shared/utils/storage';
+import {
+  SiliconFlowTTSTab,
+  OpenAITTSTab,
+  AzureTTSTab,
+  type SiliconFlowTTSSettings,
+  type OpenAITTSSettings,
+  type AzureTTSSettings,
 
-// 硅基流动TTS模型
-const TTS_MODELS = [
-  { value: 'FunAudioLLM/CosyVoice2-0.5B', label: 'CosyVoice2-0.5B' },
-];
+} from '../../components/TTS';
 
-// 预设音色
-const PRESET_VOICES = [
-  { value: 'alex', label: '沉稳男声 (alex)' },
-  { value: 'benjamin', label: '低沉男声 (benjamin)' },
-  { value: 'charles', label: '磁性男声 (charles)' },
-  { value: 'david', label: '欢快男声 (david)' },
-  { value: 'anna', label: '沉稳女声 (anna)' },
-  { value: 'bella', label: '激情女声 (bella)' },
-  { value: 'claire', label: '温柔女声 (claire)' },
-  { value: 'diana', label: '欢快女声 (diana)' },
-];
+// 🚀 性能优化：定义状态类型，便于状态合并
 
-// OpenAI TTS模型
-const OPENAI_MODELS = [
-  { value: 'tts-1', label: '标准模型 (tts-1)' },
-  { value: 'tts-1-hd', label: '高清模型 (tts-1-hd)' },
-];
-
-// OpenAI TTS语音
-const OPENAI_VOICES = [
-  { value: 'alloy', label: '中性平衡语音 (alloy)' },
-  { value: 'echo', label: '深沉有力语音 (echo)' },
-  { value: 'fable', label: '温暖柔和语音 (fable)' },
-  { value: 'onyx', label: '明亮清晰语音 (onyx)' },
-  { value: 'nova', label: '温柔女声语音 (nova)' },
-  { value: 'shimmer', label: '欢快流畅语音 (shimmer)' },
-];
-
-// OpenAI TTS音频格式
-const OPENAI_FORMATS = [
-  { value: 'mp3', label: 'MP3 (推荐)' },
-  { value: 'opus', label: 'Opus (低延迟)' },
-  { value: 'aac', label: 'AAC (兼容性好)' },
-  { value: 'flac', label: 'FLAC (无损质量)' },
-];
+interface UIState {
+  tabValue: number;
+  isSaved: boolean;
+  saveError: string;
+  isTestPlaying: boolean;
+}
 
 // 语音设置组件
 const VoiceSettings: React.FC = () => {
   const navigate = useNavigate();
-  const [ttsService] = useState(() => TTSService.getInstance());
-  
-  // 表单状态
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('FunAudioLLM/CosyVoice2-0.5B');
-  const [selectedVoice, setSelectedVoice] = useState('alex');
+
+  // 🚀 性能优化：使用 useMemo 缓存 TTSService 实例
+  const ttsService = useMemo(() => TTSService.getInstance(), []);
+
+  // 🚀 性能优化：使用 useRef 管理定时器，避免内存泄漏
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const playCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 🚀 性能优化：合并相关状态，减少重新渲染次数
+  const [siliconFlowSettings, setSiliconFlowSettings] = useState<SiliconFlowTTSSettings>({
+    apiKey: '',
+    showApiKey: false,
+    selectedModel: 'FishSpeech',
+    selectedVoice: 'fishaudio_fish_speech_1',
+  });
+
+  const [openaiSettings, setOpenaiSettings] = useState<OpenAITTSSettings>({
+    apiKey: '',
+    showApiKey: false,
+    selectedModel: 'tts-1',
+    selectedVoice: 'alloy',
+    selectedFormat: 'mp3',
+    speed: 1.0,
+    useStream: false,
+  });
+
+  const [uiState, setUIState] = useState<UIState>({
+    tabValue: 0,
+    isSaved: false,
+    saveError: '',
+    isTestPlaying: false,
+  });
+
+  const [azureSettings, setAzureSettings] = useState<AzureTTSSettings>({
+    apiKey: '',
+    showApiKey: false,
+    region: 'eastus',
+    voiceName: 'zh-CN-XiaoxiaoNeural',
+    language: 'zh-CN',
+    outputFormat: 'audio-24khz-160kbitrate-mono-mp3',
+    rate: 'medium',
+    pitch: 'medium',
+    volume: 'medium',
+    style: 'general',
+    styleDegree: 1.0,
+    role: 'default',
+    useSSML: true,
+  });
+
+  // 其他独立状态
   const [testText, setTestText] = useState('你好，我是语音合成服务，感谢你的使用！');
   const [enableTTS, setEnableTTS] = useState(true);
-  const [isTestPlaying, setIsTestPlaying] = useState(false);
-  
-  // OpenAI TTS设置
-  const [openaiApiKey, setOpenaiApiKey] = useState('');
-  const [showOpenaiApiKey, setShowOpenaiApiKey] = useState(false);
-  const [selectedOpenaiModel, setSelectedOpenaiModel] = useState('tts-1');
-  const [selectedOpenaiVoice, setSelectedOpenaiVoice] = useState('alloy');
-  const [selectedOpenaiFormat, setSelectedOpenaiFormat] = useState('mp3');
-  const [openaiSpeed, setOpenaiSpeed] = useState(1.0);
-  const [useOpenaiStream, setUseOpenaiStream] = useState(false);
+  const [selectedTTSService, setSelectedTTSService] = useState<'siliconflow' | 'openai' | 'azure'>('siliconflow');
   const [useOpenai, setUseOpenai] = useState(false);
-  
-  // 标签选择
-  const [tabValue, setTabValue] = useState(0);
-  
-  // 保存状态
-  const [isSaved, setIsSaved] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  
-  // 从localStorage加载设置
+  const [useAzure, setUseAzure] = useState(false);
+
+  // 🚀 性能优化：只在组件挂载时加载设置，避免重复调用
   useEffect(() => {
-    async function loadSettings() {
+    const loadSettings = async () => {
       try {
+        console.log('[VoiceSettings] 开始加载设置...');
+
         // 加载基础设置
         const storedApiKey = await getStorageItem<string>('siliconflow_api_key') || '';
-        const storedModel = await getStorageItem<string>('tts_model') || 'FunAudioLLM/CosyVoice2-0.5B';
-        const storedVoice = await getStorageItem<string>('tts_voice') || 'alex';
+        const storedModel = await getStorageItem<string>('tts_model') || 'FishSpeech';
+        const storedVoice = await getStorageItem<string>('tts_voice') || 'fishaudio_fish_speech_1';
         const storedEnableTTS = (await getStorageItem<string>('enable_tts')) !== 'false'; // 默认启用
-        
+
         // 加载OpenAI设置
         const storedOpenaiApiKey = await getStorageItem<string>('openai_tts_api_key') || '';
         const storedOpenaiModel = await getStorageItem<string>('openai_tts_model') || 'tts-1';
@@ -119,20 +125,73 @@ const VoiceSettings: React.FC = () => {
         const storedOpenaiSpeed = Number(await getStorageItem<string>('openai_tts_speed') || '1.0');
         const storedUseOpenaiStream = (await getStorageItem<string>('openai_tts_stream')) === 'true';
         const storedUseOpenai = (await getStorageItem<string>('use_openai_tts')) === 'true';
-        
-        setApiKey(storedApiKey);
-        setSelectedModel(storedModel);
-        setSelectedVoice(storedVoice);
+
+        // 加载Azure设置
+        const storedAzureApiKey = await getStorageItem<string>('azure_tts_api_key') || '';
+        const storedAzureRegion = await getStorageItem<string>('azure_tts_region') || 'eastus';
+        const storedAzureVoiceName = await getStorageItem<string>('azure_tts_voice') || 'zh-CN-XiaoxiaoNeural';
+        const storedAzureLanguage = await getStorageItem<string>('azure_tts_language') || 'zh-CN';
+        const storedAzureOutputFormat = await getStorageItem<string>('azure_tts_format') || 'audio-24khz-160kbitrate-mono-mp3';
+        const storedAzureRate = await getStorageItem<string>('azure_tts_rate') || 'medium';
+        const storedAzurePitch = await getStorageItem<string>('azure_tts_pitch') || 'medium';
+        const storedAzureVolume = await getStorageItem<string>('azure_tts_volume') || 'medium';
+        const storedAzureStyle = await getStorageItem<string>('azure_tts_style') || 'general';
+        const storedAzureStyleDegree = parseFloat(await getStorageItem<string>('azure_tts_style_degree') || '1.0');
+        const storedAzureRole = await getStorageItem<string>('azure_tts_role') || 'default';
+        const storedAzureUseSSML = (await getStorageItem<string>('azure_tts_use_ssml')) !== 'false'; // 默认启用
+        const storedUseAzure = (await getStorageItem<string>('use_azure_tts')) === 'true';
+        const storedSelectedTTSService = await getStorageItem<string>('selected_tts_service') || 'siliconflow';
+
+        // 🚀 性能优化：批量更新状态，减少重新渲染
+        setSiliconFlowSettings({
+          apiKey: storedApiKey,
+          showApiKey: false,
+          selectedModel: storedModel,
+          selectedVoice: storedVoice,
+        });
+
+        setOpenaiSettings({
+          apiKey: storedOpenaiApiKey,
+          showApiKey: false,
+          selectedModel: storedOpenaiModel,
+          selectedVoice: storedOpenaiVoice,
+          selectedFormat: storedOpenaiFormat,
+          speed: storedOpenaiSpeed,
+          useStream: storedUseOpenaiStream,
+        });
+
+        // 根据选择的服务设置Tab索引
+        let tabIndex = 0;
+        if (storedSelectedTTSService === 'openai') tabIndex = 1;
+        else if (storedSelectedTTSService === 'azure') tabIndex = 2;
+
+        setUIState(prev => ({
+          ...prev,
+          tabValue: tabIndex,
+        }));
+
+        // 设置Azure状态
+        setAzureSettings({
+          apiKey: storedAzureApiKey,
+          showApiKey: false,
+          region: storedAzureRegion,
+          voiceName: storedAzureVoiceName,
+          language: storedAzureLanguage,
+          outputFormat: storedAzureOutputFormat,
+          rate: storedAzureRate,
+          pitch: storedAzurePitch,
+          volume: storedAzureVolume,
+          style: storedAzureStyle,
+          styleDegree: storedAzureStyleDegree,
+          role: storedAzureRole,
+          useSSML: storedAzureUseSSML,
+        });
+
         setEnableTTS(storedEnableTTS);
-        
-        setOpenaiApiKey(storedOpenaiApiKey);
-        setSelectedOpenaiModel(storedOpenaiModel);
-        setSelectedOpenaiVoice(storedOpenaiVoice);
-        setSelectedOpenaiFormat(storedOpenaiFormat);
-        setOpenaiSpeed(storedOpenaiSpeed);
-        setUseOpenaiStream(storedUseOpenaiStream);
         setUseOpenai(storedUseOpenai);
-        
+        setUseAzure(storedUseAzure);
+        setSelectedTTSService(storedSelectedTTSService as 'siliconflow' | 'openai' | 'azure');
+
         // 设置TTSService
         ttsService.setApiKey(storedApiKey);
         ttsService.setOpenAIApiKey(storedOpenaiApiKey);
@@ -142,134 +201,255 @@ const VoiceSettings: React.FC = () => {
         ttsService.setOpenAISpeed(storedOpenaiSpeed);
         ttsService.setUseOpenAIStream(storedUseOpenaiStream);
         ttsService.setUseOpenAI(storedUseOpenai);
-        
+
+        // 设置Azure TTS
+        ttsService.setAzureApiKey(storedAzureApiKey);
+        ttsService.setAzureRegion(storedAzureRegion);
+        ttsService.setAzureVoiceName(storedAzureVoiceName);
+        ttsService.setAzureLanguage(storedAzureLanguage);
+        ttsService.setAzureOutputFormat(storedAzureOutputFormat);
+        ttsService.setAzureRate(storedAzureRate);
+        ttsService.setAzurePitch(storedAzurePitch);
+        ttsService.setAzureVolume(storedAzureVolume);
+        ttsService.setAzureStyle(storedAzureStyle);
+        ttsService.setAzureStyleDegree(storedAzureStyleDegree);
+        ttsService.setAzureRole(storedAzureRole);
+        ttsService.setAzureUseSSML(storedAzureUseSSML);
+        ttsService.setUseAzure(storedUseAzure);
+
         if (storedModel && storedVoice) {
           ttsService.setDefaultVoice(storedModel, `${storedModel}:${storedVoice}`);
         }
-        
-        // 设置初始标签
-        if (storedUseOpenai) {
-          setTabValue(1);
-        }
+
+        console.log('[VoiceSettings] 设置加载完成');
       } catch (error) {
         console.error('加载语音设置失败:', error);
       }
-    }
-    
+    };
+
     loadSettings();
-  }, [ttsService]);
-  
-  // 返回上一页
-  const handleBack = () => {
+  }, []); // 🚀 空依赖数组，只在组件挂载时执行一次
+
+  // 🚀 性能优化：使用 useCallback 缓存函数，避免子组件不必要的重新渲染
+  const handleBack = useCallback(() => {
     navigate('/settings');
-  };
-  
-  // 保存设置
-  const handleSave = async () => {
+  }, [navigate]);
+
+  // 🚀 性能优化：使用 useCallback 缓存保存函数
+  const handleSave = useCallback(async () => {
     try {
       // 保存到异步存储
-      await setStorageItem('siliconflow_api_key', apiKey);
-      await setStorageItem('tts_model', selectedModel);
-      await setStorageItem('tts_voice', selectedVoice);
+      await setStorageItem('siliconflow_api_key', siliconFlowSettings.apiKey);
+      await setStorageItem('tts_model', siliconFlowSettings.selectedModel);
+      await setStorageItem('tts_voice', siliconFlowSettings.selectedVoice);
       await setStorageItem('enable_tts', enableTTS.toString());
-      
+
       // 保存OpenAI设置
-      await setStorageItem('openai_tts_api_key', openaiApiKey);
-      await setStorageItem('openai_tts_model', selectedOpenaiModel);
-      await setStorageItem('openai_tts_voice', selectedOpenaiVoice);
-      await setStorageItem('openai_tts_format', selectedOpenaiFormat);
-      await setStorageItem('openai_tts_speed', openaiSpeed.toString());
-      await setStorageItem('openai_tts_stream', useOpenaiStream.toString());
+      await setStorageItem('openai_tts_api_key', openaiSettings.apiKey);
+      await setStorageItem('openai_tts_model', openaiSettings.selectedModel);
+      await setStorageItem('openai_tts_voice', openaiSettings.selectedVoice);
+      await setStorageItem('openai_tts_format', openaiSettings.selectedFormat);
+      await setStorageItem('openai_tts_speed', openaiSettings.speed.toString());
+      await setStorageItem('openai_tts_stream', openaiSettings.useStream.toString());
       await setStorageItem('use_openai_tts', useOpenai.toString());
-      
+
+      // 保存Azure设置
+      await setStorageItem('azure_tts_api_key', azureSettings.apiKey);
+      await setStorageItem('azure_tts_region', azureSettings.region);
+      await setStorageItem('azure_tts_voice', azureSettings.voiceName);
+      await setStorageItem('azure_tts_language', azureSettings.language);
+      await setStorageItem('azure_tts_format', azureSettings.outputFormat);
+      await setStorageItem('azure_tts_rate', azureSettings.rate);
+      await setStorageItem('azure_tts_pitch', azureSettings.pitch);
+      await setStorageItem('azure_tts_volume', azureSettings.volume);
+      await setStorageItem('azure_tts_style', azureSettings.style);
+      await setStorageItem('azure_tts_style_degree', azureSettings.styleDegree.toString());
+      await setStorageItem('azure_tts_role', azureSettings.role);
+      await setStorageItem('azure_tts_use_ssml', azureSettings.useSSML.toString());
+      await setStorageItem('use_azure_tts', useAzure.toString());
+      await setStorageItem('selected_tts_service', selectedTTSService);
+
       // 更新TTSService
-      ttsService.setApiKey(apiKey);
-      ttsService.setDefaultVoice(selectedModel, `${selectedModel}:${selectedVoice}`);
-      
+      ttsService.setApiKey(siliconFlowSettings.apiKey);
+      ttsService.setDefaultVoice(siliconFlowSettings.selectedModel, `${siliconFlowSettings.selectedModel}:${siliconFlowSettings.selectedVoice}`);
+
       // 更新OpenAI设置
-      ttsService.setOpenAIApiKey(openaiApiKey);
-      ttsService.setOpenAIModel(selectedOpenaiModel);
-      ttsService.setOpenAIVoice(selectedOpenaiVoice);
-      ttsService.setOpenAIResponseFormat(selectedOpenaiFormat);
-      ttsService.setOpenAISpeed(openaiSpeed);
-      ttsService.setUseOpenAIStream(useOpenaiStream);
+      ttsService.setOpenAIApiKey(openaiSettings.apiKey);
+      ttsService.setOpenAIModel(openaiSettings.selectedModel);
+      ttsService.setOpenAIVoice(openaiSettings.selectedVoice);
+      ttsService.setOpenAIResponseFormat(openaiSettings.selectedFormat);
+      ttsService.setOpenAISpeed(openaiSettings.speed);
+      ttsService.setUseOpenAIStream(openaiSettings.useStream);
       ttsService.setUseOpenAI(useOpenai);
-      
+
+      // 更新Azure设置
+      ttsService.setAzureApiKey(azureSettings.apiKey);
+      ttsService.setAzureRegion(azureSettings.region);
+      ttsService.setAzureVoiceName(azureSettings.voiceName);
+      ttsService.setAzureLanguage(azureSettings.language);
+      ttsService.setAzureOutputFormat(azureSettings.outputFormat);
+      ttsService.setAzureRate(azureSettings.rate);
+      ttsService.setAzurePitch(azureSettings.pitch);
+      ttsService.setAzureVolume(azureSettings.volume);
+      ttsService.setAzureStyle(azureSettings.style);
+      ttsService.setAzureStyleDegree(azureSettings.styleDegree);
+      ttsService.setAzureRole(azureSettings.role);
+      ttsService.setAzureUseSSML(azureSettings.useSSML);
+      ttsService.setUseAzure(useAzure);
+
+      // 🚀 性能优化：使用 ref 管理定时器，避免内存泄漏
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
       // 显示保存成功提示
-      setIsSaved(true);
-      setSaveError('');
-      
+      setUIState(prev => ({
+        ...prev,
+        isSaved: true,
+        saveError: '',
+      }));
+
       // 3秒后隐藏提示
-      setTimeout(() => {
-        setIsSaved(false);
+      saveTimeoutRef.current = setTimeout(() => {
+        setUIState(prev => ({
+          ...prev,
+          isSaved: false,
+        }));
       }, 3000);
     } catch (error) {
       console.error('保存设置失败:', error);
-      setSaveError('保存设置失败，请重试');
+      setUIState(prev => ({
+        ...prev,
+        saveError: '保存设置失败，请重试',
+      }));
     }
-  };
-  
-  // 测试TTS语音
-  const handleTestTTS = async () => {
-    if (isTestPlaying) {
+  }, [siliconFlowSettings, openaiSettings, azureSettings, enableTTS, useOpenai, useAzure, selectedTTSService, ttsService]);
+
+  // 🚀 性能优化：使用 useCallback 缓存测试TTS函数
+  const handleTestTTS = useCallback(async () => {
+    if (uiState.isTestPlaying) {
       ttsService.stop();
-      setIsTestPlaying(false);
+      if (playCheckIntervalRef.current) {
+        clearInterval(playCheckIntervalRef.current);
+      }
+      setUIState(prev => ({ ...prev, isTestPlaying: false }));
       return;
     }
-    
-    setIsTestPlaying(true);
-    
-    // 临时设置OpenAI状态
-    ttsService.setUseOpenAI(useOpenai);
-    
-    if (useOpenai) {
+
+    setUIState(prev => ({ ...prev, isTestPlaying: true }));
+
+    // 根据选择的服务设置TTS
+    ttsService.setUseOpenAI(selectedTTSService === 'openai');
+    ttsService.setUseAzure(selectedTTSService === 'azure');
+
+    if (selectedTTSService === 'azure') {
+      // 使用Azure TTS
+      ttsService.setAzureApiKey(azureSettings.apiKey);
+      ttsService.setAzureRegion(azureSettings.region);
+      ttsService.setAzureVoiceName(azureSettings.voiceName);
+      ttsService.setAzureLanguage(azureSettings.language);
+      ttsService.setAzureOutputFormat(azureSettings.outputFormat);
+      ttsService.setAzureRate(azureSettings.rate);
+      ttsService.setAzurePitch(azureSettings.pitch);
+      ttsService.setAzureVolume(azureSettings.volume);
+      ttsService.setAzureStyle(azureSettings.style);
+      ttsService.setAzureStyleDegree(azureSettings.styleDegree);
+      ttsService.setAzureRole(azureSettings.role);
+      ttsService.setAzureUseSSML(azureSettings.useSSML);
+    } else if (selectedTTSService === 'openai') {
       // 使用OpenAI TTS
-      ttsService.setOpenAIApiKey(openaiApiKey);
-      ttsService.setOpenAIModel(selectedOpenaiModel);
-      ttsService.setOpenAIVoice(selectedOpenaiVoice);
-      ttsService.setOpenAIResponseFormat(selectedOpenaiFormat);
-      ttsService.setOpenAISpeed(openaiSpeed);
-      ttsService.setUseOpenAIStream(useOpenaiStream);
+      ttsService.setOpenAIApiKey(openaiSettings.apiKey);
+      ttsService.setOpenAIModel(openaiSettings.selectedModel);
+      ttsService.setOpenAIVoice(openaiSettings.selectedVoice);
+      ttsService.setOpenAIResponseFormat(openaiSettings.selectedFormat);
+      ttsService.setOpenAISpeed(openaiSettings.speed);
+      ttsService.setUseOpenAIStream(openaiSettings.useStream);
     } else {
       // 使用硅基流动TTS
-      ttsService.setApiKey(apiKey);
-      ttsService.setDefaultVoice(selectedModel, `${selectedModel}:${selectedVoice}`);
+      ttsService.setApiKey(siliconFlowSettings.apiKey);
+      ttsService.setDefaultVoice(siliconFlowSettings.selectedModel, `${siliconFlowSettings.selectedModel}:${siliconFlowSettings.selectedVoice}`);
     }
-    
+
     const success = await ttsService.speak(testText);
-    
+
     if (!success) {
-      setIsTestPlaying(false);
+      setUIState(prev => ({ ...prev, isTestPlaying: false }));
     }
-    
+
+    // 🚀 性能优化：使用 ref 管理定时器，避免内存泄漏
+    if (playCheckIntervalRef.current) {
+      clearInterval(playCheckIntervalRef.current);
+    }
+
     // 监听播放结束
-    const checkInterval = setInterval(() => {
+    playCheckIntervalRef.current = setInterval(() => {
       if (!ttsService.getIsPlaying()) {
-        setIsTestPlaying(false);
-        clearInterval(checkInterval);
+        setUIState(prev => ({ ...prev, isTestPlaying: false }));
+        if (playCheckIntervalRef.current) {
+          clearInterval(playCheckIntervalRef.current);
+        }
       }
     }, 500);
-  };
-  
-  // 处理标签变化
-  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-    setUseOpenai(newValue === 1);
-  };
-  
-  // 处理速度滑块变化
-  const handleSpeedChange = (_: Event, newValue: number | number[]) => {
-    setOpenaiSpeed(newValue as number);
-  };
-  
-  // 格式化速度值显示
-  const formatSpeed = (value: number) => {
-    return `${value}x`;
-  };
-  
+  }, [uiState.isTestPlaying, selectedTTSService, azureSettings, openaiSettings, siliconFlowSettings, testText, ttsService]);
+
+  // 🚀 性能优化：使用 useCallback 缓存标签变化处理函数
+  const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: number) => {
+    setUIState(prev => ({ ...prev, tabValue: newValue }));
+
+    // 根据Tab索引更新服务选择
+    let service: 'siliconflow' | 'openai' | 'azure' = 'siliconflow';
+    if (newValue === 1) service = 'openai';
+    else if (newValue === 2) service = 'azure';
+
+    setSelectedTTSService(service);
+    setUseOpenai(service === 'openai');
+    setUseAzure(service === 'azure');
+  }, []);
+
+  // 🚀 新增：服务选择器变化时同步Tab
+  const handleServiceChange = useCallback((value: string) => {
+    setSelectedTTSService(value as 'siliconflow' | 'openai' | 'azure');
+
+    // 更新旧的状态以保持兼容性
+    const isOpenAI = value === 'openai';
+    const isAzure = value === 'azure';
+    setUseOpenai(isOpenAI);
+    setUseAzure(isAzure);
+
+    // 更新Tab索引
+    let tabIndex = 0;
+    if (value === 'openai') tabIndex = 1;
+    else if (value === 'azure') tabIndex = 2;
+
+    setUIState(prev => ({ ...prev, tabValue: tabIndex }));
+  }, []);
+
+
+
+  // 🚀 性能优化：组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      if (playCheckIntervalRef.current) {
+        clearInterval(playCheckIntervalRef.current);
+      }
+    };
+  }, []);
+
+
+
   return (
-    <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <AppBar 
+    <Box sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh', // 固定视口高度
+      width: '100vw', // 固定视口宽度
+      overflow: 'hidden', // 防止整体页面滚动
+      bgcolor: 'background.default'
+    }}>
+      <AppBar
         position="fixed"
         elevation={0}
         sx={{
@@ -278,27 +458,50 @@ const VoiceSettings: React.FC = () => {
           color: 'text.primary',
           borderBottom: 1,
           borderColor: 'divider',
-          backdropFilter: 'blur(8px)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)', // iOS Safari支持
+          background: 'rgba(255, 255, 255, 0.8)',
+          '@media (prefers-color-scheme: dark)': {
+            background: 'rgba(18, 18, 18, 0.8)',
+          },
         }}
       >
-        <Toolbar>
+        <Toolbar
+          sx={{
+            minHeight: { xs: 56, sm: 64 }, // 移动端更紧凑
+            px: { xs: 1, sm: 2, md: 3 }, // 响应式内边距
+          }}
+        >
           <IconButton
             edge="start"
             onClick={handleBack}
-            aria-label="back"
-            sx={{ color: 'primary.main' }}
+            aria-label="返回"
+            size="large"
+            sx={{
+              color: 'primary.main',
+              mr: { xs: 1, sm: 2 },
+              '&:hover': {
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                transform: 'scale(1.05)',
+              },
+              transition: 'all 0.2s ease-in-out',
+            }}
           >
             <ArrowBackIcon />
           </IconButton>
-          <Typography 
-            variant="h6" 
-            component="div" 
-            sx={{ 
-              flexGrow: 1, 
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              flexGrow: 1,
               fontWeight: 600,
+              fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.5rem' }, // 响应式字体
               backgroundImage: 'linear-gradient(90deg, #9333EA, #754AB4)',
               backgroundClip: 'text',
+              WebkitBackgroundClip: 'text', // Safari支持
               color: 'transparent',
+              textAlign: { xs: 'left', sm: 'left' },
             }}
           >
             语音功能设置
@@ -306,313 +509,674 @@ const VoiceSettings: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Box 
-        sx={{ 
-          flexGrow: 1, 
-          overflow: 'auto', 
-          p: 2, 
-          mt: 8,
+      {/* 可滚动的内容区域 */}
+      <Box
+        sx={{
+          flex: 1, // 占据剩余空间
+          overflow: 'auto', // 允许滚动
+          overflowX: 'hidden', // 禁止水平滚动
+          pt: { xs: 7, sm: 8 }, // 顶部边距（为AppBar留空间）
+          pb: { xs: 2, sm: 3 }, // 底部边距
+          px: { xs: 1, sm: 2, md: 3 }, // 水平内边距
+          // 移动端滚动优化
+          WebkitOverflowScrolling: 'touch',
+          scrollBehavior: 'smooth',
+          // 自定义滚动条样式
           '&::-webkit-scrollbar': {
-            width: '6px',
+            width: { xs: '4px', sm: '6px' },
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'transparent',
           },
           '&::-webkit-scrollbar-thumb': {
             backgroundColor: 'rgba(0,0,0,0.1)',
-            borderRadius: '3px',
+            borderRadius: '10px',
+            '&:hover': {
+              backgroundColor: 'rgba(0,0,0,0.2)',
+            },
           },
         }}
       >
+        {/* 内容容器 */}
+        <Box
+          sx={{
+            maxWidth: { xs: '100%', sm: '100%', md: '1200px', lg: '1400px' },
+            mx: 'auto', // 居中对齐
+            width: '100%',
+          }}
+        >
         {/* 保存结果提示 */}
-        {isSaved && (
-          <Alert severity="success" sx={{ mb: 2 }}>
+        {uiState.isSaved && (
+          <Alert
+            severity="success"
+            sx={{
+              mb: { xs: 1.5, sm: 2 },
+              borderRadius: { xs: 1, sm: 2 },
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              '& .MuiAlert-icon': {
+                fontSize: { xs: '1.2rem', sm: '1.5rem' },
+              },
+            }}
+          >
             设置已保存成功
           </Alert>
         )}
-        
-        {saveError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {saveError}
+
+        {uiState.saveError && (
+          <Alert
+            severity="error"
+            sx={{
+              mb: { xs: 1.5, sm: 2 },
+              borderRadius: { xs: 1, sm: 2 },
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              '& .MuiAlert-icon': {
+                fontSize: { xs: '1.2rem', sm: '1.5rem' },
+              },
+            }}
+          >
+            {uiState.saveError}
           </Alert>
         )}
-        
-        <Paper 
-          elevation={0} 
-          sx={{ 
-            p: 3, 
-            mb: 3,
-            borderRadius: 2,
+
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2, sm: 3, md: 4 }, // 响应式内边距
+            mb: { xs: 2, sm: 3 }, // 响应式外边距
+            borderRadius: { xs: 2, sm: 3 }, // 响应式圆角
             border: '1px solid',
             borderColor: 'divider',
+            background: 'background.paper',
+            boxShadow: {
+              xs: '0 2px 8px rgba(0,0,0,0.04)',
+              sm: '0 4px 12px rgba(0,0,0,0.08)'
+            }, // 响应式阴影
+            transition: 'all 0.2s ease-in-out',
+            '&:hover': {
+              boxShadow: {
+                xs: '0 4px 12px rgba(0,0,0,0.08)',
+                sm: '0 8px 24px rgba(0,0,0,0.12)'
+              },
+            },
           }}
         >
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+          <Typography
+            variant="h6"
+            sx={{
+              mb: { xs: 2, sm: 3 },
+              fontWeight: 600,
+              fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.5rem' }, // 响应式字体
+              color: 'text.primary',
+            }}
+          >
             文本转语音 (TTS) 功能
           </Typography>
-          
-          <Box sx={{ mb: 2 }}>
+
+          <Box sx={{ mb: { xs: 2, sm: 3 } }}>
             <FormControlLabel
               control={
-                <Switch 
-                  checked={enableTTS} 
-                  onChange={(e) => setEnableTTS(e.target.checked)} 
+                <Switch
+                  checked={enableTTS}
+                  onChange={(e) => setEnableTTS(e.target.checked)}
                   color="primary"
+                  size="medium"
+                  sx={{
+                    '& .MuiSwitch-thumb': {
+                      width: { xs: 20, sm: 24 },
+                      height: { xs: 20, sm: 24 },
+                    },
+                    '& .MuiSwitch-track': {
+                      borderRadius: { xs: 10, sm: 12 },
+                    },
+                  }}
                 />
               }
-              label="启用语音转换功能"
+              label={
+                <Typography
+                  sx={{
+                    fontSize: { xs: '0.9rem', sm: '1rem' },
+                    fontWeight: 500,
+                  }}
+                >
+                  启用语音转换功能
+                </Typography>
+              }
+              sx={{
+                '& .MuiFormControlLabel-label': {
+                  ml: { xs: 1, sm: 1.5 },
+                },
+              }}
             />
           </Box>
-          
-          <Typography variant="body2" sx={{ mb: 3, color: 'text.secondary' }}>
-            启用后，在聊天界面可以将AI回复内容转换为语音播放。本应用支持OpenAI TTS和硅基流动TTS服务，如API无效则会自动降级使用浏览器内置的Web Speech API功能。
-          </Typography>
-          
-          <Tabs
-            value={tabValue}
-            onChange={handleTabChange}
-            variant="fullWidth"
-            sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+
+          <Typography
+            variant="body2"
+            sx={{
+              mb: { xs: 2, sm: 3 },
+              color: 'text.secondary',
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              lineHeight: { xs: 1.4, sm: 1.6 },
+              px: { xs: 0, sm: 1 }, // 移动端无内边距，桌面端有内边距
+            }}
           >
-            <Tab label="硅基流动 TTS" />
-            <Tab label="OpenAI TTS" />
+            启用后，在聊天界面可以将AI回复内容转换为语音播放。本应用支持硅基流动TTS、OpenAI TTS和微软Azure TTS服务，如API无效则会自动降级使用浏览器内置的Web Speech API功能。
+          </Typography>
+
+          {/* TTS服务选择器 */}
+          <FormControl
+            fullWidth
+            sx={{
+              mb: { xs: 2, sm: 3 },
+              '& .MuiInputLabel-root': {
+                fontSize: { xs: '0.9rem', sm: '1rem' },
+              },
+            }}
+          >
+            <InputLabel>选择TTS服务</InputLabel>
+            <Select
+              value={selectedTTSService}
+              onChange={(e) => handleServiceChange(e.target.value)}
+              label="选择TTS服务"
+              sx={{
+                '& .MuiSelect-select': {
+                  py: { xs: 1.5, sm: 2 }, // 响应式内边距
+                  fontSize: { xs: '0.9rem', sm: '1rem' },
+                },
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderRadius: { xs: 1.5, sm: 2 },
+                },
+              }}
+            >
+              <MenuItem
+                value="siliconflow"
+                sx={{
+                  py: { xs: 1, sm: 1.5 },
+                  px: { xs: 2, sm: 3 },
+                }}
+              >
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: { xs: 0.5, sm: 1 },
+                  width: '100%',
+                }}>
+                  <Chip
+                    size="small"
+                    label="推荐"
+                    color="primary"
+                    variant="outlined"
+                    sx={{
+                      fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                      height: { xs: 20, sm: 24 },
+                      '& .MuiChip-label': {
+                        px: { xs: 0.5, sm: 1 },
+                      },
+                    }}
+                  />
+                  <Typography sx={{
+                    fontSize: { xs: '0.85rem', sm: '0.95rem' },
+                    ml: { xs: 0.5, sm: 1 },
+                  }}>
+                    硅基流动 TTS (免费额度)
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem
+                value="openai"
+                sx={{
+                  py: { xs: 1, sm: 1.5 },
+                  px: { xs: 2, sm: 3 },
+                }}
+              >
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: { xs: 0.5, sm: 1 },
+                  width: '100%',
+                }}>
+                  <Chip
+                    size="small"
+                    label="付费"
+                    color="warning"
+                    variant="outlined"
+                    sx={{
+                      fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                      height: { xs: 20, sm: 24 },
+                      '& .MuiChip-label': {
+                        px: { xs: 0.5, sm: 1 },
+                      },
+                    }}
+                  />
+                  <Typography sx={{
+                    fontSize: { xs: '0.85rem', sm: '0.95rem' },
+                    ml: { xs: 0.5, sm: 1 },
+                  }}>
+                    OpenAI TTS (高音质)
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem
+                value="azure"
+                sx={{
+                  py: { xs: 1, sm: 1.5 },
+                  px: { xs: 2, sm: 3 },
+                }}
+              >
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: { xs: 0.5, sm: 1 },
+                  width: '100%',
+                }}>
+                  <Chip
+                    size="small"
+                    label="企业级"
+                    color="info"
+                    variant="outlined"
+                    sx={{
+                      fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                      height: { xs: 20, sm: 24 },
+                      '& .MuiChip-label': {
+                        px: { xs: 0.5, sm: 1 },
+                      },
+                    }}
+                  />
+                  <Typography sx={{
+                    fontSize: { xs: '0.85rem', sm: '0.95rem' },
+                    ml: { xs: 0.5, sm: 1 },
+                  }}>
+                    微软Azure TTS (免费额度+付费)
+                  </Typography>
+                </Box>
+              </MenuItem>
+            </Select>
+            <FormHelperText sx={{
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              mt: { xs: 0.5, sm: 1 },
+              px: { xs: 0, sm: 1 },
+            }}>
+              选择您要使用的文本转语音服务。硅基流动提供免费额度，OpenAI音质优秀，Azure提供企业级服务。
+            </FormHelperText>
+          </FormControl>
+
+          <Tabs
+            value={uiState.tabValue}
+            onChange={handleTabChange}
+            variant="scrollable" // 始终使用可滚动模式
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{
+              mb: { xs: 2, sm: 3 },
+              borderBottom: 1,
+              borderColor: 'divider',
+              // 滑动容器样式
+              '& .MuiTabs-scroller': {
+                overflow: 'auto !important',
+                scrollBehavior: 'smooth',
+                WebkitOverflowScrolling: 'touch', // iOS 滑动优化
+                '&::-webkit-scrollbar': {
+                  display: 'none', // 隐藏滚动条
+                },
+                scrollbarWidth: 'none', // Firefox 隐藏滚动条
+              },
+              '& .MuiTabs-flexContainer': {
+                gap: { xs: 0.5, sm: 1 },
+                minWidth: 'fit-content',
+              },
+              '& .MuiTab-root': {
+                minHeight: { xs: 56, sm: 64 },
+                fontSize: { xs: '0.7rem', sm: '0.875rem', md: '1rem' },
+                fontWeight: 500,
+                textTransform: 'none',
+                px: { xs: 1.5, sm: 2, md: 3 },
+                py: { xs: 1, sm: 1.5 },
+                minWidth: { xs: 'auto', sm: 120, md: 160 }, // 响应式最小宽度
+                maxWidth: { xs: 200, sm: 250, md: 300 },
+                whiteSpace: 'nowrap',
+                '&.Mui-selected': {
+                  fontWeight: 600,
+                  color: 'primary.main',
+                },
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                  transition: 'background-color 0.2s ease-in-out',
+                },
+              },
+              '& .MuiTabs-indicator': {
+                height: { xs: 3, sm: 4 },
+                borderRadius: '2px 2px 0 0',
+                background: 'linear-gradient(90deg, #9333EA, #754AB4)',
+              },
+              // 滚动按钮样式
+              '& .MuiTabs-scrollButtons': {
+                '&.Mui-disabled': {
+                  opacity: 0.3,
+                },
+                '& .MuiSvgIcon-root': {
+                  fontSize: { xs: '1.2rem', sm: '1.5rem' },
+                },
+              },
+            }}
+          >
+            <Tab
+              label={
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: { xs: 0.5, sm: 1 },
+                  flexDirection: 'row', // 始终水平布局
+                  textAlign: 'center',
+                  justifyContent: 'center',
+                  width: '100%',
+                }}>
+                  <Typography sx={{
+                    fontSize: 'inherit',
+                    fontWeight: 'inherit',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
+                    硅基流动
+                  </Typography>
+                  <Box sx={{
+                    display: 'flex',
+                    gap: 0.25,
+                    alignItems: 'center',
+                  }}>
+                    {selectedTTSService === 'siliconflow' && (
+                      <Chip
+                        size="small"
+                        label="使用中"
+                        color="success"
+                        variant="filled"
+                        sx={{
+                          fontSize: { xs: '0.55rem', sm: '0.65rem' },
+                          height: { xs: 16, sm: 20 },
+                          minWidth: 'auto',
+                          '& .MuiChip-label': {
+                            px: { xs: 0.5, sm: 0.75 },
+                            py: 0,
+                          },
+                        }}
+                      />
+                    )}
+                    {siliconFlowSettings.apiKey && selectedTTSService !== 'siliconflow' && (
+                      <Chip
+                        size="small"
+                        label="已配置"
+                        color="info"
+                        variant="outlined"
+                        sx={{
+                          fontSize: { xs: '0.55rem', sm: '0.65rem' },
+                          height: { xs: 16, sm: 20 },
+                          minWidth: 'auto',
+                          '& .MuiChip-label': {
+                            px: { xs: 0.5, sm: 0.75 },
+                            py: 0,
+                          },
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              }
+            />
+            <Tab
+              label={
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: { xs: 0.5, sm: 1 },
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  textAlign: 'center',
+                }}>
+                  <Typography sx={{
+                    fontSize: { xs: '0.7rem', sm: '0.85rem' },
+                    fontWeight: 'inherit',
+                    whiteSpace: { xs: 'normal', sm: 'nowrap' },
+                  }}>
+                    OpenAI TTS
+                  </Typography>
+                  <Box sx={{
+                    display: 'flex',
+                    gap: 0.5,
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                  }}>
+                    {selectedTTSService === 'openai' && (
+                      <Chip
+                        size="small"
+                        label="当前使用"
+                        color="success"
+                        variant="filled"
+                        sx={{
+                          fontSize: { xs: '0.6rem', sm: '0.7rem' },
+                          height: { xs: 14, sm: 18 },
+                          '& .MuiChip-label': {
+                            px: { xs: 0.5, sm: 0.75 },
+                          },
+                        }}
+                      />
+                    )}
+                    {openaiSettings.apiKey && (
+                      <Chip
+                        size="small"
+                        label="已配置"
+                        color="info"
+                        variant="outlined"
+                        sx={{
+                          fontSize: { xs: '0.6rem', sm: '0.7rem' },
+                          height: { xs: 14, sm: 18 },
+                          '& .MuiChip-label': {
+                            px: { xs: 0.5, sm: 0.75 },
+                          },
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              }
+            />
+            <Tab
+              label={
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: { xs: 0.5, sm: 1 },
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  textAlign: 'center',
+                }}>
+                  <Typography sx={{
+                    fontSize: { xs: '0.7rem', sm: '0.85rem' },
+                    fontWeight: 'inherit',
+                    whiteSpace: { xs: 'normal', sm: 'nowrap' },
+                  }}>
+                    微软Azure TTS
+                  </Typography>
+                  <Box sx={{
+                    display: 'flex',
+                    gap: 0.5,
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                  }}>
+                    {selectedTTSService === 'azure' && (
+                      <Chip
+                        size="small"
+                        label="当前使用"
+                        color="success"
+                        variant="filled"
+                        sx={{
+                          fontSize: { xs: '0.6rem', sm: '0.7rem' },
+                          height: { xs: 14, sm: 18 },
+                          '& .MuiChip-label': {
+                            px: { xs: 0.5, sm: 0.75 },
+                          },
+                        }}
+                      />
+                    )}
+                    {azureSettings.apiKey && (
+                      <Chip
+                        size="small"
+                        label="已配置"
+                        color="info"
+                        variant="outlined"
+                        sx={{
+                          fontSize: { xs: '0.6rem', sm: '0.7rem' },
+                          height: { xs: 14, sm: 18 },
+                          '& .MuiChip-label': {
+                            px: { xs: 0.5, sm: 0.75 },
+                          },
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              }
+            />
           </Tabs>
-          
-          {tabValue === 0 && (
-            <>
-              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-                硅基流动 TTS API 设置
-              </Typography>
-              
-              <FormControl fullWidth variant="outlined" sx={{ mb: 3 }}>
-                <TextField
-                  label="API密钥"
-                  variant="outlined"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  type={showApiKey ? 'text' : 'password'}
-                  placeholder="请输入硅基流动API密钥"
-                  helperText="获取API密钥请访问：https://cloud.siliconflow.cn/account/ak"
-                  InputProps={{
-                    endAdornment: (
-                      <IconButton
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        edge="end"
-                      >
-                        {showApiKey ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                      </IconButton>
-                    ),
-                  }}
-                  sx={{ mb: 2 }}
-                />
-              </FormControl>
-              
-              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mb: 3 }}>
-                <FormControl fullWidth>
-                  <InputLabel>TTS模型</InputLabel>
-                  <Select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    label="TTS模型"
-                  >
-                    {TTS_MODELS.map((model) => (
-                      <MenuItem key={model.value} value={model.value}>
-                        {model.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                
-                <FormControl fullWidth>
-                  <InputLabel>预设音色</InputLabel>
-                  <Select
-                    value={selectedVoice}
-                    onChange={(e) => setSelectedVoice(e.target.value)}
-                    label="预设音色"
-                  >
-                    {PRESET_VOICES.map((voice) => (
-                      <MenuItem key={voice.value} value={voice.value}>
-                        {voice.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Box>
-            </>
+
+          {uiState.tabValue === 0 && (
+            <SiliconFlowTTSTab
+              settings={siliconFlowSettings}
+              onSettingsChange={setSiliconFlowSettings}
+            />
           )}
-          
-          {tabValue === 1 && (
-            <>
-              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-                OpenAI TTS API 设置
-              </Typography>
-              
-              <FormControl fullWidth variant="outlined" sx={{ mb: 3 }}>
-                <TextField
-                  label="OpenAI API密钥"
-                  variant="outlined"
-                  value={openaiApiKey}
-                  onChange={(e) => setOpenaiApiKey(e.target.value)}
-                  type={showOpenaiApiKey ? 'text' : 'password'}
-                  placeholder="请输入OpenAI API密钥"
-                  helperText="获取API密钥请访问：https://platform.openai.com/api-keys"
-                  InputProps={{
-                    endAdornment: (
-                      <IconButton
-                        onClick={() => setShowOpenaiApiKey(!showOpenaiApiKey)}
-                        edge="end"
-                      >
-                        {showOpenaiApiKey ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                      </IconButton>
-                    ),
-                  }}
-                  sx={{ mb: 2 }}
-                />
-              </FormControl>
-              
-              <Stack spacing={3} sx={{ mb: 3 }}>
-                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-                  <FormControl fullWidth>
-                    <InputLabel>TTS模型</InputLabel>
-                    <Select
-                      value={selectedOpenaiModel}
-                      onChange={(e) => setSelectedOpenaiModel(e.target.value)}
-                      label="TTS模型"
-                    >
-                      {OPENAI_MODELS.map((model) => (
-                        <MenuItem key={model.value} value={model.value}>
-                          {model.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    <FormHelperText>
-                      标准模型性价比高，高清模型音质更好但价格更高
-                    </FormHelperText>
-                  </FormControl>
-                  
-                  <FormControl fullWidth>
-                    <InputLabel>语音选择</InputLabel>
-                    <Select
-                      value={selectedOpenaiVoice}
-                      onChange={(e) => setSelectedOpenaiVoice(e.target.value as string)}
-                      label="语音选择"
-                    >
-                      {OPENAI_VOICES.map((voice) => (
-                        <MenuItem key={voice.value} value={voice.value}>
-                          {voice.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    <FormHelperText>
-                      OpenAI提供多种不同特点的语音，选择合适的语音
-                    </FormHelperText>
-                  </FormControl>
-                </Box>
-                
-                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-                  <FormControl fullWidth>
-                    <InputLabel>音频格式</InputLabel>
-                    <Select
-                      value={selectedOpenaiFormat}
-                      onChange={(e) => setSelectedOpenaiFormat(e.target.value)}
-                      label="音频格式"
-                    >
-                      {OPENAI_FORMATS.map((format) => (
-                        <MenuItem key={format.value} value={format.value}>
-                          {format.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    <FormHelperText>
-                      MP3格式兼容性最好，Opus格式延迟低，FLAC质量无损
-                    </FormHelperText>
-                  </FormControl>
-                  
-                  <FormControl fullWidth>
-                    <Typography gutterBottom>语速调整</Typography>
-                    <Slider
-                      value={openaiSpeed}
-                      min={0.25}
-                      max={4.0}
-                      step={0.05}
-                      onChange={handleSpeedChange}
-                      valueLabelDisplay="auto"
-                      valueLabelFormat={formatSpeed}
-                      marks={[
-                        { value: 0.25, label: '0.25x' },
-                        { value: 1, label: '1x' },
-                        { value: 2, label: '2x' },
-                        { value: 4, label: '4x' }
-                      ]}
-                    />
-                    <FormHelperText>
-                      调整语音播放速度 (0.25x-4.0x，默认1.0x)
-                    </FormHelperText>
-                  </FormControl>
-                </Box>
-                
-                <FormControlLabel
-                  control={
-                    <Switch 
-                      checked={useOpenaiStream} 
-                      onChange={(e) => setUseOpenaiStream(e.target.checked)} 
-                      color="primary"
-                    />
-                  }
-                  label="使用流式输出（降低延迟）"
-                />
-                <FormHelperText>
-                  启用流式输出可以降低首次音频播放的延迟，在处理长文本时效果更明显。注意：部分浏览器可能不支持此功能。
-                </FormHelperText>
-              </Stack>
-            </>
+
+          {uiState.tabValue === 1 && (
+            <OpenAITTSTab
+              settings={openaiSettings}
+              onSettingsChange={setOpenaiSettings}
+            />
+          )}
+
+          {uiState.tabValue === 2 && (
+            <AzureTTSTab
+              settings={azureSettings}
+              onSettingsChange={setAzureSettings}
+            />
           )}
         </Paper>
-        
-        <Paper 
-          elevation={0} 
-          sx={{ 
-            p: 3,
-            borderRadius: 2,
+
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2, sm: 3, md: 4 },
+            borderRadius: { xs: 2, sm: 3 },
             border: '1px solid',
             borderColor: 'divider',
+            background: 'background.paper',
+            boxShadow: {
+              xs: '0 2px 8px rgba(0,0,0,0.04)',
+              sm: '0 4px 12px rgba(0,0,0,0.08)'
+            },
+            transition: 'all 0.2s ease-in-out',
+            '&:hover': {
+              boxShadow: {
+                xs: '0 4px 12px rgba(0,0,0,0.08)',
+                sm: '0 8px 24px rgba(0,0,0,0.12)'
+              },
+            },
           }}
         >
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+          <Typography
+            variant="h6"
+            sx={{
+              mb: { xs: 2, sm: 3 },
+              fontWeight: 600,
+              fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.5rem' },
+              color: 'text.primary',
+            }}
+          >
             测试语音效果
           </Typography>
-          
+
           <TextField
             fullWidth
             multiline
-            rows={3}
+            rows={3} // 固定行数
             label="测试文本"
             value={testText}
             onChange={(e) => setTestText(e.target.value)}
             variant="outlined"
-            sx={{ mb: 3 }}
+            sx={{
+              mb: { xs: 2, sm: 3 },
+              '& .MuiInputBase-root': {
+                fontSize: { xs: '0.9rem', sm: '1rem' },
+                minHeight: { xs: '80px', sm: '100px' }, // 响应式最小高度
+              },
+              '& .MuiInputLabel-root': {
+                fontSize: { xs: '0.9rem', sm: '1rem' },
+              },
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderRadius: { xs: 1.5, sm: 2 },
+              },
+            }}
           />
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+
+          <Box sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            flexDirection: { xs: 'column', sm: 'row' }, // 移动端垂直布局
+            gap: { xs: 2, sm: 0 }, // 移动端按钮间距
+          }}>
             <Button
               variant="contained"
-              color={isTestPlaying ? "error" : "primary"}
+              color={uiState.isTestPlaying ? "error" : "primary"}
               startIcon={<VolumeUpIcon />}
               onClick={handleTestTTS}
-              disabled={!enableTTS || (useOpenai && !openaiApiKey) || (!useOpenai && !apiKey)}
+              disabled={
+                !enableTTS ||
+                (selectedTTSService === 'openai' && !openaiSettings.apiKey) ||
+                (selectedTTSService === 'azure' && !azureSettings.apiKey) ||
+                (selectedTTSService === 'siliconflow' && !siliconFlowSettings.apiKey)
+              }
+              size={window.innerWidth < 600 ? "large" : "medium"} // 移动端大按钮
+              sx={{
+                minHeight: { xs: 48, sm: 40 }, // 响应式按钮高度
+                fontSize: { xs: '0.9rem', sm: '1rem' },
+                fontWeight: 600,
+                borderRadius: { xs: 2, sm: 1.5 },
+                px: { xs: 3, sm: 2 },
+                order: { xs: 2, sm: 1 }, // 移动端按钮顺序
+                '&:hover': {
+                  transform: 'translateY(-1px)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                },
+                transition: 'all 0.2s ease-in-out',
+              }}
             >
-              {isTestPlaying ? "停止播放" : "播放测试"}
+              {uiState.isTestPlaying ? "停止播放" : "播放测试"}
             </Button>
-            
+
             <Button
               variant="contained"
               color="primary"
               onClick={handleSave}
+              size={window.innerWidth < 600 ? "large" : "medium"}
+              sx={{
+                minHeight: { xs: 48, sm: 40 },
+                fontSize: { xs: '0.9rem', sm: '1rem' },
+                fontWeight: 600,
+                borderRadius: { xs: 2, sm: 1.5 },
+                px: { xs: 3, sm: 2 },
+                order: { xs: 1, sm: 2 },
+                background: 'linear-gradient(45deg, #9333EA, #754AB4)',
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #7C3AED, #6D28D9)',
+                  transform: 'translateY(-1px)',
+                  boxShadow: '0 4px 12px rgba(147, 51, 234, 0.3)',
+                },
+                transition: 'all 0.2s ease-in-out',
+              }}
             >
               保存设置
             </Button>
           </Box>
         </Paper>
+        </Box>
       </Box>
     </Box>
   );
 };
 
-export default VoiceSettings; 
+export default VoiceSettings;

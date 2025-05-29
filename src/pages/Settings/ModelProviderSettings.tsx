@@ -46,43 +46,89 @@ import { sendChatRequest } from '../../shared/api';
 
 
 
-const getCompleteApiUrl = (baseUrl: string): string => {
+/**
+ * 智能URL补全函数 - 专门处理OpenAI兼容格式的API
+ * @param baseUrl 用户输入的基础URL
+ * @param providerType 供应商类型
+ * @returns 补全后的完整API URL
+ */
+const smartCompleteApiUrl = (baseUrl: string, providerType?: string): string => {
   if (!baseUrl.trim()) return '';
 
+  // 如果用户在末尾添加了 #，表示强制使用原始URL
   if (baseUrl.endsWith('#')) {
     return baseUrl.slice(0, -1);
   }
 
+  // 标准化URL - 移除末尾的斜杠
+  let normalizedUrl = baseUrl.trim();
+  if (normalizedUrl.endsWith('/')) {
+    normalizedUrl = normalizedUrl.slice(0, -1);
+  }
+
+  // 如果已经包含完整的API路径，直接返回
+  if (normalizedUrl.includes('/chat/completions') ||
+      normalizedUrl.includes('/v1/models') ||
+      normalizedUrl.includes('/models/')) {
+    return normalizedUrl;
+  }
+
+  // 只处理OpenAI兼容格式的供应商
+  const isOpenAICompatible = ['openai', 'deepseek', 'grok', 'siliconflow'].includes(providerType || '');
+
+  if (isOpenAICompatible || !providerType || providerType === 'custom') {
+    // 检查常见的供应商域名并补全
+    if (normalizedUrl === 'https://api.openai.com' || normalizedUrl.endsWith('openai.com')) {
+      return 'https://api.openai.com/v1';
+    }
+    if (normalizedUrl === 'https://api.deepseek.com' || normalizedUrl.endsWith('deepseek.com')) {
+      return 'https://api.deepseek.com';
+    }
+    if (normalizedUrl === 'https://api.x.ai' || normalizedUrl.endsWith('x.ai')) {
+      return 'https://api.x.ai/v1';
+    }
+    if (normalizedUrl.includes('siliconflow.cn') && !normalizedUrl.includes('/v1')) {
+      return 'https://api.siliconflow.cn/v1';
+    }
+
+    // 对于其他自定义域名，如果没有 /v1 路径则智能添加
+    // 例如: https://tow.bt6.top -> https://tow.bt6.top/v1
+    if (!normalizedUrl.includes('/v1')) {
+      return `${normalizedUrl}/v1`;
+    }
+  }
+
+  // 对于非OpenAI兼容的供应商，直接返回原URL
+  return normalizedUrl;
+};
+
+/**
+ * 显示用的URL补全函数 - 仅用于显示完整的API端点
+ * @param baseUrl 基础URL
+ * @param providerType 供应商类型
+ * @returns 显示用的完整API端点
+ */
+const getCompleteApiUrl = (baseUrl: string, providerType?: string): string => {
+  const smartUrl = smartCompleteApiUrl(baseUrl, providerType);
+  if (!smartUrl) return '';
+
   // 如果已经包含完整路径，直接返回
-  if (baseUrl.includes('/chat/completions') || baseUrl.includes('/messages') || baseUrl.includes('/v1/models')) {
-    return baseUrl;
+  if (smartUrl.includes('/chat/completions') ||
+      smartUrl.includes('/messages') ||
+      smartUrl.includes('/generateContent') ||
+      smartUrl.includes('/models/')) {
+    return smartUrl;
   }
 
-  const forceUseOriginalHost = () => {
-    if (baseUrl.endsWith('/')) {
-      return true;
-    }
-    // 火山引擎特殊处理 - 使用 /v3/chat/completions
-    if (baseUrl.endsWith('volces.com/api/v3')) {
-      return true;
-    }
-    // 智谱AI特殊处理 - 使用 /v4/chat/completions
-    if (baseUrl.endsWith('bigmodel.cn/api/paas/v4/')) {
-      return true;
-    }
-    return false;
-  };
+  // 只为OpenAI兼容的供应商添加 /chat/completions 端点
+  const isOpenAICompatible = ['openai', 'deepseek', 'grok', 'siliconflow'].includes(providerType || '');
 
-  if (forceUseOriginalHost()) {
-    // 火山引擎和智谱AI直接添加 /chat/completions
-    if (baseUrl.endsWith('volces.com/api/v3') || baseUrl.endsWith('bigmodel.cn/api/paas/v4/')) {
-      return `${baseUrl}chat/completions`;
-    }
-    return baseUrl;
+  if (isOpenAICompatible || !providerType || providerType === 'custom') {
+    return `${smartUrl}/chat/completions`;
   }
 
-  // 其他提供商添加 /v1/chat/completions
-  return `${baseUrl}/v1/chat/completions`;
+  // 对于其他供应商类型，直接返回智能补全的URL
+  return smartUrl;
 };
 
 const ModelProviderSettings: React.FC = () => {
@@ -136,11 +182,14 @@ const ModelProviderSettings: React.FC = () => {
         return false;
       }
 
+      // 使用智能补全的URL进行保存
+      const smartUrl = baseUrl ? smartCompleteApiUrl(baseUrl, provider.providerType) : '';
+
       dispatch(updateProvider({
         id: provider.id,
         updates: {
           apiKey,
-          baseUrl,
+          baseUrl: smartUrl, // 保存智能补全后的URL
           isEnabled
         }
       }));
@@ -738,7 +787,7 @@ const ModelProviderSettings: React.FC = () => {
                           }}
                         >
                           {baseUrl.endsWith('#') ? '强制使用: ' : '完整地址: '}
-                          {getCompleteApiUrl(baseUrl)}
+                          {getCompleteApiUrl(baseUrl, provider?.providerType)}
                         </span>
                       )}
                     </span>
@@ -1048,11 +1097,13 @@ const ModelProviderSettings: React.FC = () => {
           open={testResultDialogOpen}
           onClose={() => setTestResultDialogOpen(false)}
           maxWidth="md"
-          PaperProps={{
-            sx: {
-              width: '100%',
-              maxWidth: 500,
-              borderRadius: 2
+          slotProps={{
+            paper: {
+              sx: {
+                width: '100%',
+                maxWidth: 500,
+                borderRadius: 2
+              }
             }
           }}
         >

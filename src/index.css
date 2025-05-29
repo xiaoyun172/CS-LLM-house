@@ -20,9 +20,9 @@
   --color-primary-800: #1E293B;
   --color-primary-900: #0F172A;
   --color-primary-950: #020617;
-  
+
   --color-secondary-500: #10B981;
-  
+
   --color-gray-50: #F8FAFC;
   --color-gray-100: #F1F5F9;
   --color-gray-200: #E2E8F0;
@@ -33,7 +33,7 @@
   --color-gray-700: #334155;
   --color-gray-800: #1E293B;
   --color-gray-900: #0F172A;
-  
+
   /* 阴影变量 */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -153,4 +153,102 @@ input, textarea, .RNTextInput {
 input:focus, textarea:focus, .RNTextInput:focus {
   outline: 2px solid var(--color-primary-300);
   outline-offset: 0px;
+}
+
+/* 🚀 搜索结果折叠UI样式 */
+.search-results-collapsible {
+  border: 1px solid var(--color-gray-200);
+  border-radius: 12px;
+  background-color: white;
+  margin: 8px 0;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.search-results-summary {
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  border: none;
+  outline: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  border-radius: 12px 12px 0 0;
+}
+
+.search-results-summary:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+/* 当折叠状态时，保持圆角 */
+.search-results-collapsible:not([open]) .search-results-summary {
+  border-radius: 12px;
+}
+
+.search-results-summary::after {
+  content: '▼';
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.search-results-collapsible[open] .search-results-summary::after {
+  transform: rotate(180deg);
+}
+
+.search-results-list {
+  padding: 16px;
+  background-color: #fafbfc;
+  border-top: 1px solid var(--color-gray-100);
+}
+
+.search-results-list a {
+  color: var(--color-gray-700);
+  text-decoration: none;
+  font-weight: 400;
+  line-height: 1.6;
+  display: block;
+  margin-bottom: 4px;
+  padding: 6px 0;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid transparent;
+}
+
+.search-results-list a:hover {
+  color: var(--color-primary-600);
+  border-bottom-color: var(--color-primary-300);
+}
+
+/* 编号样式 */
+.search-results-list {
+  counter-reset: search-counter;
+}
+
+.search-results-list a::before {
+  counter-increment: search-counter;
+  content: counter(search-counter) ". ";
+  color: var(--color-gray-500);
+  font-weight: 500;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .search-results-summary {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .search-results-list {
+    padding: 12px;
+  }
+
+  .search-results-list a {
+    padding: 6px 10px;
+    font-size: 14px;
+  }
 }

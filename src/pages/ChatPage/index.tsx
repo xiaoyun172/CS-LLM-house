@@ -7,9 +7,11 @@ import { useModelSelection } from './hooks/useModelSelection.ts';
 import { useTopicManagement } from './hooks/useTopicManagement.ts';
 import { useMessageHandling } from './hooks/useMessageHandling.ts';
 import { useChatFeatures } from './hooks/useChatFeatures.ts';
+import { useAIDebate } from './hooks/useAIDebate.ts';
 import { ChatPageUI } from './components/ChatPageUI.tsx';
 import {
   selectMessagesForTopic,
+  selectTopicLoading,
   selectTopicStreaming
 } from '../../shared/store/selectors/messageSelectors';
 import { dexieStorage } from '../../shared/services/DexieStorageService';
@@ -53,13 +55,18 @@ const ChatPage: React.FC = () => {
 
   // 创建记忆化的消息选择器
   const selectCurrentMessages = useMemo(
-    () => createSelector(
-      [
-        (state: RootState) => state,
-        () => currentTopic?.id
-      ],
-      (state, topicId) => topicId ? selectMessagesForTopic(state, topicId) : []
-    ),
+    () => {
+      if (!currentTopic?.id) {
+        return () => [];
+      }
+      return createSelector(
+        [(state: RootState) => selectMessagesForTopic(state, currentTopic.id)],
+        (messages) => {
+          // 添加转换逻辑避免直接返回输入
+          return messages ? [...messages] : [];
+        }
+      );
+    },
     [currentTopic?.id]
   );
 
@@ -71,10 +78,42 @@ const ChatPage: React.FC = () => {
     messagesRef.current = currentMessages;
   }, [currentMessages]);
 
-  // 使用新的选择器获取流式状态和加载状态
-  const isStreaming = useSelector((state: RootState) =>
-    currentTopic ? selectTopicStreaming(state, currentTopic.id) : false
+  // 创建记忆化的状态选择器
+  const selectCurrentTopicStreaming = useMemo(
+    () => {
+      if (!currentTopic?.id) {
+        return () => false;
+      }
+      return createSelector(
+        [(state: RootState) => selectTopicStreaming(state, currentTopic.id)],
+        (streaming) => {
+          // 添加转换逻辑避免直接返回输入
+          return Boolean(streaming);
+        }
+      );
+    },
+    [currentTopic?.id]
   );
+
+  const selectCurrentTopicLoading = useMemo(
+    () => {
+      if (!currentTopic?.id) {
+        return () => false;
+      }
+      return createSelector(
+        [(state: RootState) => selectTopicLoading(state, currentTopic.id)],
+        (loading) => {
+          // 添加转换逻辑避免直接返回输入
+          return Boolean(loading);
+        }
+      );
+    },
+    [currentTopic?.id]
+  );
+
+  // 使用记忆化的选择器获取状态
+  const isStreaming = useSelector(selectCurrentTopicStreaming);
+  const isLoading = useSelector(selectCurrentTopicLoading);
 
   // 布局相关钩子
   const {
@@ -112,17 +151,25 @@ const ChatPage: React.FC = () => {
     webSearchActive,
     imageGenerationMode,
     toolsEnabled,
-    smartSearchEnabled,
-    searchProgress,
+    mcpMode,
     toggleWebSearch,
     toggleImageGenerationMode,
     toggleToolsEnabled,
-    toggleSmartSearch,
-    handleMessageSend,
-    handleMultiModelSend,
+    handleMCPModeChange,
     handleStopResponseClick,
-    handleSearchProgressClose
+    handleMessageSend,
+    handleMultiModelSend
   } = useChatFeatures(currentTopic, currentMessages, selectedModel, handleSendMessage);
+
+  // AI辩论功能钩子
+  const {
+    isDebating,
+    handleStartDebate,
+    handleStopDebate
+  } = useAIDebate({
+    onSendMessage: handleSendMessage,
+    currentTopic
+  });
 
   // 在主题切换时加载消息
   useEffect(() => {
@@ -237,6 +284,7 @@ const ChatPage: React.FC = () => {
       currentTopic={currentTopic}
       currentMessages={currentMessages}
       isStreaming={isStreaming}
+      isLoading={isLoading}
       isMobile={isMobile}
       drawerOpen={drawerOpen}
       setDrawerOpen={setDrawerOpen}
@@ -255,16 +303,17 @@ const ChatPage: React.FC = () => {
       webSearchActive={webSearchActive}
       imageGenerationMode={imageGenerationMode}
       toolsEnabled={toolsEnabled}
+      mcpMode={mcpMode}
       toggleWebSearch={toggleWebSearch}
       toggleImageGenerationMode={toggleImageGenerationMode}
       toggleToolsEnabled={toggleToolsEnabled}
+      handleMCPModeChange={handleMCPModeChange}
       handleMessageSend={handleMessageSend}
       handleMultiModelSend={handleMultiModelSend}
       handleStopResponseClick={handleStopResponseClick}
-      smartSearchEnabled={smartSearchEnabled}
-      toggleSmartSearch={toggleSmartSearch}
-      searchProgress={searchProgress}
-      handleSearchProgressClose={handleSearchProgressClose}
+      isDebating={isDebating}
+      handleStartDebate={handleStartDebate}
+      handleStopDebate={handleStopDebate}
     />
   );
 };

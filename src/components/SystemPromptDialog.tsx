@@ -16,7 +16,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import type { ChatTopic, Assistant } from '../shared/types/Assistant';
 import { TopicService } from '../shared/services/TopicService';
 import { updateTopic } from '../shared/store/slices/assistantsSlice';
-import store from '../shared/store';
+import { useAppDispatch, useAppSelector } from '../shared/store';
+import { selectActiveSystemPrompt } from '../shared/store/slices/systemPromptsSlice';
 
 interface SystemPromptDialogProps {
   open: boolean;
@@ -38,20 +39,24 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
   onSave
 }) => {
   const theme = useTheme();
+  const dispatch = useAppDispatch();
   const [prompt, setPrompt] = useState('');
   const [saving, setSaving] = useState(false);
   const [tokensCount, setTokensCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  
+  // 获取当前活动的系统提示词（如果没有话题提示词）
+  const activeSystemPrompt = useAppSelector(selectActiveSystemPrompt);
 
   // 当对话框打开时，初始化提示词
   useEffect(() => {
     if (open) {
       // 优先使用话题的提示词，但prompt已被弃用，所以需要检查两种可能性
       // 注意：这里我们仍然读取prompt属性，但在保存时会根据情况处理
-      setPrompt(topic?.prompt || assistant?.systemPrompt || '');
+      setPrompt(topic?.prompt || assistant?.systemPrompt || activeSystemPrompt || '');
 
       // 简单估算token数量 (英文按照单词计算，中文按照字符计算)
-      const text = topic?.prompt || assistant?.systemPrompt || '';
+      const text = topic?.prompt || assistant?.systemPrompt || activeSystemPrompt || '';
       const estimatedTokens = Math.ceil(text.split(/\s+/).length +
         text.replace(/[\u4e00-\u9fa5]/g, '').length / 4);
       setTokensCount(estimatedTokens);
@@ -59,7 +64,7 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
       // 重置错误状态
       setError(null);
     }
-  }, [open, topic, assistant]);
+  }, [open, topic, assistant, activeSystemPrompt]);
 
   // 保存提示词 - 简化版，更接近电脑端实现
   const handleSave = async () => {
@@ -102,14 +107,12 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
 
         // 强制刷新Redux状态
         if (assistant) {
-          store.dispatch(updateTopic({
+          dispatch(updateTopic({
             assistantId: assistant.id,
             topic: updatedTopic
           }));
           console.log('[SystemPromptDialog] 已通过Redux更新话题状态');
         }
-
-        // 不再同步更新助手的系统提示词，简化同步机制
 
         // 调用保存回调，通知父组件更新
         if (onSave) {
@@ -158,7 +161,7 @@ const SystemPromptDialog: React.FC<SystemPromptDialogProps> = ({
         borderBottom: `1px solid ${theme.palette.divider}`,
         pb: 1
       }}>
-        <Typography variant="h6">系统提示词设置</Typography>
+        系统提示词设置
         <IconButton edge="end" color="inherit" onClick={onClose} aria-label="close">
           <CloseIcon />
         </IconButton>

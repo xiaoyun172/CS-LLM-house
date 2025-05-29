@@ -52,33 +52,55 @@ export function getFileTypeByExtension(filename: string): string {
     return FileTypes.IMAGE;
   }
 
-  // 代码文件
-  if (['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'scala', 'sh', 'bat', 'ps1', 'sql', 'r', 'matlab', 'm', 'pl', 'lua', 'dart', 'vue', 'svelte'].includes(ext)) {
+  // 代码文件 - 扩展支持更多编程语言
+  if ([
+    'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'scala', 'sh', 'bat', 'ps1', 'sql', 'r', 'matlab', 'm', 'pl', 'lua', 'dart', 'vue', 'svelte',
+    // 添加更多编程语言支持
+    'hpp', 'cc', 'cxx', 'cppm', 'ipp', 'ixx', 'f90', 'f', 'f03', 'ahk', 'tcl', 'do', 'v', 'sv', 'vhd', 'vhdl',
+    'asm', 'groovy', 'hs', 'clj', 'cljs', 'elm', 'erl', 'ex', 'exs', 'coffee', 'ino', 'gradle', 'kts',
+    'mm', 'proto', 'thrift', 'graphql', 'gql'
+  ].includes(ext)) {
     return FileTypes.CODE;
   }
 
-  // 文本文件
-  if (['txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'htm', 'css'].includes(ext)) {
+  // 文本文件 - 大幅扩展支持的文本格式
+  if ([
+    'txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'htm', 'css', 'mdx', 'yaml', 'yml', 'tsv', 'ini', 'log', 'rtf', 'org', 'wiki', 'tex', 'bib', 'srt', 'xhtml', 'nfo', 'conf', 'config', 'env', 'rst',
+    // 模板文件
+    'pug', 'haml', 'slim', 'tpl', 'ejs', 'hbs', 'mustache', 'jade', 'twig', 'blade',
+    // 样式文件
+    'less', 'scss', 'sass', 'styl',
+    // 配置文件
+    'toml', 'edn', 'cake', 'ctp', 'cfm', 'cfc',
+    // Jupyter笔记本
+    'ipynb'
+  ].includes(ext)) {
     return FileTypes.TEXT;
   }
 
-  // 文档文件
-  if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'].includes(ext)) {
+  // 文档文件 - 扩展支持更多文档格式
+  if ([
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf',
+    // 添加电子书格式
+    'epub',
+    // 添加特殊应用格式
+    'draftsexport'
+  ].includes(ext)) {
     return FileTypes.DOCUMENT;
   }
 
-  // 音频文件
-  if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)) {
+  // 音频文件 - 扩展支持更多音频格式
+  if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus', 'webm'].includes(ext)) {
     return FileTypes.AUDIO;
   }
 
-  // 视频文件
-  if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm'].includes(ext)) {
+  // 视频文件 - 扩展支持更多视频格式
+  if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm', 'ogv', '3gp', 'mp2', 'mpg', 'mpeg'].includes(ext)) {
     return FileTypes.VIDEO;
   }
 
-  // 压缩文件
-  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(ext)) {
+  // 压缩文件 - 扩展支持更多压缩格式
+  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'lzma', 'cab', 'iso'].includes(ext)) {
     return FileTypes.ARCHIVE;
   }
 
@@ -177,6 +199,56 @@ export function getFileMimeType(file: FileType): string {
       return 'application/xml';
     case '.csv':
       return 'text/csv';
+    case '.py':
+      return 'text/x-python';
+    case '.java':
+      return 'text/x-java-source';
+    case '.cpp':
+    case '.cc':
+    case '.cxx':
+      return 'text/x-c++src';
+    case '.c':
+      return 'text/x-csrc';
+    case '.h':
+    case '.hpp':
+      return 'text/x-chdr';
+    case '.cs':
+      return 'text/x-csharp';
+    case '.php':
+      return 'application/x-httpd-php';
+    case '.rb':
+      return 'application/x-ruby';
+    case '.go':
+      return 'text/x-go';
+    case '.rs':
+      return 'text/x-rust';
+    case '.swift':
+      return 'text/x-swift';
+    case '.kt':
+      return 'text/x-kotlin';
+    case '.scala':
+      return 'text/x-scala';
+    case '.sh':
+      return 'application/x-sh';
+    case '.bat':
+      return 'application/x-bat';
+    case '.sql':
+      return 'application/sql';
+    case '.yaml':
+    case '.yml':
+      return 'application/x-yaml';
+    case '.toml':
+      return 'application/toml';
+    case '.ini':
+      return 'text/plain';
+    case '.log':
+      return 'text/plain';
+    case '.rtf':
+      return 'application/rtf';
+    case '.epub':
+      return 'application/epub+zip';
+    case '.ipynb':
+      return 'application/x-ipynb+json';
     default:
       return 'application/octet-stream';
   }

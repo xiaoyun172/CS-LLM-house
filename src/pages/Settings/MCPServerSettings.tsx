@@ -669,86 +669,189 @@ const MCPServerSettings: React.FC = () => {
         onClose={() => setBuiltinDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={window.innerWidth < 600}
+        sx={{
+          '& .MuiDialog-paper': {
+            maxHeight: { xs: '100vh', sm: '90vh' },
+            margin: { xs: 0, sm: 2 },
+            borderRadius: { xs: 0, sm: 2 }
+          }
+        }}
       >
-        <DialogTitle>添加内置 MCP 服务器</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <DialogTitle sx={{
+          px: { xs: 2, sm: 3 },
+          py: { xs: 2, sm: 2.5 },
+          fontSize: { xs: '1.25rem', sm: '1.5rem' },
+          fontWeight: 600,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          添加内置 MCP 服务器
+        </DialogTitle>
+        <DialogContent sx={{ px: { xs: 2, sm: 3 }, py: { xs: 2, sm: 3 } }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{
+              mb: { xs: 2, sm: 3 },
+              fontSize: { xs: '0.875rem', sm: '0.875rem' },
+              lineHeight: 1.5
+            }}
+          >
             选择要添加的内置 MCP 服务器。这些服务器由 Cherry Studio 提供，无需额外配置即可使用。
           </Typography>
-          <List>
+          <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: { xs: 1.5, sm: 2 },
+            maxHeight: { xs: '60vh', sm: '70vh', md: '80vh' },
+            overflow: 'auto',
+            pr: { xs: 0.5, sm: 1 }
+          }}>
             {builtinServers.map((builtinServer) => (
               <Paper
                 key={builtinServer.id}
+                elevation={1}
                 sx={{
-                  mb: 2,
                   overflow: 'hidden',
                   border: '1px solid',
-                  borderColor: 'divider'
+                  borderColor: 'divider',
+                  borderRadius: { xs: 2, sm: 1 },
+                  transition: 'all 0.2s ease-in-out',
+                  '&:hover': {
+                    boxShadow: { xs: 2, sm: 3 },
+                    borderColor: 'primary.main'
+                  }
                 }}
               >
-                <ListItem
+                <Box
                   sx={{
-                    py: 2,
-                    px: 3
+                    p: { xs: 2, sm: 2.5, md: 3 },
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: { xs: 2, sm: 3 }
                   }}
                 >
-                  <Avatar
-                    sx={{
-                      bgcolor: '#10b981',
-                      color: 'white',
-                      mr: 2
-                    }}
-                  >
-                    <SettingsIcon />
-                  </Avatar>
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                          {builtinServer.name}
-                        </Typography>
-                        {builtinServer.tags && builtinServer.tags.map((tag) => (
-                          <Chip
-                            key={tag}
-                            label={tag}
-                            size="small"
-                            variant="outlined"
-                            sx={{ fontSize: '0.75rem' }}
-                          />
-                        ))}
-                      </Box>
-                    }
-                    secondary={
-                      <Box component="div">
-                        <Typography variant="body2" color="text.secondary" component="div">
-                          {builtinServer.description}
-                        </Typography>
-                        {builtinServer.provider && (
-                          <Typography variant="caption" color="text.secondary" component="div">
-                            提供者: {builtinServer.provider}
-                          </Typography>
-                        )}
-                      </Box>
-                    }
-                  />
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    {/* 服务器名称和标签 */}
+                    <Box sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: { xs: 1, sm: 1.5 },
+                      mb: { xs: 1, sm: 1.5 },
+                      flexWrap: 'wrap'
+                    }}>
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight={600}
+                        sx={{
+                          fontSize: { xs: '1rem', sm: '1.1rem' },
+                          color: 'text.primary',
+                          wordBreak: 'break-word'
+                        }}
+                      >
+                        {builtinServer.name}
+                      </Typography>
+                      {builtinServer.tags && builtinServer.tags.map((tag) => (
+                        <Chip
+                          key={tag}
+                          label={tag}
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                            height: { xs: 20, sm: 24 },
+                            '& .MuiChip-label': {
+                              px: { xs: 1, sm: 1.5 }
+                            }
+                          }}
+                        />
+                      ))}
+                    </Box>
+                    
+                    {/* 描述 */}
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{
+                        mb: { xs: 0.5, sm: 1 },
+                        fontSize: { xs: '0.875rem', sm: '0.875rem' },
+                        lineHeight: 1.4,
+                        display: '-webkit-box',
+                        WebkitLineClamp: { xs: 3, sm: 2 },
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {builtinServer.description}
+                    </Typography>
+                    
+                    {/* 提供者信息 */}
+                    {builtinServer.provider && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          fontSize: { xs: '0.75rem', sm: '0.75rem' },
+                          opacity: 0.8
+                        }}
+                      >
+                        提供者: {builtinServer.provider}
+                      </Typography>
+                    )}
+                  </Box>
+                  
+                  {/* 添加按钮 */}
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexShrink: 0
+                  }}>
                     <IconButton
                       onClick={(e) => {
                         e.stopPropagation();
                         handleAddBuiltinServer(builtinServer);
                       }}
                       color="primary"
+                      size={window.innerWidth < 600 ? 'small' : 'medium'}
+                      sx={{
+                        bgcolor: alpha('#10b981', 0.1),
+                        border: '1px solid',
+                        borderColor: alpha('#10b981', 0.3),
+                        '&:hover': {
+                          bgcolor: alpha('#10b981', 0.2),
+                          borderColor: '#10b981'
+                        },
+                        width: { xs: 36, sm: 40 },
+                        height: { xs: 36, sm: 40 }
+                      }}
                     >
-                      <AddIcon />
+                      <AddIcon sx={{ fontSize: { xs: '1.2rem', sm: '1.5rem' } }} />
                     </IconButton>
                   </Box>
-                </ListItem>
+                </Box>
               </Paper>
             ))}
-          </List>
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBuiltinDialogOpen(false)}>关闭</Button>
+        <DialogActions sx={{
+          px: { xs: 2, sm: 3 },
+          py: { xs: 2, sm: 2.5 },
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          gap: { xs: 1, sm: 2 }
+        }}>
+          <Button
+            onClick={() => setBuiltinDialogOpen(false)}
+            variant="outlined"
+            fullWidth={window.innerWidth < 600}
+            sx={{
+              minHeight: { xs: 44, sm: 36 },
+              fontSize: { xs: '1rem', sm: '0.875rem' }
+            }}
+          >
+            关闭
+          </Button>
         </DialogActions>
       </Dialog>
 

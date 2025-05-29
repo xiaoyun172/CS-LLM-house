@@ -39,13 +39,8 @@ public class MainActivity extends BridgeActivity {
             // 设置状态栏为可绘制
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
 
-            // 确保状态栏文字为亮色（白色）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                View decorView = getWindow().getDecorView();
-                int flags = decorView.getSystemUiVisibility();
-                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; // 移除亮色状态栏标志，使状态栏文字为白色
-                decorView.setSystemUiVisibility(flags);
-            }
+            // 让Capacitor StatusBar插件来控制状态栏样式，不在这里强制设置
+            // 移除了强制设置状态栏文字颜色的代码，让插件动态控制
 
             // 添加窗口内容扩展到状态栏
             View decorView = getWindow().getDecorView();

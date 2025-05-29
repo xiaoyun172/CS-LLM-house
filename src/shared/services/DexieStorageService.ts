@@ -23,6 +23,8 @@ class DexieStorageService extends Dexie {
   message_blocks!: Dexie.Table<MessageBlock, string>;
   messages!: Dexie.Table<Message, string>;
   files!: Dexie.Table<any, string>;
+  knowledge_bases!: Dexie.Table<any, string>;
+  knowledge_documents!: Dexie.Table<any, string>;
 
   private static instance: DexieStorageService;
 
@@ -52,7 +54,7 @@ class DexieStorageService extends Dexie {
       [DB_CONFIG.STORES.MESSAGES]: 'id, topicId, assistantId',
     }).upgrade(() => this.upgradeToV5());
 
-    // 添加版本6，增加文件存储表
+    // 添加版本6，增加文件存储表和知识库相关表
     this.version(6).stores({
       [DB_CONFIG.STORES.ASSISTANTS]: 'id',
       [DB_CONFIG.STORES.TOPICS]: 'id, _lastMessageTimeNum, messages',
@@ -63,17 +65,17 @@ class DexieStorageService extends Dexie {
       [DB_CONFIG.STORES.MESSAGE_BLOCKS]: 'id, messageId',
       [DB_CONFIG.STORES.MESSAGES]: 'id, topicId, assistantId',
       files: 'id, name, origin_name, size, ext, type, created_at, count, hash',
+      knowledge_bases: 'id, name, model, dimensions, created_at, updated_at',
+      knowledge_documents: 'id, knowledgeBaseId, content, metadata.source, metadata.timestamp',
     }).upgrade(() => this.upgradeToV6());
-
-
   }
 
   /**
-   * 升级到数据库版本6：添加文件存储表
+   * 升级到数据库版本6：添加文件存储表和知识库相关表
    */
   private async upgradeToV6(): Promise<void> {
-    console.log('开始升级到数据库版本6: 添加文件存储表...');
-    // 文件表会自动创建，无需特殊处理
+    console.log('开始升级到数据库版本6: 添加文件存储表和知识库相关表...');
+    // 文件表和知识库表会自动创建，无需特殊处理
     console.log('数据库升级到版本6完成');
   }
 
@@ -1003,7 +1005,9 @@ class DexieStorageService extends Dexie {
       // 查找所有metadata.versionId等于指定versionId的块
       const blocks = await this.message_blocks.toArray();
       return blocks.filter(block =>
-        block.metadata &&
+        block.metadata && 
+        typeof block.metadata === 'object' &&
+        'versionId' in block.metadata &&
         block.metadata.versionId === versionId
       );
     } catch (error) {

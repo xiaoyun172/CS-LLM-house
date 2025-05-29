@@ -1,6 +1,6 @@
 # AetherLink 软件许可证
 
-版权所有 (c) 2024 AetherLink
+版权所有 (c) 2025 AetherLink
 
 ## 许可条款
 

@@ -3,6 +3,7 @@
  */
 
 import { EventSourcePolyfill } from 'event-source-polyfill';
+import { Capacitor } from '@capacitor/core';
 
 export interface SSEClientOptions {
   headers?: Record<string, string>;
@@ -39,7 +40,8 @@ export class SSEClient {
       try {
         console.log(`[SSE Client] 连接到: ${this.url}`);
 
-        this.eventSource = new EventSourcePolyfill(this.url, {
+        // 移动端使用特殊配置绕过CORS
+        const eventSourceOptions: any = {
           headers: {
             'Accept': 'text/event-stream',
             'Cache-Control': 'no-cache',
@@ -47,7 +49,17 @@ export class SSEClient {
           },
           withCredentials: this.options.withCredentials,
           heartbeatTimeout: this.options.heartbeatTimeout
-        });
+        };
+
+        // 移动端添加额外的配置来绕过CORS
+        if (Capacitor.isNativePlatform()) {
+          console.log(`[SSE Client] 移动端模式，配置CORS绕过`);
+          eventSourceOptions.headers['User-Agent'] = 'AetherLink-Mobile/1.0';
+          // 禁用CORS检查（仅在支持的polyfill中有效）
+          eventSourceOptions.withCredentials = false;
+        }
+
+        this.eventSource = new EventSourcePolyfill(this.url, eventSourceOptions);
 
         this.eventSource.onopen = (_event: Event) => {
           console.log(`[SSE Client] 连接已建立`);
@@ -58,13 +70,21 @@ export class SSEClient {
         this.eventSource.onerror = (event: Event) => {
           console.error(`[SSE Client] 连接错误:`, event);
 
+          // 在移动端，如果是CORS错误，提供更友好的错误信息
+          if (Capacitor.isNativePlatform()) {
+            console.log(`[SSE Client] 移动端SSE连接错误，可能是服务器不支持或网络问题`);
+          }
+
           if (this.eventSource?.readyState === EventSource.CLOSED) {
             console.log(`[SSE Client] 连接已关闭，尝试重连...`);
             this.handleReconnect();
           }
 
           if (this.reconnectAttempts === 0) {
-            reject(new Error('SSE connection failed'));
+            const errorMessage = Capacitor.isNativePlatform()
+              ? 'SSE connection failed - 移动端连接失败，请检查网络或服务器状态'
+              : 'SSE connection failed';
+            reject(new Error(errorMessage));
           }
         };
 

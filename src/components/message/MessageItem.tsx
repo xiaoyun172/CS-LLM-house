@@ -10,7 +10,6 @@ import {
   Typography
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
-import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import type { Message, MessageBlock } from '../../shared/types/newMessage.ts';
 import { messageBlocksSelectors } from '../../shared/store/slices/messageBlocksSlice';
 import { dexieStorage } from '../../shared/services/DexieStorageService';
@@ -19,6 +18,7 @@ import { upsertManyBlocks } from '../../shared/store/slices/messageBlocksSlice';
 import MessageActions from './MessageActions';
 import MessageBlockRenderer from './MessageBlockRenderer';
 import type { RootState } from '../../shared/store';
+import { getMessageDividerSetting } from '../../shared/utils/settingsUtils';
 
 interface MessageItemProps {
   message: Message;
@@ -72,6 +72,46 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const showModelAvatar = settings.showModelAvatar !== false;
   const showModelName = settings.showModelName !== false;
 
+  // 获取消息样式设置
+  const messageStyle = settings.messageStyle || 'bubble';
+  const isBubbleStyle = messageStyle === 'bubble';
+
+  // 获取消息分割线设置
+  const [showMessageDivider, setShowMessageDivider] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchMessageDividerSetting = () => {
+      try {
+        const dividerSetting = getMessageDividerSetting();
+        setShowMessageDivider(dividerSetting);
+      } catch (error) {
+        console.error('获取消息分割线设置失败:', error);
+      }
+    };
+
+    fetchMessageDividerSetting();
+
+    // 监听 localStorage 变化，实时更新设置
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'appSettings') {
+        fetchMessageDividerSetting();
+      }
+    };
+
+    // 使用自定义事件监听设置变化（用于同一页面内的变化）
+    const handleCustomSettingChange = () => {
+      fetchMessageDividerSetting();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('appSettingsChanged', handleCustomSettingChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('appSettingsChanged', handleCustomSettingChange);
+    };
+  }, []);
+
   // 获取供应商友好名称的函数 - 使用useMemo进一步优化
   const getProviderName = useMemo(() => {
     const providerMap = new Map(providers.map(p => [p.id, p.name]));
@@ -82,13 +122,16 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const selectMessageBlocks = useMemo(
     () => createSelector(
       [
-        (state: RootState) => state,
+        (state: RootState) => state.messageBlocks.entities,
         () => message.blocks
       ],
-      (state, blockIds) =>
-        blockIds
-          .map((blockId: string) => messageBlocksSelectors.selectById(state, blockId))
-          .filter(Boolean) as MessageBlock[]
+      (blockEntities, blockIds) => {
+        // 添加转换逻辑避免直接返回输入
+        const blocks = blockIds
+          .map((blockId: string) => blockEntities[blockId])
+          .filter(Boolean) as MessageBlock[];
+        return [...blocks]; // 返回新数组避免直接返回输入
+      }
     ),
     [message.blocks] // 只有当 message.blocks 改变时才重新创建 selector
   );
@@ -158,6 +201,35 @@ const MessageItem: React.FC<MessageItemProps> = ({
       };
     }
   }, [message.status]); // 只依赖message.status，避免无限循环
+
+  // 🔥 新增：监听消息编辑更新事件，确保UI重新渲染
+  useEffect(() => {
+    const handleMessageUpdated = (event: CustomEvent) => {
+      const { messageId } = event.detail;
+      if (messageId === message.id) {
+        console.log('[MessageItem] 收到消息更新事件，强制重新渲染:', messageId);
+        if (forceUpdateRef.current) {
+          forceUpdateRef.current();
+        }
+      }
+    };
+
+    const handleForceRefresh = () => {
+      console.log('[MessageItem] 收到强制刷新事件');
+      if (forceUpdateRef.current) {
+        forceUpdateRef.current();
+      }
+    };
+
+    // 监听自定义事件
+    window.addEventListener('messageUpdated', handleMessageUpdated as EventListener);
+    window.addEventListener('forceRefresh', handleForceRefresh as EventListener);
+
+    return () => {
+      window.removeEventListener('messageUpdated', handleMessageUpdated as EventListener);
+      window.removeEventListener('forceRefresh', handleForceRefresh as EventListener);
+    };
+  }, [message.id]); // 依赖message.id，确保监听正确的消息
 
   // 版本恢复逻辑已移至TopicService.loadTopicMessages中统一处理
   // 这里不再需要重复的版本恢复逻辑
@@ -234,27 +306,165 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   const isUserMessage = message.role === 'user';
 
+  // 如果是简洁样式，使用纯白简洁布局
+  if (!isBubbleStyle) {
+    return (
+      <Box
+        id={`message-${message.id}`}
+        sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          marginBottom: 0,
+          paddingX: 2,
+          paddingY: 2,
+          alignItems: 'flex-start',
+          gap: 2,
+          backgroundColor: 'transparent',
+          borderBottom: showMessageDivider ? '1px solid' : 'none',
+          borderColor: showMessageDivider
+            ? (theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)')
+            : 'transparent',
+        }}
+      >
+        {/* 头像 - 根据设置控制显示 */}
+        {((isUserMessage && showUserAvatar) || (!isUserMessage && showModelAvatar)) && (
+          <Avatar
+            sx={{
+              width: 40,
+              height: 40,
+              fontSize: '1.2rem',
+              fontWeight: 600,
+              background: isUserMessage
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              color: 'white',
+              flexShrink: 0,
+              boxShadow: theme.palette.mode === 'dark'
+                ? '0 8px 32px rgba(0, 0, 0, 0.3)'
+                : '0 8px 32px rgba(0, 0, 0, 0.15)',
+              border: '3px solid',
+              borderColor: theme.palette.mode === 'dark'
+                ? 'rgba(255, 255, 255, 0.1)'
+                : 'rgba(255, 255, 255, 0.8)',
+            }}
+          >
+            {isUserMessage ? (
+              userAvatar ? (
+                <img src={userAvatar} alt="用户头像" style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+              ) : (
+                '👤'
+              )
+            ) : (
+              modelAvatar ? (
+                <img src={modelAvatar} alt="AI头像" style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+              ) : (
+                '🤖'
+              )
+            )}
+          </Avatar>
+        )}
+
+        {/* 内容区域 - 简洁样式 */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {/* 名称和时间行 - 根据设置控制显示 */}
+          {((isUserMessage && showUserName) || (!isUserMessage && showModelName)) && (
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
+              {/* 名称显示 - 根据设置控制 */}
+              {((isUserMessage && showUserName) || (!isUserMessage && showModelName)) && (
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem', color: 'text.primary' }}>
+                  {isUserMessage ? '用户' : (message.model?.name || 'AI')}
+                </Typography>
+              )}
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                {new Date(message.createdAt).toLocaleString('zh-CN', {
+                  month: 'numeric',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Typography>
+            </Box>
+          )}
+
+          {/* 消息内容 */}
+          <Box sx={{ position: 'relative' }}>
+            {loading ? (
+              <>
+                <Skeleton variant="text" width="80%" />
+                <Skeleton variant="text" width="60%" />
+              </>
+            ) : (
+              <Box sx={{ width: '100%' }}>
+                {message.blocks && message.blocks.length > 0 ? (
+                  <MessageBlockRenderer
+                    blocks={message.blocks}
+                    message={message}
+                    extraPaddingLeft={0}
+                    extraPaddingRight={0}
+                  />
+                ) : (
+                  <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
+                    {(message as any).content || ''}
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {/* 底部工具栏 - 简洁样式，显示操作按钮 */}
+            <Box sx={{
+              display: 'flex',
+              justifyContent: 'flex-start',
+              alignItems: 'center',
+              mt: 1,
+              pt: 0.5,
+              opacity: 0.7,
+              '&:hover': {
+                opacity: 1,
+              }
+            }}>
+              <MessageActions
+                message={message as any}
+                topicId={message.topicId}
+                messageIndex={messageIndex}
+                onRegenerate={onRegenerate}
+                onDelete={onDelete}
+                onSwitchVersion={onSwitchVersion}
+                onResend={onResend}
+                renderMode="toolbar" // 工具栏模式，显示所有操作按钮
+              />
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  // 气泡样式（原有的布局）
   return (
     <Box
       id={`message-${message.id}`}
       sx={{
         display: 'flex',
-        flexDirection: 'column', // 改为列布局，使头像在上方
+        flexDirection: 'column',
         marginBottom: isCompact ? 2 : 4,
         marginTop: isCompact ? 1 : 2,
         paddingX: 2,
-        alignItems: isUserMessage ? 'flex-end' : 'flex-start', // 用户消息靠右，AI消息靠左
+        alignItems: isUserMessage ? 'flex-end' : 'flex-start',
       }}
     >
-      {/* 头像和模型信息放在气泡上方 - 根据设置控制显示 */}
+      {/* 头像和模型信息 - 根据样式和设置控制显示 */}
       {showAvatar && (showUserAvatar || showUserName || showModelAvatar || showModelName) && (
         <Box
           sx={{
             display: 'flex',
-            justifyContent: isUserMessage ? 'flex-end' : 'flex-start',
+            justifyContent: isBubbleStyle
+              ? (isUserMessage ? 'flex-end' : 'flex-start') // 气泡样式：根据用户/AI调整对齐
+              : 'flex-start', // 简洁样式：都靠左对齐
             alignItems: 'center', // 垂直居中对齐
-            width: '100%',
-            marginBottom: 1, // 头像与气泡之间的间距
+            width: isBubbleStyle ? '100%' : 'auto', // 气泡样式占满宽度，简洁样式自适应
+            marginBottom: isBubbleStyle ? 1 : 0, // 气泡样式时头像与内容之间有间距
+            flexShrink: 0, // 简洁样式时头像区域不收缩
+            minWidth: isBubbleStyle ? 'auto' : '60px', // 简洁样式时头像区域最小宽度
           }}
         >
           {/* 用户消息显示"用户"文字和时间，右侧显示头像 */}
@@ -266,8 +476,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     src={userAvatar}
                     sx={{
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
                     }}
                   />
@@ -275,8 +485,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     sx={{
                       bgcolor: '#00c853', // 绿色背景
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
                     }}
                   >
@@ -331,8 +541,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     src={modelAvatar}
                     sx={{
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
                     }}
                   />
@@ -340,13 +550,18 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     sx={{
                       bgcolor: 'secondary.main',
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
+                      fontSize: '1rem',
+                      fontWeight: 600
                     }}
                   >
-                    {message.model?.name ? message.model.name.charAt(0).toUpperCase() :
-                     <SmartToyOutlinedIcon sx={{ fontSize: 20 }} />}
+                    {message.model?.name
+                      ? message.model.name.charAt(0).toUpperCase()
+                      : (message.modelId
+                          ? message.modelId.charAt(0).toUpperCase()
+                          : 'AI')}
                   </Avatar>
                 )
               )}
@@ -397,31 +612,39 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
       <Box sx={{
         position: 'relative',
-        maxWidth: isUserMessage
-          ? `${settings.userMessageMaxWidth || 80}%`
-          : `${settings.messageBubbleMaxWidth || 99}%`, // 使用设置中的宽度值
-        minWidth: `${settings.messageBubbleMinWidth || 50}%`, // 使用设置中的最小宽度
-        width: 'auto',   // 宽度自适应内容
-        alignSelf: isUserMessage ? 'flex-end' : 'flex-start', // 用户消息靠右，AI消息靠左
+        maxWidth: isBubbleStyle
+          ? (isUserMessage
+              ? `${settings.userMessageMaxWidth || 80}%`
+              : `${settings.messageBubbleMaxWidth || 99}%`) // 气泡样式使用设置中的宽度值
+          : '100%', // 简洁样式占满剩余宽度
+        minWidth: isBubbleStyle ? `${settings.messageBubbleMinWidth || 50}%` : 'auto', // 气泡样式使用最小宽度
+        width: isBubbleStyle ? 'auto' : '100%', // 气泡样式自适应内容，简洁样式占满宽度
+        alignSelf: isBubbleStyle
+          ? (isUserMessage ? 'flex-end' : 'flex-start') // 气泡样式：用户消息靠右，AI消息靠左
+          : 'stretch', // 简洁样式：拉伸占满空间
+        flex: isBubbleStyle ? 'none' : 1, // 简洁样式时占据剩余空间
       }}>
-        {/* 消息气泡 */}
+        {/* 消息内容容器 */}
         <Paper
           elevation={0}
           sx={{
-            padding: 1.5,
-            backgroundColor: isUserMessage
-              ? theme.palette.mode === 'dark'
-                ? '#333333' // 深色主题下使用灰色背景
-                : theme.palette.primary.light
-              : theme.palette.background.paper,
-            color: isUserMessage && theme.palette.mode === 'dark'
+            padding: isBubbleStyle ? 1.5 : 1,
+            backgroundColor: isBubbleStyle
+              ? (isUserMessage
+                  ? theme.palette.mode === 'dark'
+                    ? '#333333' // 深色主题下使用灰色背景
+                    : theme.palette.primary.light
+                  : theme.palette.background.paper)
+              : 'transparent', // 简洁样式使用透明背景
+            color: isBubbleStyle && isUserMessage && theme.palette.mode === 'dark'
               ? '#ffffff' // 深色主题下使用白色文字
               : 'inherit',
             width: '100%',
-            borderRadius: '12px',
-            // 移除气泡顶部的特殊圆角，因为头像现在在上方而不是左/右侧
+            borderRadius: isBubbleStyle ? '12px' : '0px', // 气泡样式使用圆角，简洁样式不使用
+            border: isBubbleStyle ? 'none' : (theme.palette.mode === 'dark' ? '1px solid #333' : '1px solid #e0e0e0'), // 简洁样式添加边框
             position: 'relative', // 确保相对定位
-            maxWidth: '100%', // 确保气泡不会超出容器
+            maxWidth: '100%', // 确保不会超出容器
+            boxShadow: isBubbleStyle ? 'none' : 'none', // 都不使用阴影
           }}
         >
           {loading ? (

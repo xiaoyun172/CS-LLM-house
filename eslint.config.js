@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  { ignores: ['dist', 'android/app/build/**', 'docs/**'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
@@ -28,11 +28,13 @@ export default tseslint.config(
       '@typescript-eslint/ban-ts-comment': 'off',
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-unused-expressions': 'off',
+      '@typescript-eslint/no-require-imports': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'no-case-declarations': 'off',
       'no-dupe-else-if': 'off',
       'no-async-promise-executor': 'off',
       'prefer-const': 'off',
+      'no-control-regex': 'error',
     },
   },
 )

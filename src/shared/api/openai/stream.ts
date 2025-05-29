@@ -101,6 +101,12 @@ export async function streamCompletion(
     try {
       // 直接使用for await循环处理流式响应
       for await (const chunk of stream) {
+        // 检查是否已被中断
+        if (signal?.aborted) {
+          console.log('[streamCompletion] 检测到中断信号，停止处理流式响应');
+          break;
+        }
+
         // 提取delta内容
         const delta = chunk.choices[0]?.delta;
         const content = delta?.content || '';
@@ -186,7 +192,39 @@ export async function streamCompletion(
           break;
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      // 检查是否为中断错误
+      if (signal?.aborted || error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('[streamCompletion] 流式响应被中断，返回当前内容');
+
+        // 在内容末尾添加中断警告（这里只是标记，实际警告在 ResponseHandler 中添加）
+        // 这样可以让上层知道这是被中断的响应
+
+        // 发送完成事件而不是错误事件
+        EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_COMPLETE, {
+          text: fullContent,
+          reasoning: fullReasoning || undefined,
+          reasoningTime: hasReasoningContent ? reasoningEndTime - reasoningStartTime : undefined,
+          timestamp: Date.now(),
+          interrupted: true // 标记为被中断
+        });
+
+        // 返回当前已处理的内容，并标记为被中断
+        if (hasReasoningContent && fullReasoning) {
+          const reasoningTime = reasoningEndTime > reasoningStartTime ? reasoningEndTime - reasoningStartTime : 0;
+          return {
+            content: fullContent,
+            reasoning: fullReasoning,
+            reasoningTime,
+            interrupted: true
+          };
+        }
+        return {
+          content: fullContent,
+          interrupted: true
+        };
+      }
+
       // 发送错误事件
       EventEmitter.emit(EVENT_NAMES.STREAM_ERROR, {
         error,

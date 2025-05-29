@@ -2,15 +2,11 @@ import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import store from '../../../shared/store';
 import { selectMessagesForTopic } from '../../../shared/store/selectors/messageSelectors';
-import { sendMessage, deleteMessage, regenerateMessage } from '../../../shared/store/thunks/messageThunk';
+import { sendMessage, deleteMessage, regenerateMessage, resendUserMessage } from '../../../shared/store/thunks/messageThunk';
 import { loadTopicMessagesThunk } from '../../../shared/store/slices/newMessagesSlice';
-import { newMessagesActions } from '../../../shared/store/slices/newMessagesSlice';
-import { addManyBlocks, removeManyBlocks } from '../../../shared/store/slices/messageBlocksSlice';
-import { dexieStorage } from '../../../shared/services/DexieStorageService';
-import { getMainTextContent } from '../../../shared/utils/messageUtils';
+import { versionService } from '../../../shared/services/VersionService';
 import type { SiliconFlowImageFormat } from '../../../shared/types';
 import type { AppDispatch } from '../../../shared/store';
-import type { Message, MessageBlock } from '../../../shared/types/newMessage';
 
 /**
  * 处理消息相关逻辑的钩子
@@ -91,284 +87,66 @@ export const useMessageHandling = (
     }
   }, [dispatch]);
 
-  // 切换消息版本
-  const handleSwitchMessageVersion = useCallback(async (versionId: string) => {
-    // 不再依赖currentTopic，直接从数据库获取所有消息
-    if (!versionId) {
-      console.error('[handleSwitchMessageVersion] 没有提供版本ID');
-      return null;
-    }
-
+  // 增强版本管理 - 支持更多版本操作
+  const handleSwitchMessageVersion = useCallback(async (versionIdOrCommand: string) => {
     try {
-      // 不需要单独获取版本信息，因为版本信息已经包含在消息对象中
-      // 1. 获取所有消息
-      console.log(`[handleSwitchMessageVersion] 开始查找版本ID: ${versionId}`);
-
-      // 直接从数据库获取所有消息
-      const allMessages = await dexieStorage.getAllMessages();
-      console.log(`[handleSwitchMessageVersion] 从数据库获取到 ${allMessages.length} 条消息`);
-
-      // 找到包含该版本ID的消息
-      let targetMessage: Message | undefined;
-      let targetVersion: any | undefined;
-
-      for (const message of allMessages) {
-        if (message.versions) {
-          const version = message.versions.find(v => v.id === versionId);
-          if (version) {
-            targetMessage = message;
-            targetVersion = version;
-            console.log(`[handleSwitchMessageVersion] 找到目标消息: ID=${message.id}, 版本ID=${version.id}`);
-            break;
-          }
+      // 处理特殊命令
+      if (versionIdOrCommand === 'latest') {
+        // 获取消息ID - 假设当前只有一个消息显示版本
+        const messages = selectMessagesForTopic(store.getState(), currentTopic.id);
+        const messageWithVersion = messages.find(m => m.currentVersionId);
+        
+        if (messageWithVersion) {
+          const success = await versionService.switchToLatest(messageWithVersion.id);
+          return success;
         }
+        return false;
       }
-
-      if (!targetMessage || !targetVersion) {
-        throw new Error(`找不到版本 ${versionId}`);
-      }
-
-      const messageId = targetMessage.id;
-
-      // 2. 获取当前版本的所有块
-      const currentBlocks = await dexieStorage.getMessageBlocksByMessageId(messageId);
-      const currentBlockIds = currentBlocks.map(block => block.id);
-
-      // 3. 获取目标版本的所有块
-      const versionBlockIds = targetVersion.blocks || [];
-
-      // 首先尝试通过版本ID获取块
-      let versionBlocks = await dexieStorage.getMessageBlocksByVersionId(versionId);
-
-      // 如果通过版本ID找不到块，再尝试通过块ID获取
-      if (!versionBlocks || versionBlocks.length === 0) {
-        console.log(`[handleSwitchMessageVersion] 通过版本ID找不到块，尝试通过块ID获取: ${versionBlockIds.join(',')}`);
-
-        const blocksFromIds = await Promise.all(
-          versionBlockIds.map((id: string) => dexieStorage.getMessageBlock(id))
-        );
-
-        versionBlocks = blocksFromIds.filter(Boolean) as MessageBlock[];
-      }
-
-      // 如果仍然找不到块，则创建一个新块
-      if (!versionBlocks || versionBlocks.length === 0) {
-        // 尝试从多个来源获取内容
-        let messageContent = '';
-
-        // 1. 首先尝试从版本的metadata中获取内容
-        if (targetVersion.metadata && targetVersion.metadata.content) {
-          messageContent = targetVersion.metadata.content;
-          console.log(`[handleSwitchMessageVersion] 从版本metadata中获取内容`);
+      
+      if (versionIdOrCommand === 'create') {
+        // 获取当前消息 - 假设当前只处理助手消息
+        const messages = selectMessagesForTopic(store.getState(), currentTopic.id);
+        const assistantMessages = messages.filter(m => m.role === 'assistant');
+        
+        if (assistantMessages.length > 0) {
+          // 默认为最后一条助手消息创建版本
+          const latestAssistantMsg = assistantMessages[assistantMessages.length - 1];
+          const versionId = await versionService.createManualVersion(latestAssistantMsg.id);
+          
+          return !!versionId;
         }
-        // 2. 如果没有，尝试从消息的主文本块中获取内容
-        else {
-          const mainBlocks = await dexieStorage.getMessageBlocksByMessageId(messageId)
-            .then(blocks => blocks.filter(b => b.type === 'main_text'));
-
-          if (mainBlocks.length > 0) {
-            messageContent = mainBlocks[0].content || '';
-            console.log(`[handleSwitchMessageVersion] 从消息主文本块中获取内容`);
-          }
-        }
-
-        // 如果内容为空或只有空白字符，不要创建块
-        if (!messageContent || !messageContent.trim()) {
-          console.log(`[handleSwitchMessageVersion] 内容为空，不创建块`);
-          versionBlocks = [];
-        } else {
-          console.log(`[handleSwitchMessageVersion] 找不到块，创建新块，使用消息内容: ${messageContent.substring(0, 50)}...`);
-
-          // 创建一个新块
-          const newBlock: MessageBlock = {
-            id: versionBlockIds[0] || `${messageId}-block-${Date.now()}`,
-            messageId,
-            type: 'main_text', // 使用有效的块类型
-            content: messageContent, // 使用从消息中获取的内容
-            metadata: {
-              versionId: versionId,
-              isFromVersion: true
-            },
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            status: 'success' // 添加状态字段
-          };
-
-          // 保存到数据库
-          await dexieStorage.saveMessageBlock(newBlock);
-
-          versionBlocks = [newBlock];
-        }
+        return false;
       }
-
-      // 过滤掉undefined
-      const validVersionBlocks = versionBlocks.filter(Boolean) as MessageBlock[];
-
-      console.log(`[handleSwitchMessageVersion] 找到版本块: ${validVersionBlocks.length}个`);
-
-      // 记录当前块和版本块的详细信息，帮助调试
-      console.log(`[handleSwitchMessageVersion] 当前消息块IDs: ${currentBlockIds.join(', ')}`);
-      console.log(`[handleSwitchMessageVersion] 版本块IDs: ${versionBlockIds.join(', ')}`);
-      console.log(`[handleSwitchMessageVersion] 有效版本块IDs: ${validVersionBlocks.map(block => block.id).join(', ')}`);
-
-      // 确保我们只使用当前版本的块，不包含其他版本的块
-      const validBlockIds = validVersionBlocks.map(block => block.id);
-
-      // 4. 更新消息的块列表和状态 - 始终设置为成功状态
-      // 只使用当前版本的块ID，不包含其他版本的块
-      const updatedMessage: Partial<Message> = {
-        ...targetMessage,
-        blocks: validBlockIds, // 只使用当前版本的有效块ID
-        status: 'success' // 始终设置为成功状态
-      };
-
-      // 清除错误信息（如果有）
-      if ('error' in targetMessage) {
-        (updatedMessage as any).error = undefined;
+      
+      if (versionIdOrCommand.startsWith('delete:')) {
+        const versionId = versionIdOrCommand.substring(7); // 移除'delete:'前缀
+        const success = await versionService.deleteVersion(versionId);
+        return success;
       }
-
-      // 如果存在versions数组，则更新isActive状态
-      if (targetMessage.versions && Array.isArray(targetMessage.versions)) {
-        // 更新版本状态
-        updatedMessage.versions = targetMessage.versions.map(v => {
-          // 如果是目标版本，设置为活跃
-          if (v.id === versionId) {
-            return {
-              ...v,
-              isActive: true
-            };
-          }
-          // 其他版本设置为非活跃
-          else {
-            return {
-              ...v,
-              isActive: false
-            };
-          }
-        });
-      }
-
-      console.log(`[handleSwitchMessageVersion] 切换到版本 ${versionId}，状态设置为: success`);
-
-      // 5. 更新数据库 - 确保在数据库中也只保存当前版本的块
-      console.log(`[handleSwitchMessageVersion] 更新数据库: 消息ID=${messageId}, 块数量=${updatedMessage.blocks?.length || 0}`);
-
-      // 使用事务确保原子性
-      await dexieStorage.transaction('rw', [
-        dexieStorage.messages,
-        dexieStorage.message_blocks,
-        dexieStorage.topics
-      ], async () => {
-        // 更新消息
-        await dexieStorage.updateMessage(messageId, updatedMessage);
-
-        // 更新topics表中的messages数组
-        // 使用targetMessage中的topicId，而不是外部的currentTopic.id
-        const topicIdFromMessage = targetMessage.topicId;
-        console.log(`[handleSwitchMessageVersion] 使用消息中的topicId: ${topicIdFromMessage}`);
-
-        if (topicIdFromMessage) {
-          const topic = await dexieStorage.topics.get(topicIdFromMessage);
-          if (topic && topic.messages) {
-            // 查找消息在数组中的位置
-            const messageIndex = topic.messages.findIndex(m => m.id === messageId);
-
-            // 更新消息
-            if (messageIndex >= 0) {
-              topic.messages[messageIndex] = {
-                ...topic.messages[messageIndex],
-                ...updatedMessage,
-                blocks: updatedMessage.blocks || [] // 确保使用更新后的块列表，如果为undefined则使用空数组
-              };
-
-              // 保存更新后的话题
-              await dexieStorage.topics.put(topic);
-            }
-          }
-        } else {
-          console.warn(`[handleSwitchMessageVersion] 无法更新topics表，消息中没有topicId`);
-        }
-      });
-
-      // 6. 更新Redux状态
-      // 先移除所有旧块
-      if (currentBlockIds.length > 0) {
-        console.log(`[handleSwitchMessageVersion] 移除旧块: ${currentBlockIds.join(', ')}`);
-        dispatch(removeManyBlocks(currentBlockIds));
-      }
-
-      // 添加新版本的块
-      if (validVersionBlocks.length > 0) {
-        const validBlockIds = validVersionBlocks.map(block => block.id);
-        console.log(`[handleSwitchMessageVersion] 添加新块: ${validBlockIds.join(', ')}`);
-        dispatch(addManyBlocks(validVersionBlocks));
-      }
-
-      // 更新消息，确保只包含当前版本的块
-      console.log(`[handleSwitchMessageVersion] 更新消息块列表为: ${updatedMessage.blocks?.join(', ')}`);
-      dispatch(newMessagesActions.updateMessage({
-        id: messageId,
-        changes: updatedMessage
-      }));
-
-      return true;
+      
+      // 常规版本切换
+      const success = await versionService.switchToVersion(versionIdOrCommand);
+      return success;
     } catch (error) {
-      console.error('切换消息版本失败:', error);
-      return null;
+      console.error(`[handleSwitchMessageVersion] 版本操作异常:`, error);
+      return false;
     }
-  }, [dispatch]); // 移除对currentTopic的依赖
+  }, [currentTopic]);
 
-  // 处理重新发送用户消息
+  // 处理重新发送用户消息 - 基于电脑版逻辑
   const handleResendMessage = useCallback(async (messageId: string) => {
     if (!currentTopic || !selectedModel) return null;
 
     try {
-      // 获取要重新发送的用户消息
-      const message = await dexieStorage.getMessage(messageId);
-      if (!message) {
-        console.error('找不到要重新发送的消息');
-        return null;
-      }
-
-      if (message.role !== 'user') {
-        console.error('只能重新发送用户消息');
-        return null;
-      }
-
-      // 获取消息内容
-      const content = getMainTextContent(message);
-      if (!content) {
-        console.error('消息内容为空');
-        return null;
-      }
-
-      // 获取消息中的图片
-      const blocks = await dexieStorage.getMessageBlocksByMessageId(messageId);
-      const imageBlocks = blocks.filter(block => block.type === 'image');
-      const images: SiliconFlowImageFormat[] = imageBlocks.map(block => ({
-        type: 'image_url',
-        image_url: {
-          url: 'url' in block ? (block as any).url : ('content' in block ? (block as any).content : '')
-        }
-      }));
-
-      // 获取消息中的文件
-      const fileBlocks = blocks.filter(block => block.type === 'file');
-      const files = fileBlocks.map(block => ({
-        name: 'fileName' in block ? block.fileName || 'file' : 'file',
-        content: 'content' in block ? block.content : '',
-        type: 'fileType' in block ? block.fileType || 'text/plain' : 'text/plain'
-      }));
-
-      // 重新发送消息
-      await handleSendMessage(content, images, false, files);
-
+      // 使用基于电脑版逻辑的重新发送 thunk
+      // 这个 thunk 不会创建新的用户消息，而是重置关联的助手消息
+      dispatch(resendUserMessage(messageId, currentTopic.id, selectedModel));
       return true;
     } catch (error) {
       console.error('重新发送消息失败:', error);
       return null;
     }
-  }, [currentTopic, selectedModel, handleSendMessage]);
+  }, [dispatch, currentTopic, selectedModel]);
 
   return {
     handleSendMessage,

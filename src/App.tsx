@@ -12,14 +12,18 @@ import BackButtonHandler from './components/BackButtonHandler';
 import UpdateNoticeDialog from './components/UpdateNoticeDialog';
 import AppInitializer from './components/AppInitializer';
 import { App as CapApp } from '@capacitor/app';
-import { StatusBar, Style } from '@capacitor/status-bar';
+import { statusBarService } from './shared/services/StatusBarService';
+import { safeAreaService } from './shared/services/SafeAreaService';
 import { loadTopicMessagesThunk } from './shared/store/slices/newMessagesSlice';
 import { initGroups } from './shared/store/slices/groupsSlice';
 import { useSelector } from 'react-redux';
+import { useAppSelector } from './shared/store';
 import { DataManager } from './shared/services';
 import { DataRepairService } from './shared/services/DataRepairService';
 import { DatabaseCleanupService } from './shared/services/DatabaseCleanupService';
 import { dexieStorage } from './shared/services/DexieStorageService';
+import { SnackbarProvider } from 'notistack';
+import KnowledgeProvider from './components/KnowledgeManagement/KnowledgeProvider';
 
 import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from '@mui/material';
 
@@ -29,13 +33,14 @@ LoggerService.log('INFO', '应用初始化');
 // 使用memo优化ExitConfirmDialog
 const MemoizedExitConfirmDialog = memo(ExitConfirmDialog);
 
-function App() {
+// 创建一个内部组件，它在Provider内部使用Redux
+const AppContent = () => {
   // 应用初始化状态
   const [appInitialized, setAppInitialized] = useState(false);
   const [mode, setMode] = useState<'light' | 'dark'>('light');
   const [showResetNotice, setShowResetNotice] = useState(false);
 
-  // 从Redux状态获取主题设置
+  // 从Redux状态获取主题设置 - 现在在Provider内部安全使用
   const themePreference = useSelector((state: any) => state.settings.theme);
 
   // 监听主题变化
@@ -57,65 +62,101 @@ function App() {
     }
   }, [themePreference]);
 
-  // 根据当前模式创建主题
-  const theme = useMemo(() => createTheme({
-    palette: {
-      mode,
-      primary: {
-        main: '#64748B', // 柔和的灰蓝色
-        light: '#94A3B8',
-        dark: '#475569',
+  // 获取字体大小设置
+  const fontSize = useAppSelector((state) => state.settings.fontSize);
+
+  // 根据当前模式和字体大小创建主题
+  const theme = useMemo(() => {
+    // 计算字体大小比例
+    const fontScale = fontSize / 16; // 16px为基准
+
+    return createTheme({
+      palette: {
+        mode,
+        primary: {
+          main: '#64748B', // 柔和的灰蓝色
+          light: '#94A3B8',
+          dark: '#475569',
+        },
+        secondary: {
+          main: '#10B981', // 保留绿色作为辅助色
+          light: '#6EE7B7',
+          dark: '#047857',
+        },
+        background: {
+          default: mode === 'light' ? '#F8FAFC' : '#1a1a1a', // 深色更新为更暗的背景色
+          paper: mode === 'light' ? '#FFFFFF' : '#232323', // 深色卡片背景更新
+        },
+        text: {
+          primary: mode === 'light' ? '#1E293B' : '#e8e8e8', // 深色模式文字更亮一些
+          secondary: mode === 'light' ? '#64748B' : '#a0a0a0', // 次要文字颜色
+        },
+        divider: mode === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)', // 分割线颜色
+        error: {
+          main: '#EF4444',
+        },
+        warning: {
+          main: '#F59E0B',
+        },
+        info: {
+          main: '#38BDF8',
+        },
+        success: {
+          main: '#10B981',
+        },
+        action: {
+          // 深色模式交互颜色
+          active: mode === 'light' ? 'rgba(0, 0, 0, 0.54)' : 'rgba(255, 255, 255, 0.8)',
+          hover: mode === 'light' ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.08)',
+          selected: mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.16)',
+          disabled: mode === 'light' ? 'rgba(0, 0, 0, 0.26)' : 'rgba(255, 255, 255, 0.3)',
+          disabledBackground: mode === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)',
+        }
       },
-      secondary: {
-        main: '#10B981', // 保留绿色作为辅助色
-        light: '#6EE7B7',
-        dark: '#047857',
+      typography: {
+        fontFamily: '"Inter", "Noto Sans SC", system-ui, -apple-system, sans-serif',
+        fontSize: fontSize, // 使用全局字体大小设置
+        h1: {
+          fontWeight: 700,
+          fontSize: `${2.5 * fontScale}rem`, // 动态调整标题字体大小
+        },
+        h2: {
+          fontWeight: 700,
+          fontSize: `${2 * fontScale}rem`,
+        },
+        h3: {
+          fontWeight: 600,
+          fontSize: `${1.75 * fontScale}rem`,
+        },
+        h4: {
+          fontWeight: 600,
+          fontSize: `${1.5 * fontScale}rem`,
+        },
+        h5: {
+          fontWeight: 600,
+          fontSize: `${1.25 * fontScale}rem`,
+        },
+        h6: {
+          fontWeight: 600,
+          fontSize: `${1.125 * fontScale}rem`,
+        },
+        body1: {
+          fontSize: `${1 * fontScale}rem`,
+        },
+        body2: {
+          fontSize: `${0.875 * fontScale}rem`,
+        },
+        button: {
+          fontWeight: 600,
+          fontSize: `${0.875 * fontScale}rem`,
+        },
+        caption: {
+          fontSize: `${0.75 * fontScale}rem`,
+        },
+        overline: {
+          fontSize: `${0.75 * fontScale}rem`,
+        },
       },
-      background: {
-        default: mode === 'light' ? '#F8FAFC' : '#1a1a1a', // 深色更新为更暗的背景色
-        paper: mode === 'light' ? '#FFFFFF' : '#232323', // 深色卡片背景更新
-      },
-      text: {
-        primary: mode === 'light' ? '#1E293B' : '#e8e8e8', // 深色模式文字更亮一些
-        secondary: mode === 'light' ? '#64748B' : '#a0a0a0', // 次要文字颜色
-      },
-      divider: mode === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)', // 分割线颜色
-      error: {
-        main: '#EF4444',
-      },
-      warning: {
-        main: '#F59E0B',
-      },
-      info: {
-        main: '#38BDF8',
-      },
-      success: {
-        main: '#10B981',
-      },
-      action: {
-        // 深色模式交互颜色
-        active: mode === 'light' ? 'rgba(0, 0, 0, 0.54)' : 'rgba(255, 255, 255, 0.8)',
-        hover: mode === 'light' ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.08)',
-        selected: mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.16)',
-        disabled: mode === 'light' ? 'rgba(0, 0, 0, 0.26)' : 'rgba(255, 255, 255, 0.3)',
-        disabledBackground: mode === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)',
-      }
-    },
-    typography: {
-      fontFamily: '"Inter", "Noto Sans SC", system-ui, -apple-system, sans-serif',
-      h1: {
-        fontWeight: 700,
-      },
-      h2: {
-        fontWeight: 700,
-      },
-      h3: {
-        fontWeight: 600,
-      },
-      button: {
-        fontWeight: 600,
-      },
-    },
     shape: {
       borderRadius: 8,
     },
@@ -165,7 +206,8 @@ function App() {
         },
       },
     },
-  }), [mode]);
+  });
+  }, [mode, fontSize]);
 
   // 记录应用启动日志
   useEffect(() => {
@@ -174,38 +216,23 @@ function App() {
     // 声明清理函数变量
     let cleanup = () => {};
 
-    // 初始化状态栏
-    const setupStatusBar = async () => {
+    // 初始化状态栏和安全区域
+    const setupStatusBarAndSafeArea = async () => {
       try {
-        // 检测是否为Web环境
-        const isWeb = !window.Capacitor || window.Capacitor.platform === 'web';
-        
-        // 只在非Web环境下使用StatusBar插件
-        if (isWeb) {
-          console.log('[App] 在Web环境中跳过状态栏初始化');
-          return;
-        }
-        
-        // 设置状态栏不覆盖WebView
-        await StatusBar.setOverlaysWebView({ overlay: false });
+        // 先初始化安全区域服务
+        await safeAreaService.initialize();
+        console.log('[App] 安全区域服务初始化完成');
 
-        // 根据当前主题设置状态栏样式
-        if (mode === 'dark') {
-          await StatusBar.setStyle({ style: Style.Dark });
-          await StatusBar.setBackgroundColor({ color: '#232323' }); // 更新深色模式状态栏颜色
-        } else {
-          await StatusBar.setStyle({ style: Style.Dark }); // 仍然使用浅色图标，但背景色为浅色
-          await StatusBar.setBackgroundColor({ color: '#475569' }); // 浅色模式状态栏
-        }
-
-        console.log('[App] 状态栏已初始化');
+        // 然后初始化状态栏
+        await statusBarService.initialize(mode);
+        console.log('[App] 状态栏服务初始化完成');
       } catch (error) {
-        console.error('[App] 状态栏初始化失败:', error);
+        console.error('[App] 状态栏或安全区域初始化失败:', error);
       }
     };
 
-    // 调用状态栏初始化
-    setupStatusBar();
+    // 调用初始化
+    setupStatusBarAndSafeArea();
 
     // 清理旧数据并准备新系统
     const prepareDatabase = async () => {
@@ -348,35 +375,104 @@ function App() {
     };
   }, [theme, mode]); // 只依赖主题变化
 
-  // 基于初始化状态决定是否展示全部内容
+  // 监听主题变化并更新状态栏
+  useEffect(() => {
+    const updateStatusBarTheme = async () => {
+      try {
+        if (statusBarService.isReady()) {
+          await statusBarService.updateTheme(mode);
+        }
+      } catch (error) {
+        console.error('[App] 状态栏主题更新失败:', error);
+      }
+    };
+
+    updateStatusBarTheme();
+  }, [mode]); // 只在模式变化时更新状态栏
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <HashRouter>
-        {appInitialized ? (
-          <>
-            <AppInitializer />
-            <AppRouter />
-            <BackButtonHandler />
-            <MemoizedExitConfirmDialog />
-            <UpdateNoticeDialog />
-          </>
-        ) : (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            height: '100vh',
-            background: mode === 'light' ? '#F8FAFC' : '#1a1a1a'
-          }}>
+      {/* 全局字体大小CSS变量 */}
+      <style>
+        {`
+          :root {
+            --global-font-size: ${fontSize}px;
+            --global-font-scale: ${fontSize / 16};
+          }
+
+          /* 应用全局字体大小到常见元素 */
+          body {
+            font-size: var(--global-font-size) !important;
+          }
+
+          /* 聊天消息字体大小 */
+          .message-content {
+            font-size: var(--global-font-size) !important;
+          }
+
+          /* 代码块字体大小 */
+          .code-block {
+            font-size: calc(var(--global-font-size) * 0.875) !important;
+          }
+
+          /* 输入框字体大小 */
+          .chat-input {
+            font-size: var(--global-font-size) !important;
+          }
+
+          /* 按钮字体大小 */
+          .MuiButton-root {
+            font-size: calc(var(--global-font-size) * 0.875) !important;
+          }
+
+          /* 表单控件字体大小 */
+          .MuiFormControl-root .MuiInputBase-input {
+            font-size: var(--global-font-size) !important;
+          }
+
+          /* 菜单项字体大小 */
+          .MuiMenuItem-root {
+            font-size: var(--global-font-size) !important;
+          }
+
+          /* 工具提示字体大小 */
+          .MuiTooltip-tooltip {
+            font-size: calc(var(--global-font-size) * 0.75) !important;
+          }
+        `}
+      </style>
+      <SnackbarProvider
+        maxSnack={3}
+        autoHideDuration={3000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <HashRouter>
+          {appInitialized ? (
+            <>
+              <AppInitializer />
+              <AppRouter />
+              <BackButtonHandler />
+              <MemoizedExitConfirmDialog />
+              <UpdateNoticeDialog />
+            </>
+          ) : (
             <div style={{
-              color: mode === 'light' ? '#64748B' : '#a0a0a0',
-              fontWeight: 600,
-              fontSize: '18px'
-            }}>AetherLink 正在启动...</div>
-          </div>
-        )}
-      </HashRouter>
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              height: '100vh',
+              background: mode === 'light' ? '#F8FAFC' : '#1a1a1a'
+            }}>
+              <div style={{
+                color: mode === 'light' ? '#64748B' : '#a0a0a0',
+                fontWeight: 600,
+                fontSize: '18px'
+              }}>AetherLink 正在启动...</div>
+            </div>
+          )}
+        </HashRouter>
+      </SnackbarProvider>
 
       {/* 数据重置通知对话框 */}
       <Dialog
@@ -395,23 +491,25 @@ function App() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowResetNotice(false)} color="primary" autoFocus>
-            我知道了
+            知道了
           </Button>
         </DialogActions>
       </Dialog>
     </ThemeProvider>
   );
-}
+};
 
-// 包装App组件以提供Redux存储和持久化
-function AppWithRedux() {
+// 主App组件 - 不再直接使用Redux，而是通过Provider包裹内部组件
+function App() {
   return (
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
-        <App />
+        <KnowledgeProvider>
+          <AppContent />
+        </KnowledgeProvider>
       </PersistGate>
     </Provider>
   );
 }
 
-export default AppWithRedux;
+export default App;

@@ -263,16 +263,36 @@ export function useAssistantTabLogic(
   };
 
   // 选择新的图标
-  const handleSelectEmoji = (emoji: string) => {
+  const handleSelectEmoji = async (emoji: string) => {
     if (!selectedMenuAssistant) return;
 
-    const updatedAssistant = {
-      ...selectedMenuAssistant,
-      emoji: emoji
-    };
+    try {
+      console.log('[useAssistantTabLogic] 更新助手图标:', {
+        id: selectedMenuAssistant.id,
+        name: selectedMenuAssistant.name,
+        emoji: emoji
+      });
 
-    if (onUpdateAssistant) {
-      onUpdateAssistant(updatedAssistant);
+      const updatedAssistant = {
+        ...selectedMenuAssistant,
+        emoji: emoji
+      };
+
+      // 保存到数据库，确保图标持久化
+      await dexieStorage.saveAssistant(updatedAssistant);
+      console.log('[useAssistantTabLogic] 已保存助手图标到数据库');
+
+      // 更新Redux状态
+      if (onUpdateAssistant) {
+        onUpdateAssistant(updatedAssistant);
+        console.log('[useAssistantTabLogic] 已通过回调更新助手图标');
+      }
+
+      // 显示成功通知
+      showNotification('助手图标已更新');
+    } catch (error) {
+      console.error('[useAssistantTabLogic] 更新助手图标失败:', error);
+      showNotification('更新助手图标失败');
     }
   };
 

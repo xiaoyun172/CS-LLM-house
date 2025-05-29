@@ -3,6 +3,8 @@ import { Box, Typography, Paper, useTheme } from '@mui/material';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import type { ChatTopic, Assistant } from '../shared/types/Assistant';
+import { useAppSelector } from '../shared/store';
+import { selectActiveSystemPrompt } from '../shared/store/slices/systemPromptsSlice';
 
 interface SystemPromptBubbleProps {
   topic: ChatTopic | null;
@@ -16,13 +18,14 @@ interface SystemPromptBubbleProps {
  */
 const SystemPromptBubble: React.FC<SystemPromptBubbleProps> = ({ topic, assistant, onClick }) => {
   const theme = useTheme();
+  
+  // 获取全局默认系统提示词
+  const activeSystemPrompt = useAppSelector(selectActiveSystemPrompt);
 
   // 获取系统提示词 - 优先使用话题的提示词
   // 如果没有话题或助手，或者没有提示词，使用默认文本
   const systemPrompt =
-    (topic?.prompt || assistant?.systemPrompt || '点击此处编辑系统提示词');
-
-
+    (topic?.prompt || assistant?.systemPrompt || activeSystemPrompt || '点击此处编辑系统提示词');
 
   return (
     <Paper

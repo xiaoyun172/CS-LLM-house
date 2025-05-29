@@ -71,10 +71,17 @@ const MessageGroup: React.FC<MessageGroupProps> = ({
       }
     };
 
+    // 使用自定义事件监听设置变化（用于同一页面内的变化）
+    const handleCustomSettingChange = () => {
+      fetchMessageDividerSetting();
+    };
+
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('appSettingsChanged', handleCustomSettingChange);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('appSettingsChanged', handleCustomSettingChange);
     };
   }, []);
 

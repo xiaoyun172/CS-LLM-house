@@ -10,7 +10,7 @@ export const ASSISTANTS_STORAGE_KEY = 'userAssistants';
 export const CURRENT_ASSISTANT_KEY = 'currentAssistant';
 
 /**
- * 反序列化助手（添加图标）
+ * 反序列化助手（添加图标），优先使用保存的emoji
  */
 export function deserializeAssistant(serializableAsst: SerializableAssistant): Assistant {
   let icon;
@@ -32,8 +32,9 @@ export function deserializeAssistant(serializableAsst: SerializableAssistant): A
     name: serializableAsst.name,
     description: serializableAsst.description,
     icon,
-    avatar: undefined, 
-    tags: [], 
+    emoji: serializableAsst.emoji, // 优先使用保存的emoji
+    avatar: undefined,
+    tags: [],
     engine: undefined,
     model: undefined,
     temperature: undefined,
@@ -47,11 +48,11 @@ export function deserializeAssistant(serializableAsst: SerializableAssistant): A
     isDefault: undefined,
     isSystem: serializableAsst.isSystem,
     archived: undefined,
-    createdAt: undefined, 
+    createdAt: undefined,
     updatedAt: undefined,
     lastUsedAt: undefined,
     topicIds: serializableAsst.topicIds || [],
-    topics: [], 
+    topics: [],
     selectedSystemPromptId: undefined,
     mcpConfigId: undefined,
     tools: [],
@@ -65,6 +66,7 @@ export function deserializeAssistant(serializableAsst: SerializableAssistant): A
     localModelPath: undefined,
     localModelType: undefined,
     file_ids: [],
+    type: 'assistant', // 添加type字段
   };
   return assistant;
 }
@@ -77,7 +79,7 @@ export function deserializeAssistant(serializableAsst: SerializableAssistant): A
 export function getDefaultTopic(assistantId: string): ChatTopic {
   const now = new Date();
   const currentTime = now.toISOString();
-  
+
   return {
     id: uuid(),
     name: '新的对话',
@@ -101,7 +103,7 @@ export function getDefaultTopic(assistantId: string): ChatTopic {
 export function defaultTopicTemplate(assistantId: string): Omit<ChatTopic, 'id'> {
   const now = new Date();
   const currentTime = now.toISOString();
-  
+
   return {
     name: '新的对话',
     title: '新的对话',
@@ -117,15 +119,16 @@ export function defaultTopicTemplate(assistantId: string): Omit<ChatTopic, 'id'>
 }
 
 /**
- * 序列化助手（移除图标）用于存储
+ * 序列化助手（移除图标）用于存储，保留emoji字段
  */
 export function serializeAssistant(assistant: Assistant): SerializableAssistant {
-  const { icon, topics, ...rest } = assistant; 
+  const { icon, topics, ...rest } = assistant;
   const serializableAssistant: SerializableAssistant = {
     id: rest.id,
     name: rest.name,
     description: rest.description,
-    icon: null, 
+    icon: null,
+    emoji: rest.emoji, // 保留emoji字段
     isSystem: rest.isSystem,
     topicIds: rest.topicIds || [],
     systemPrompt: rest.systemPrompt,

@@ -1,6 +1,8 @@
+import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
+
 /**
  * TTS服务类
- * 使用硅基流动TTS API、OpenAI TTS API和Web Speech API提供免费的文本到语音转换功能
+ * 使用硅基流动TTS API、OpenAI TTS API、微软Azure TTS API和Web Speech API提供文本到语音转换功能
  */
 export class TTSService {
   private static instance: TTSService;
@@ -8,26 +10,47 @@ export class TTSService {
   private isPlaying: boolean = false;
   private currentAudioBlob: string | null = null;
   private currentMessageId: string | null = null;
-  
+
+  // 配置加载状态
+  private configLoaded: boolean = false;
+  private configLoading: boolean = false;
+
   // 硅基流动API Key，实际应用中应从环境变量或安全存储中获取
   private siliconFlowApiKey: string = '';
-  
+
   // OpenAI API 设置
   private openaiApiKey: string = '';
   private useOpenAI: boolean = false;
-  
+
   // OpenAI TTS 参数
   private openaiModel: string = 'tts-1'; // 可选: tts-1, tts-1-hd
   private openaiVoice: string = 'alloy'; // 可选: alloy, echo, fable, onyx, nova, shimmer
   private openaiResponseFormat: string = 'mp3'; // 可选: mp3, opus, aac, flac
   private openaiSpeed: number = 1.0; // 范围: 0.25-4.0
   private useOpenAIStream: boolean = false; // 是否使用流式输出
-  
+
+  // Azure TTS API 设置
+  private azureApiKey: string = '';
+  private azureRegion: string = 'eastus'; // Azure服务区域
+  private useAzure: boolean = false;
+
+  // Azure TTS 参数 - 完整的可控参数
+  private azureVoiceName: string = 'zh-CN-XiaoxiaoNeural'; // 语音名称
+  private azureLanguage: string = 'zh-CN'; // 语言代码
+  private azureOutputFormat: string = 'audio-24khz-160kbitrate-mono-mp3'; // 输出格式
+  private azureRate: string = 'medium'; // 语速: x-slow, slow, medium, fast, x-fast 或百分比
+  private azurePitch: string = 'medium'; // 音调: x-low, low, medium, high, x-high 或Hz值
+  private azureVolume: string = 'medium'; // 音量: silent, x-soft, soft, medium, loud, x-loud 或百分比
+  private azureStyle: string = 'general'; // 说话风格: general, cheerful, sad, angry, excited, friendly, terrified, shouting, unfriendly, whispering, hopeful
+  private azureStyleDegree: number = 1.0; // 风格强度: 0.01-2.0
+  private azureRole: string = 'default'; // 角色扮演: default, Girl, Boy, YoungAdultFemale, YoungAdultMale, OlderAdultFemale, OlderAdultMale, SeniorFemale, SeniorMale
+  private azureUseSSML: boolean = true; // 是否使用SSML标记语言
+
   // 默认使用的语音模型
   private defaultModel: string = 'FunAudioLLM/CosyVoice2-0.5B';
   // 默认使用的语音
   private defaultVoice: string = 'FunAudioLLM/CosyVoice2-0.5B:alex';
-  
+
   // 音频上下文 - 用于流式播放
   private audioContext: AudioContext | null = null;
   private sourceNode: AudioBufferSourceNode | null = null;
@@ -53,7 +76,7 @@ export class TTSService {
       this.isPlaying = false;
       this.currentMessageId = null;
     };
-    
+
     // 尝试初始化AudioContext (用于流式播放)
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -94,6 +117,110 @@ export class TTSService {
    */
   public setUseOpenAI(useOpenAI: boolean): void {
     this.useOpenAI = useOpenAI;
+  }
+
+  /**
+   * 设置Azure API密钥
+   * @param apiKey API密钥
+   */
+  public setAzureApiKey(apiKey: string): void {
+    this.azureApiKey = apiKey;
+  }
+
+  /**
+   * 设置Azure服务区域
+   * @param region 服务区域 (如: eastus, westus2, eastasia等)
+   */
+  public setAzureRegion(region: string): void {
+    this.azureRegion = region;
+  }
+
+  /**
+   * 设置是否使用Azure TTS
+   * @param useAzure 是否使用Azure
+   */
+  public setUseAzure(useAzure: boolean): void {
+    this.useAzure = useAzure;
+  }
+
+  /**
+   * 设置Azure语音名称
+   * @param voiceName 语音名称 (如: zh-CN-XiaoxiaoNeural, en-US-JennyNeural等)
+   */
+  public setAzureVoiceName(voiceName: string): void {
+    this.azureVoiceName = voiceName;
+  }
+
+  /**
+   * 设置Azure语言
+   * @param language 语言代码 (如: zh-CN, en-US等)
+   */
+  public setAzureLanguage(language: string): void {
+    this.azureLanguage = language;
+  }
+
+  /**
+   * 设置Azure输出格式
+   * @param format 输出格式
+   */
+  public setAzureOutputFormat(format: string): void {
+    this.azureOutputFormat = format;
+  }
+
+  /**
+   * 设置Azure语速
+   * @param rate 语速 (x-slow, slow, medium, fast, x-fast 或百分比如 +20%)
+   */
+  public setAzureRate(rate: string): void {
+    this.azureRate = rate;
+  }
+
+  /**
+   * 设置Azure音调
+   * @param pitch 音调 (x-low, low, medium, high, x-high 或Hz值如 +50Hz)
+   */
+  public setAzurePitch(pitch: string): void {
+    this.azurePitch = pitch;
+  }
+
+  /**
+   * 设置Azure音量
+   * @param volume 音量 (silent, x-soft, soft, medium, loud, x-loud 或百分比)
+   */
+  public setAzureVolume(volume: string): void {
+    this.azureVolume = volume;
+  }
+
+  /**
+   * 设置Azure说话风格
+   * @param style 说话风格
+   */
+  public setAzureStyle(style: string): void {
+    this.azureStyle = style;
+  }
+
+  /**
+   * 设置Azure风格强度
+   * @param degree 风格强度 (0.01-2.0)
+   */
+  public setAzureStyleDegree(degree: number): void {
+    this.azureStyleDegree = Math.max(0.01, Math.min(2.0, degree));
+  }
+
+  /**
+   * 设置Azure角色扮演
+   * @param role 角色
+   */
+  public setAzureRole(role: string): void {
+    this.azureRole = role;
+  }
+
+  /**
+   * 设置是否使用SSML
+   * @param useSSML 是否使用SSML
+   */
+  public setAzureUseSSML(useSSML: boolean): void {
+    this.azureUseSSML = useSSML;
   }
 
   /**
@@ -154,6 +281,86 @@ export class TTSService {
   }
 
   /**
+   * 全局初始化TTS配置（只执行一次）
+   * @returns Promise<boolean> 是否初始化成功
+   */
+  public async initializeConfig(): Promise<boolean> {
+    // 如果已经加载过配置，直接返回
+    if (this.configLoaded) {
+      return true;
+    }
+
+    // 如果正在加载，等待加载完成
+    if (this.configLoading) {
+      return new Promise((resolve) => {
+        const checkLoaded = () => {
+          if (this.configLoaded) {
+            resolve(true);
+          } else if (!this.configLoading) {
+            resolve(false);
+          } else {
+            setTimeout(checkLoaded, 50);
+          }
+        };
+        checkLoaded();
+      });
+    }
+
+    this.configLoading = true;
+
+    try {
+      // 动态导入storage工具，避免循环依赖
+      const { getStorageItem } = await import('../utils/storage');
+
+      // 从 Dexie 加载TTS配置
+      const [apiKey, model, voice, enabled] = await Promise.all([
+        getStorageItem<string>('siliconflow_api_key'),
+        getStorageItem<string>('tts_model'),
+        getStorageItem<string>('tts_voice'),
+        getStorageItem<string>('enable_tts')
+      ]);
+
+      // 设置配置
+      if (apiKey) {
+        this.setApiKey(apiKey);
+      }
+      if (model) {
+        this.defaultModel = model;
+      }
+      if (voice) {
+        this.defaultVoice = voice.includes(':') ? voice : `${model || this.defaultModel}:${voice}`;
+      }
+
+      this.configLoaded = true;
+      this.configLoading = false;
+
+      // 只在开发环境输出日志
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔧 TTSService全局配置初始化完成:', {
+          hasApiKey: !!apiKey,
+          model: this.defaultModel,
+          voice: this.defaultVoice,
+          enabled: enabled !== 'false'
+        });
+      }
+
+      return true;
+    } catch (error) {
+      console.error('TTSService配置初始化失败:', error);
+      this.configLoading = false;
+      return false;
+    }
+  }
+
+  /**
+   * 检查配置是否已加载
+   * @returns boolean 配置是否已加载
+   */
+  public isConfigLoaded(): boolean {
+    return this.configLoaded;
+  }
+
+  /**
    * 停止当前播放
    */
   public stop(): void {
@@ -167,20 +374,20 @@ export class TTSService {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    
+
     // 停止流式播放
     this.stopStream();
 
     this.isPlaying = false;
     this.currentMessageId = null;
-    
+
     // 释放Blob URL
     if (this.currentAudioBlob) {
       URL.revokeObjectURL(this.currentAudioBlob);
       this.currentAudioBlob = null;
     }
   }
-  
+
   /**
    * 停止流式播放
    */
@@ -194,7 +401,7 @@ export class TTSService {
       }
       this.sourceNode = null;
     }
-    
+
     this.isStreamPlaying = false;
   }
 
@@ -225,12 +432,12 @@ export class TTSService {
       this.stop();
       return false;
     }
-    
+
     // 如果正在播放其他消息，先停止
     if (this.isPlaying || this.isStreamPlaying) {
       this.stop();
     }
-    
+
     // 开始播放新消息
     const success = await this.speak(text, voice);
     if (success) {
@@ -261,7 +468,13 @@ export class TTSService {
       console.log(`开始播放文本，语音: ${voice}`);
       this.isPlaying = true;
 
-      // 首先检查是否使用OpenAI TTS
+      // 首先检查是否使用Azure TTS
+      if (this.useAzure) {
+        const success = await this.speakWithAzure(text);
+        if (success) return true;
+      }
+
+      // 然后检查是否使用OpenAI TTS
       if (this.useOpenAI) {
         // 决定是否使用流式输出
         if (this.useOpenAIStream && this.audioContext) {
@@ -344,29 +557,35 @@ export class TTSService {
 
       // 获取音频数据
       const audioBlob = await response.blob();
-      
+
       // 释放之前的Blob URL
       if (this.currentAudioBlob) {
         URL.revokeObjectURL(this.currentAudioBlob);
       }
-      
+
       // 创建新的Blob URL
       this.currentAudioBlob = URL.createObjectURL(audioBlob);
-      
+
       // 播放音频
       if (this.audio) {
         this.audio.src = this.currentAudioBlob;
-        this.audio.play();
+        try {
+          await this.audio.play();
+        } catch (error) {
+          console.error('OpenAI TTS API播放失败:', error);
+          this.isPlaying = false;
+          return false;
+        }
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('OpenAI TTS API播放失败:', error);
       return false;
     }
   }
-  
+
   /**
    * 使用OpenAI TTS API流式播放文本
    * @param text 要播放的文本
@@ -379,7 +598,7 @@ export class TTSService {
         console.warn('OpenAI API密钥未设置，尝试其他方法');
         return false;
       }
-      
+
       // 确保AudioContext可用
       if (!this.audioContext) {
         console.warn('AudioContext不可用，无法使用流式播放');
@@ -393,7 +612,8 @@ export class TTSService {
         input: text,
         voice: this.openaiVoice,
         response_format: this.openaiResponseFormat,
-        speed: this.openaiSpeed
+        speed: this.openaiSpeed,
+        stream: true  // 流式播放必需参数
       };
 
       console.log('OpenAI TTS流式请求参数:', {
@@ -419,18 +639,18 @@ export class TTSService {
         console.error('OpenAI TTS API流式请求失败:', response.status, errorData);
         return false;
       }
-      
+
       // 重置流式播放状态
       this.stopStream();
       this.isStreamPlaying = true;
-      
+
       // 获取响应体作为流
       const reader = response.body?.getReader();
       if (!reader) {
         console.error('无法获取响应流');
         return false;
       }
-      
+
       // 根据不同格式选择解码器
       let mimeType = 'audio/mp3';
       switch(this.openaiResponseFormat) {
@@ -439,67 +659,74 @@ export class TTSService {
         case 'aac': mimeType = 'audio/aac'; break;
         case 'flac': mimeType = 'audio/flac'; break;
       }
-      
+
       // 创建媒体源和解码器
       const mediaSource = new MediaSource();
       const audioElement = new Audio();
       audioElement.src = URL.createObjectURL(mediaSource);
-      
+
       // 收集所有块，然后一次性解码和播放
       // 这种方法虽然不是实时流式播放，但比等待整个文件下载快
       const chunks: Uint8Array[] = [];
-      
+
       // 读取流
       const processStream = async () => {
         let done = false;
         while (!done) {
           const { value, done: isDone } = await reader.read();
           done = isDone;
-          
+
           if (value) {
             chunks.push(value);
           }
-          
+
           if (done) {
             // 合并所有块
             const totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
             const merged = new Uint8Array(totalLength);
             let offset = 0;
-            
+
             for (const chunk of chunks) {
               merged.set(chunk, offset);
               offset += chunk.length;
             }
-            
+
             // 创建Blob并播放
             const blob = new Blob([merged], { type: mimeType });
             const url = URL.createObjectURL(blob);
-            
+
             if (this.audio) {
               this.audio.src = url;
-              this.audio.play();
-              
-              // 监听播放完成事件
-              this.audio.onended = () => {
+              try {
+                await this.audio.play();
+                
+                // 监听播放完成事件
+                this.audio.onended = () => {
+                  URL.revokeObjectURL(url);
+                  this.isStreamPlaying = false;
+                  this.currentMessageId = null;
+                };
+                
+                return true;
+              } catch (error) {
+                console.error('OpenAI TTS API流式播放失败:', error);
                 URL.revokeObjectURL(url);
                 this.isStreamPlaying = false;
-                this.currentMessageId = null;
-              };
-              
-              return true;
+                return false;
+              }
             }
           }
         }
-        
+
         return false;
       };
-      
+
       // 开始处理流
       processStream().catch(err => {
         console.error('处理音频流时出错:', err);
         this.isStreamPlaying = false;
       });
-      
+
       return true;
     } catch (error) {
       console.error('OpenAI TTS API流式播放失败:', error);
@@ -525,14 +752,26 @@ export class TTSService {
       // 准备API请求参数
       const url = 'https://api.siliconflow.cn/v1/audio/speech';
       const model = this.defaultModel;
-      const voice = voiceName || this.defaultVoice;
-      
+
+      // 处理语音参数：硅基流动需要 "模型名:音色名" 格式
+      let voice = voiceName || this.defaultVoice;
+
+      // 如果voice不包含模型名，则添加模型名前缀
+      if (voice && !voice.includes(':')) {
+        voice = `${model}:${voice}`;
+      }
+
+      console.log('硅基流动TTS请求参数:', { model, voice, textLength: text.length });
+      console.log('硅基流动TTS文本内容:', text.substring(0, 100) + (text.length > 100 ? '...' : ''));
+
       const requestBody = {
         model: model,
         input: text,
         voice: voice,
         response_format: 'mp3'
       };
+
+      console.log('硅基流动TTS完整请求体:', JSON.stringify(requestBody, null, 2));
 
       // 发送API请求
       const response = await fetch(url, {
@@ -553,22 +792,28 @@ export class TTSService {
 
       // 获取音频数据
       const audioBlob = await response.blob();
-      
+
       // 释放之前的Blob URL
       if (this.currentAudioBlob) {
         URL.revokeObjectURL(this.currentAudioBlob);
       }
-      
+
       // 创建新的Blob URL
       this.currentAudioBlob = URL.createObjectURL(audioBlob);
-      
+
       // 播放音频
       if (this.audio) {
         this.audio.src = this.currentAudioBlob;
-        this.audio.play();
+        try {
+          await this.audio.play();
+        } catch (error) {
+          console.error('硅基流动API播放失败:', error);
+          this.isPlaying = false;
+          return false;
+        }
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('硅基流动API播放失败:', error);
@@ -595,11 +840,11 @@ export class TTSService {
 
       // 创建语音合成器实例
       const utterance = new SpeechSynthesisUtterance(text);
-      
+
       // 获取可用的语音合成声音
       let voices = window.speechSynthesis.getVoices();
       console.log('可用的语音合成声音:', voices);
-      
+
       // 如果voices为空，可能是因为还没有加载完成
       if (voices.length === 0) {
         // 设置一个超时，等待语音加载
@@ -609,7 +854,7 @@ export class TTSService {
         }, 100);
         return true;
       }
-      
+
       // 如果已有voices，直接设置并播放
       return this.setVoiceAndPlay(utterance, voices, voiceName);
     } catch (error) {
@@ -618,7 +863,7 @@ export class TTSService {
       return false;
     }
   }
-  
+
   /**
    * 设置语音并播放
    * @param utterance SpeechSynthesisUtterance 实例
@@ -654,7 +899,7 @@ export class TTSService {
 
       // 设置语音
       utterance.voice = selectedVoice;
-      
+
       // 设置其他可选参数
       utterance.rate = 1; // 语速
       utterance.pitch = 1; // 音调
@@ -682,4 +927,206 @@ export class TTSService {
       return false;
     }
   }
-} 
+
+  /**
+   * 使用Azure TTS API播放文本
+   * @param text 要播放的文本
+   * @returns 是否成功播放
+   */
+  private async speakWithAzure(text: string): Promise<boolean> {
+    try {
+      // 检查API密钥是否已设置
+      if (!this.azureApiKey || !this.azureRegion) {
+        console.warn('Azure API密钥或区域未设置，尝试其他方法');
+        return false;
+      }
+
+      console.log('Azure TTS请求参数:', {
+        region: this.azureRegion,
+        voiceName: this.azureVoiceName,
+        language: this.azureLanguage,
+        outputFormat: this.azureOutputFormat,
+        rate: this.azureRate,
+        pitch: this.azurePitch,
+        volume: this.azureVolume,
+        style: this.azureStyle,
+        styleDegree: this.azureStyleDegree,
+        role: this.azureRole,
+        useSSML: this.azureUseSSML
+      });
+
+      // 创建语音配置
+      const speechConfig = sdk.SpeechConfig.fromSubscription(this.azureApiKey, this.azureRegion);
+      speechConfig.speechSynthesisOutputFormat = this.getAzureOutputFormat();
+      speechConfig.speechSynthesisVoiceName = this.azureVoiceName;
+
+      // 创建音频配置 - 使用默认扬声器输出
+      const audioConfig = sdk.AudioConfig.fromDefaultSpeakerOutput();
+
+      // 创建语音合成器
+      const synthesizer = new sdk.SpeechSynthesizer(speechConfig, audioConfig);
+
+      // 准备要合成的文本
+      let textToSpeak = text;
+
+      // 如果启用SSML，构建SSML文本
+      if (this.azureUseSSML) {
+        textToSpeak = this.buildSSMLText(text);
+      }
+
+      console.log('Azure TTS开始合成，文本长度:', textToSpeak.length);
+
+      // 执行语音合成
+      return new Promise<boolean>((resolve) => {
+        const startTime = Date.now();
+
+        if (this.azureUseSSML) {
+          synthesizer.speakSsmlAsync(
+            textToSpeak,
+            (result) => {
+              const duration = Date.now() - startTime;
+              console.log(`Azure TTS合成完成，耗时: ${duration}ms`);
+
+              if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+                console.log('Azure TTS语音合成成功');
+                this.isPlaying = false;
+                this.currentMessageId = null;
+                resolve(true);
+              } else {
+                console.error('Azure TTS语音合成失败:', result.errorDetails);
+                this.isPlaying = false;
+                resolve(false);
+              }
+              synthesizer.close();
+            },
+            (error) => {
+              console.error('Azure TTS合成错误:', error);
+              this.isPlaying = false;
+              synthesizer.close();
+              resolve(false);
+            }
+          );
+        } else {
+          synthesizer.speakTextAsync(
+            textToSpeak,
+            (result) => {
+              const duration = Date.now() - startTime;
+              console.log(`Azure TTS合成完成，耗时: ${duration}ms`);
+
+              if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+                console.log('Azure TTS语音合成成功');
+                this.isPlaying = false;
+                this.currentMessageId = null;
+                resolve(true);
+              } else {
+                console.error('Azure TTS语音合成失败:', result.errorDetails);
+                this.isPlaying = false;
+                resolve(false);
+              }
+              synthesizer.close();
+            },
+            (error) => {
+              console.error('Azure TTS合成错误:', error);
+              this.isPlaying = false;
+              synthesizer.close();
+              resolve(false);
+            }
+          );
+        }
+      });
+
+    } catch (error) {
+      console.error('Azure TTS播放失败:', error);
+      this.isPlaying = false;
+      return false;
+    }
+  }
+
+  /**
+   * 构建SSML文本
+   * @param text 原始文本
+   * @returns SSML格式的文本
+   */
+  private buildSSMLText(text: string): string {
+    let ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${this.azureLanguage}">`;
+
+    // 添加语音标签
+    ssml += `<voice name="${this.azureVoiceName}">`;
+
+    // 添加韵律控制
+    const prosodyAttrs = [];
+    if (this.azureRate !== 'medium') prosodyAttrs.push(`rate="${this.azureRate}"`);
+    if (this.azurePitch !== 'medium') prosodyAttrs.push(`pitch="${this.azurePitch}"`);
+    if (this.azureVolume !== 'medium') prosodyAttrs.push(`volume="${this.azureVolume}"`);
+
+    if (prosodyAttrs.length > 0) {
+      ssml += `<prosody ${prosodyAttrs.join(' ')}>`;
+    }
+
+    // 添加说话风格（如果支持）
+    if (this.azureStyle !== 'general' && this.azureVoiceName.includes('Neural')) {
+      const styleAttrs = [`style="${this.azureStyle}"`];
+      if (this.azureStyleDegree !== 1.0) {
+        styleAttrs.push(`styledegree="${this.azureStyleDegree}"`);
+      }
+      if (this.azureRole !== 'default') {
+        styleAttrs.push(`role="${this.azureRole}"`);
+      }
+      ssml += `<mstts:express-as ${styleAttrs.join(' ')}>`;
+    }
+
+    // 添加文本内容，转义特殊字符
+    const escapedText = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
+    ssml += escapedText;
+
+    // 关闭标签
+    if (this.azureStyle !== 'general' && this.azureVoiceName.includes('Neural')) {
+      ssml += '</mstts:express-as>';
+    }
+
+    if (prosodyAttrs.length > 0) {
+      ssml += '</prosody>';
+    }
+
+    ssml += '</voice>';
+    ssml += '</speak>';
+
+    console.log('构建的SSML:', ssml);
+    return ssml;
+  }
+
+  /**
+   * 获取Azure输出格式枚举值
+   * @returns Azure SDK的输出格式枚举
+   */
+  private getAzureOutputFormat(): sdk.SpeechSynthesisOutputFormat {
+    const formatMap: Record<string, sdk.SpeechSynthesisOutputFormat> = {
+      'audio-16khz-32kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3,
+      'audio-16khz-64kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio16Khz64KBitRateMonoMp3,
+      'audio-16khz-128kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3,
+      'audio-24khz-48kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3,
+      'audio-24khz-96kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3,
+      'audio-24khz-160kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio24Khz160KBitRateMonoMp3,
+      'audio-48khz-96kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio48Khz96KBitRateMonoMp3,
+      'audio-48khz-192kbitrate-mono-mp3': sdk.SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3,
+      'webm-16khz-16bit-mono-opus': sdk.SpeechSynthesisOutputFormat.Webm16Khz16BitMonoOpus,
+      'webm-24khz-16bit-mono-opus': sdk.SpeechSynthesisOutputFormat.Webm24Khz16BitMonoOpus,
+      'ogg-16khz-16bit-mono-opus': sdk.SpeechSynthesisOutputFormat.Ogg16Khz16BitMonoOpus,
+      'ogg-24khz-16bit-mono-opus': sdk.SpeechSynthesisOutputFormat.Ogg24Khz16BitMonoOpus,
+      'raw-16khz-16bit-mono-pcm': sdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm,
+      'raw-24khz-16bit-mono-pcm': sdk.SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm,
+      'raw-48khz-16bit-mono-pcm': sdk.SpeechSynthesisOutputFormat.Raw48Khz16BitMonoPcm,
+      'riff-16khz-16bit-mono-pcm': sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm,
+      'riff-24khz-16bit-mono-pcm': sdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm,
+      'riff-48khz-16bit-mono-pcm': sdk.SpeechSynthesisOutputFormat.Riff48Khz16BitMonoPcm
+    };
+
+    return formatMap[this.azureOutputFormat] || sdk.SpeechSynthesisOutputFormat.Audio24Khz160KBitRateMonoMp3;
+  }
+}

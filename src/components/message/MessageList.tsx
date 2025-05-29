@@ -86,6 +86,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
     state.settings.showSystemPromptBubble !== false
   );
 
+  // 获取自动滚动设置
+  const autoScrollToBottom = useSelector((state: RootState) =>
+    state.settings.autoScrollToBottom !== false
+  );
+
   // 使用简化的滚动位置钩子
   const {
     containerRef,
@@ -114,6 +119,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
   // 使用节流的状态检查，避免过度渲染
   const throttledStreamingCheck = useMemo(
     () => throttle(() => {
+      // 检查是否启用自动滚动
+      if (!autoScrollToBottom) return;
+
       // 检查是否有正在流式输出的块
       const hasStreamingBlock = Object.values(messageBlocks || {}).some(
         block => block?.status === 'streaming'
@@ -132,7 +140,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
         }, 10);
       }
     }, 100), // 100ms节流
-    [messageBlocks, messages, throttledScrollToBottom]
+    [messageBlocks, messages, throttledScrollToBottom, autoScrollToBottom]
   );
 
   // 监听消息块状态变化，但使用节流避免过度更新
@@ -150,11 +158,12 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
       );
 
       if (hasStreamingBlock) {
-        // 导入性能设置（动态导入避免循环依赖）
+        // 使用同步方式获取性能设置，避免async问题
         try {
-          const { getHighPerformanceScrollThrottle, shouldUseHighPerformanceMode } = require('../../shared/utils/performanceSettings');
-          if (shouldUseHighPerformanceMode(true)) {
-            return getHighPerformanceScrollThrottle(); // 高性能模式：300ms
+          // 直接从localStorage读取高性能设置
+          const highPerformanceStreaming = localStorage.getItem('highPerformanceStreaming') === 'true';
+          if (highPerformanceStreaming) {
+            return 300; // 高性能模式：300ms
           }
         } catch (error) {
           console.warn('无法加载性能设置，使用默认值');
@@ -166,6 +175,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
 
     // 使用动态节流时间的事件处理器
     const throttledTextDeltaHandler = throttle(() => {
+      // 检查是否启用自动滚动
+      if (!autoScrollToBottom) return;
+
       // 使用 setTimeout 确保在DOM更新后滚动
       setTimeout(() => {
         if (throttledScrollToBottomRef.current) {
@@ -206,6 +218,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
   // 当消息数量变化时滚动到底部 - 使用节流避免过度滚动
   const throttledMessageLengthScroll = useMemo(
     () => throttle(() => {
+      // 检查是否启用自动滚动
+      if (!autoScrollToBottom) return;
+
       // 使用 setTimeout 确保在DOM更新后滚动
       setTimeout(() => {
         // 尝试使用 messagesEndRef 滚动到底部
@@ -217,7 +232,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, onRegenerate, onDel
         }
       }, 10);
     }, 200), // 200ms节流，避免频繁滚动
-    [throttledScrollToBottom]
+    [throttledScrollToBottom, autoScrollToBottom]
   );
 
   useEffect(() => {

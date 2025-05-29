@@ -38,6 +38,7 @@ export interface OpenAIStreamProcessorOptions {
   model: Model;
   enableReasoning?: boolean;
   onUpdate?: (content: string, reasoning?: string) => void;
+  onChunk?: (chunk: import('../../types/chunk').Chunk) => void;
   messageId?: string;
   blockId?: string;
   thinkingBlockId?: string;
@@ -53,6 +54,7 @@ export class OpenAIStreamProcessor {
   private model: Model;
   private enableReasoning: boolean;
   private onUpdate?: (content: string, reasoning?: string) => void;
+  private onChunk?: (chunk: import('../../types/chunk').Chunk) => void;
   private content: string = '';
   private reasoning: string = '';
   private startTime: number;
@@ -81,6 +83,7 @@ export class OpenAIStreamProcessor {
     this.model = options.model;
     this.enableReasoning = options.enableReasoning ?? true;
     this.onUpdate = options.onUpdate;
+    this.onChunk = options.onChunk;
     this.messageId = options.messageId;
     this.blockId = options.blockId;
     this.thinkingBlockId = options.thinkingBlockId;
@@ -211,19 +214,21 @@ export class OpenAIStreamProcessor {
 
       this.content += chunk.textDelta;
 
-      // 通知内容更新
-      if (this.onUpdate) {
-        this.onUpdate(this.content, this.reasoning);
+      // 🔥 修复流式输出问题：优先使用onChunk发送text.delta事件
+      if (this.onChunk) {
+        this.onChunk({
+          type: 'text.delta',
+          text: chunk.textDelta,
+          messageId: this.messageId,
+          blockId: this.blockId,
+          topicId: this.topicId
+        });
+      } else if (this.onUpdate) {
+        // 兼容旧的onUpdate回调
+        this.onUpdate(chunk.textDelta, this.reasoning);
       }
 
-      // 发送文本增量事件
-      EventEmitter.emit(EVENT_NAMES.STREAM_TEXT_DELTA, {
-        text: chunk.textDelta,
-        isFirstChunk: this.content === chunk.textDelta, // 如果内容等于当前增量，则是第一个块
-        messageId: this.messageId,
-        blockId: this.blockId,
-        topicId: this.topicId
-      });
+      console.log(`[OpenAIStreamProcessor] 文本增量处理完成，长度: ${chunk.textDelta.length}`);
 
     } else if (chunk.type === 'reasoning') {
       // 处理思考增量
@@ -233,9 +238,9 @@ export class OpenAIStreamProcessor {
 
       this.reasoning += chunk.textDelta;
 
-      // 通知内容更新
+      // 🔥 恢复思考内容的onUpdate处理 - 组合模型依赖这个机制
       if (this.onUpdate) {
-        this.onUpdate(this.content, this.reasoning);
+        this.onUpdate(this.content, this.reasoning); // 传递完整的推理内容
       }
 
       // 发送思考增量事件
@@ -247,8 +252,7 @@ export class OpenAIStreamProcessor {
         topicId: this.topicId
       });
 
-      // 添加调试日志
-      console.log(`[OpenAIStreamProcessor] 发送思考增量事件，长度: ${chunk.textDelta.length}, 思考块ID: ${this.thinkingBlockId || '未设置'}, 消息ID: ${this.messageId || '未设置'}`);
+      console.log(`[OpenAIStreamProcessor] 思考增量处理完成，长度: ${chunk.textDelta.length}`);
 
 
     } else if (chunk.type === 'tool-calls') {
@@ -275,9 +279,9 @@ export class OpenAIStreamProcessor {
 
                 this.reasoning += args.thinking;
 
-                // 通知内容更新
+                // 🔥 修复组合模型问题：确保思考内容通过onUpdate传递
                 if (this.onUpdate) {
-                  this.onUpdate(this.content, this.reasoning);
+                  this.onUpdate('', args.thinking); // 推理内容通过reasoning参数传递
                 }
 
                 // 发送思考增量事件
@@ -299,11 +303,20 @@ export class OpenAIStreamProcessor {
       // 处理完成
       // 如果内容为空，但有推理内容，使用推理内容作为回复
       if (this.content.trim() === '' && this.reasoning && this.reasoning.trim() !== '') {
-        this.content = this.reasoning;
+        const reasoningAsContent = this.reasoning;
+        this.content = reasoningAsContent;
 
-        // 通知内容更新
-        if (this.onUpdate) {
-          this.onUpdate(this.content, this.reasoning);
+        // 🔥 修复流式输出问题：发送text.complete事件
+        if (this.onChunk) {
+          this.onChunk({
+            type: 'text.complete',
+            text: reasoningAsContent,
+            messageId: this.messageId,
+            blockId: this.blockId,
+            topicId: this.topicId
+          });
+        } else if (this.onUpdate) {
+          this.onUpdate(reasoningAsContent, '');
         }
       }
 

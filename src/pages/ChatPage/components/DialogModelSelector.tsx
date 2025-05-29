@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   Button,
   Dialog,
@@ -20,9 +20,94 @@ import {
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import type { Model } from '../../../shared/types';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../shared/store';
+
+// 样式常量 - 提取重复的样式对象以提升性能
+const DIALOG_STYLES = {
+  iconButton: {
+    color: (isDark: boolean) => isDark ? 'text.primary' : 'black',
+  },
+  button: (isDark: boolean) => ({
+    textTransform: 'none',
+    color: isDark ? 'text.primary' : 'black',
+    mr: 1,
+    fontWeight: 'normal',
+    fontSize: '0.9rem',
+    border: `1px solid ${isDark ? 'divider' : '#eeeeee'}`,
+    borderRadius: '16px',
+    px: 2,
+    py: 0.5,
+    '&:hover': {
+      bgcolor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#f5f5f5',
+      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.2)' : '#e0e0e0'}`,
+    }
+  }),
+  dialogPaper: (fullScreen: boolean) => ({
+    borderRadius: fullScreen ? 0 : 2,
+    height: fullScreen ? '100%' : 'auto',
+    maxHeight: fullScreen ? '100%' : '80vh'
+  }),
+  dialogTitle: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    pb: 1
+  },
+  tabsContainer: {
+    borderBottom: 1,
+    borderColor: 'divider'
+  },
+  dialogContent: {
+    px: 1,
+    py: 2
+  },
+  list: {
+    pt: 0
+  }
+} as const;
+
+// ModelItem 样式常量
+const MODEL_ITEM_STYLES = {
+  listItem: (isSelected: boolean, isDark: boolean) => ({
+    borderRadius: 1,
+    mb: 0.5,
+    cursor: 'pointer',
+    bgcolor: isSelected
+      ? isDark
+        ? 'rgba(144, 202, 249, 0.16)'
+        : 'rgba(25, 118, 210, 0.08)'
+      : 'transparent',
+    '&:hover': {
+      bgcolor: isSelected
+        ? isDark
+          ? 'rgba(144, 202, 249, 0.24)'
+          : 'rgba(25, 118, 210, 0.12)'
+        : isDark
+          ? 'rgba(255, 255, 255, 0.08)'
+          : 'rgba(0, 0, 0, 0.04)'
+    }
+  }),
+  listItemIcon: {
+    minWidth: 40
+  },
+  avatar: (provider: any, isSelected: boolean, primaryColor: string) => ({
+    width: 28,
+    height: 28,
+    bgcolor: provider?.color || (isSelected ? primaryColor : 'grey.400'),
+    color: 'white'
+  }),
+  primaryText: (isSelected: boolean) => ({
+    variant: 'body1' as const,
+    fontWeight: isSelected ? 'medium' : 'normal'
+  }),
+  secondaryText: {
+    variant: 'caption' as const,
+    noWrap: true
+  }
+} as const;
 
 interface DialogModelSelectorProps {
   selectedModel: Model | null;
@@ -31,6 +116,8 @@ interface DialogModelSelectorProps {
   handleMenuClick: () => void;
   handleMenuClose: () => void;
   menuOpen: boolean;
+  iconMode?: boolean; // 是否使用图标模式
+  useDropdownStyle?: boolean; // 是否使用下拉样式
 }
 
 export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
@@ -39,26 +126,34 @@ export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
   handleModelSelect,
   handleMenuClick,
   handleMenuClose,
-  menuOpen
+  menuOpen,
+  iconMode = false,
+  useDropdownStyle = false
 }) => {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [activeTab, setActiveTab] = React.useState<string>('all');
   const providers = useSelector((state: RootState) => state.settings.providers || []);
 
-  // 获取提供商名称的函数
-  const getProviderName = React.useCallback((providerId: string) => {
-    const provider = providers.find(p => p.id === providerId);
-    // 如果找到提供商，返回用户设置的名称
-    if (provider) {
-      return provider.name;
-    }
-    // 没有找到，返回原始ID
-    return providerId;
+  // 优化主题相关计算 - 使用 useMemo 缓存
+  const isDark = useMemo(() => theme.palette.mode === 'dark', [theme.palette.mode]);
+
+  // 优化提供商名称映射 - 使用 useMemo 预计算
+  const providerNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    providers.forEach(provider => {
+      map.set(provider.id, provider.name);
+    });
+    return map;
   }, [providers]);
 
-  // 按提供商分组的模型
-  const groupedModels = React.useMemo(() => {
+  // 优化获取提供商名称的函数 - 使用 useCallback 和预计算的映射
+  const getProviderName = useCallback((providerId: string) => {
+    return providerNameMap.get(providerId) || providerId;
+  }, [providerNameMap]);
+
+  // 优化按提供商分组的模型 - 修复依赖项问题
+  const groupedModels = useMemo(() => {
     const groups: Record<string, Model[]> = {};
     const providersMap: Record<string, { id: string, displayName: string }> = {};
 
@@ -78,40 +173,45 @@ export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
     });
 
     // 转换为数组格式，以便可以排序
-    const providers = Object.values(providersMap);
+    const providersArray = Object.values(providersMap);
     // 按显示名称排序
-    providers.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    providersArray.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-    return { groups, providers };
+    return { groups, providers: providersArray };
   }, [availableModels, getProviderName]);
 
-  const handleTabChange = (_: React.SyntheticEvent, newValue: string) => {
+  // 优化标签页切换处理函数 - 使用 useCallback
+  const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: string) => {
     setActiveTab(newValue);
-  };
+  }, []);
+
+  // 优化模型选择处理函数 - 使用 useCallback
+  const handleModelSelectWithClose = useCallback((model: Model) => {
+    handleModelSelect(model);
+  }, [handleModelSelect]);
 
   return (
     <>
-      <Button
-        onClick={handleMenuClick}
-        endIcon={<KeyboardArrowDownIcon />}
-        sx={{
-          textTransform: 'none',
-          color: theme.palette.mode === 'dark' ? theme.palette.text.primary : 'black',
-          mr: 1,
-          fontWeight: 'normal',
-          fontSize: '0.9rem',
-          border: `1px solid ${theme.palette.mode === 'dark' ? theme.palette.divider : '#eeeeee'}`,
-          borderRadius: '16px',
-          px: 2,
-          py: 0.5,
-          '&:hover': {
-            bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#f5f5f5',
-            border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#e0e0e0'}`,
-          }
-        }}
-      >
-        {selectedModel?.name || '选择模型'}
-      </Button>
+      {iconMode ? (
+        // 图标模式：只显示图标按钮
+        <IconButton
+          onClick={handleMenuClick}
+          color="inherit"
+          size="small"
+          sx={DIALOG_STYLES.iconButton}
+        >
+          <SmartToyIcon />
+        </IconButton>
+      ) : (
+        // 完整模式：显示带文字的按钮
+        <Button
+          onClick={handleMenuClick}
+          endIcon={<KeyboardArrowDownIcon />}
+          sx={DIALOG_STYLES.button(isDark)}
+        >
+          {selectedModel?.name || '选择模型'}
+        </Button>
+      )}
 
       <Dialog
         open={menuOpen}
@@ -120,14 +220,10 @@ export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
         maxWidth="sm"
         fullWidth
         PaperProps={{
-          sx: {
-            borderRadius: fullScreen ? 0 : 2,
-            height: fullScreen ? '100%' : 'auto',
-            maxHeight: fullScreen ? '100%' : '80vh'
-          }
+          sx: DIALOG_STYLES.dialogPaper(fullScreen)
         }}
       >
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+        <DialogTitle sx={DIALOG_STYLES.dialogTitle}>
           选择模型
           <IconButton edge="end" onClick={handleMenuClose} aria-label="close">
             <CloseIcon />
@@ -136,7 +232,7 @@ export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
 
         <Divider />
 
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Box sx={DIALOG_STYLES.tabsContainer}>
           <Tabs
             value={activeTab}
             onChange={handleTabChange}
@@ -151,28 +247,30 @@ export const DialogModelSelector: React.FC<DialogModelSelectorProps> = ({
           </Tabs>
         </Box>
 
-        <DialogContent sx={{ px: 1, py: 2 }}>
-          <List sx={{ pt: 0 }}>
+        <DialogContent sx={DIALOG_STYLES.dialogContent}>
+          <List sx={DIALOG_STYLES.list}>
             {activeTab === 'all' ? (
               // 显示所有模型
               availableModels.map((model) => (
                 <ModelItem
-                  key={model.id}
+                  key={`${model.id}-${model.provider}`}
                   model={model}
                   isSelected={selectedModel?.id === model.id && selectedModel?.provider === model.provider}
-                  onSelect={() => handleModelSelect(model)}
+                  onSelect={() => handleModelSelectWithClose(model)}
                   providerDisplayName={getProviderName(model.provider || model.providerType || '未知')}
+                  providers={providers}
                 />
               ))
             ) : (
               // 显示特定提供商的模型
               groupedModels.groups[activeTab]?.map((model) => (
                 <ModelItem
-                  key={model.id}
+                  key={`${model.id}-${model.provider}`}
                   model={model}
                   isSelected={selectedModel?.id === model.id && selectedModel?.provider === model.provider}
-                  onSelect={() => handleModelSelect(model)}
+                  onSelect={() => handleModelSelectWithClose(model)}
                   providerDisplayName={getProviderName(model.provider || model.providerType || '未知')}
+                  providers={providers}
                 />
               ))
             )}
@@ -188,67 +286,65 @@ interface ModelItemProps {
   isSelected: boolean;
   onSelect: () => void;
   providerDisplayName: string;
+  providers: any[]; // 传入 providers 避免在组件内部使用 useSelector
 }
 
-const ModelItem: React.FC<ModelItemProps> = ({ model, isSelected, onSelect, providerDisplayName }) => {
+// 优化 ModelItem 组件 - 使用 React.memo 避免不必要的重新渲染
+const ModelItem: React.FC<ModelItemProps> = React.memo(({
+  model,
+  isSelected,
+  onSelect,
+  providerDisplayName,
+  providers
+}) => {
   const theme = useTheme();
-  // 获取提供商信息
-  const provider = useSelector((state: RootState) =>
-    state.settings.providers?.find(p => p.id === (model.provider || model.providerType))
+
+  // 优化主题相关计算 - 使用 useMemo 缓存
+  const isDark = useMemo(() => theme.palette.mode === 'dark', [theme.palette.mode]);
+
+  // 优化提供商查找 - 使用 useMemo 缓存
+  const provider = useMemo(() =>
+    providers?.find(p => p.id === (model.provider || model.providerType)),
+    [providers, model.provider, model.providerType]
+  );
+
+  // 优化样式计算 - 使用 useMemo 缓存
+  const listItemStyle = useMemo(() =>
+    MODEL_ITEM_STYLES.listItem(isSelected, isDark),
+    [isSelected, isDark]
+  );
+
+  const avatarStyle = useMemo(() =>
+    MODEL_ITEM_STYLES.avatar(provider, isSelected, theme.palette.primary.main),
+    [provider, isSelected, theme.palette.primary.main]
+  );
+
+  const primaryTextProps = useMemo(() =>
+    MODEL_ITEM_STYLES.primaryText(isSelected),
+    [isSelected]
   );
 
   return (
     <ListItem
       onClick={onSelect}
-      sx={{
-        borderRadius: 1,
-        mb: 0.5,
-        cursor: 'pointer',
-        bgcolor: isSelected
-          ? theme.palette.mode === 'dark'
-            ? 'rgba(144, 202, 249, 0.16)'
-            : 'rgba(25, 118, 210, 0.08)'
-          : 'transparent',
-        '&:hover': {
-          bgcolor: isSelected
-            ? theme.palette.mode === 'dark'
-              ? 'rgba(144, 202, 249, 0.24)'
-              : 'rgba(25, 118, 210, 0.12)'
-            : theme.palette.mode === 'dark'
-              ? 'rgba(255, 255, 255, 0.08)'
-              : 'rgba(0, 0, 0, 0.04)'
-        }
-      }}
+      sx={listItemStyle}
     >
-      <ListItemIcon sx={{ minWidth: 40 }}>
-        <Avatar
-          sx={{
-            width: 28,
-            height: 28,
-            bgcolor: provider?.color || (isSelected ? theme.palette.primary.main : 'grey.400'),
-            color: 'white'
-          }}
-        >
+      <ListItemIcon sx={MODEL_ITEM_STYLES.listItemIcon}>
+        <Avatar sx={avatarStyle}>
           {provider?.avatar || providerDisplayName[0]}
         </Avatar>
       </ListItemIcon>
       <ListItemText
         primary={model.name}
         secondary={model.description || `${providerDisplayName}模型`}
-        primaryTypographyProps={{
-          variant: 'body1',
-          fontWeight: isSelected ? 'medium' : 'normal'
-        }}
-        secondaryTypographyProps={{
-          variant: 'caption',
-          noWrap: true
-        }}
+        primaryTypographyProps={primaryTextProps}
+        secondaryTypographyProps={MODEL_ITEM_STYLES.secondaryText}
       />
       {isSelected && (
         <CheckIcon color="primary" fontSize="small" />
       )}
     </ListItem>
   );
-};
+});
 
 export default DialogModelSelector;

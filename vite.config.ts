@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'  // 使用SWC版本
 import vue from '@vitejs/plugin-vue'
 // import { muiIconsPlugin } from './scripts/vite-mui-icons-plugin'
-import checker from 'vite-plugin-checker'
+import checker from 'vite-plugin-checker' // 保留检查器用于开发模式
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -13,7 +13,10 @@ export default defineConfig({
     //   enableCache: true,
     //   verbose: true
     // }),
-    react(),
+    react({
+      // SWC 优化配置
+      devTarget: 'es2022'
+    }),
     vue({
       template: {
         compilerOptions: {
@@ -22,13 +25,14 @@ export default defineConfig({
         }
       }
     }),
-    // 并行类型检查，不阻塞构建
-    checker({
-      typescript: {
-        buildMode: true,
-        tsconfigPath: './tsconfig.app.json'
-      }
-    })
+    // 超快并行类型检查 - 暂时禁用以解决缓存问题
+    // process.env.NODE_ENV === 'development' && checker({
+    //   typescript: {
+    //     buildMode: false, // 开发时立即显示错误
+    //     tsconfigPath: './tsconfig.app.json'
+    //   },
+    //   enableBuild: false // 生产构建时禁用，完全依赖SWC
+    // })
   ],
 
   // 开发服务器配置
@@ -41,15 +45,7 @@ export default defineConfig({
       'Access-Control-Allow-Headers': '*',
     },
     proxy: {
-      // Tavily API代理
-      '/api/tavily': {
-        target: 'https://api.tavily.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/tavily/, ''),
-        headers: {
-          'Origin': 'https://api.tavily.com'
-        }
-      },
+
       // Exa API代理
       '/api/exa': {
         target: 'https://api.exa.ai',
@@ -457,8 +453,8 @@ export default defineConfig({
           'utils-vendor': ['redux', '@reduxjs/toolkit', 'lodash'],
           // Vue相关库
           'vue-vendor': ['vue'],
-          // 语法高亮相关
-          'syntax-vendor': ['react-syntax-highlighter'],
+          // 🔥 升级：语法高亮相关 - 使用 Shiki
+          'syntax-vendor': ['shiki'],
           // 日期处理相关
           'date-vendor': ['date-fns'],
           // 动画相关

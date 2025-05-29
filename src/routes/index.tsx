@@ -9,7 +9,12 @@ const AppearanceSettings = lazy(() => import('../pages/Settings/AppearanceSettin
 const BehaviorSettings = lazy(() => import('../pages/Settings/BehaviorSettings'));
 const ChatInterfaceSettings = lazy(() => import('../pages/Settings/ChatInterfaceSettings'));
 const TopToolbarSettings = lazy(() => import('../pages/Settings/TopToolbarSettings'));
+const TopToolbarDIYSettings = lazy(() => import('../pages/Settings/TopToolbarDIYSettings'));
+const TopToolbarTestPage = lazy(() => import('../pages/Settings/TopToolbarTestPage'));
 const DefaultModelSettings = lazy(() => import('../pages/Settings/DefaultModelSettings'));
+// 导入知识库页面
+const KnowledgeBasePage = lazy(() => import('../pages/KnowledgeBase'));
+const KnowledgeSettings = lazy(() => import('../pages/Settings/KnowledgeSettings'));
 
 const DefaultModelSettingsPage = lazy(() => import('../pages/Settings/DefaultModelSettings/index'));
 const ModelProviderSettings = lazy(() => import('../pages/Settings/ModelProviderSettings'));
@@ -28,9 +33,9 @@ const MCPServerSettings = lazy(() => import('../pages/Settings/MCPServerSettings
 const MCPServerDetail = lazy(() => import('../pages/Settings/MCPServerDetail'));
 // 导入模型组合页面
 const ModelComboSettings = lazy(() => import('../pages/Settings/ModelComboSettings'));
-// 导入快捷方式相关页面
-const ShortcutsPage = lazy(() => import('../pages/Settings/ShortcutsPage'));
-const ShortcutLanguagePage = lazy(() => import('../pages/Settings/ShortcutLanguagePage'));
+// 导入AI辩论设置页面
+const AIDebateSettings = lazy(() => import('../pages/Settings/AIDebateSettings'));
+import MessageBubbleSettings from "../pages/Settings/MessageBubbleSettings";
 
 // 加载中组件
 const LoadingFallback = () => (
@@ -77,11 +82,15 @@ const AppRouter: React.FC = () => {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/appearance" element={<AppearanceSettings />} />
         <Route path="/settings/appearance/chat-interface" element={<ChatInterfaceSettings />} />
+        <Route path="/settings/appearance/message-bubble" element={<MessageBubbleSettings />} />
         <Route path="/settings/appearance/top-toolbar" element={<TopToolbarSettings />} />
+        <Route path="/settings/appearance/top-toolbar-diy" element={<TopToolbarDIYSettings />} />
+        <Route path="/settings/appearance/top-toolbar-test" element={<TopToolbarTestPage />} />
         <Route path="/settings/behavior" element={<BehaviorSettings />} />
         <Route path="/settings/default-model" element={<DefaultModelSettings />} />
         <Route path="/settings/default-model-settings" element={<DefaultModelSettingsPage />} />
         <Route path="/settings/system-prompts" element={<SystemPromptSettings />} />
+        <Route path="/settings/ai-debate" element={<AIDebateSettings />} />
         <Route path="/settings/model-provider/:providerId" element={<ModelProviderSettings />} />
         <Route path="/settings/add-provider" element={<AddProviderPage />} />
         <Route path="/settings/about" element={<AboutPage />} />
@@ -92,10 +101,10 @@ const AppRouter: React.FC = () => {
         <Route path="/settings/mcp-server" element={<MCPServerSettings />} />
         <Route path="/settings/mcp-server/:serverId" element={<MCPServerDetail />} />
         <Route path="/settings/model-combo" element={<ModelComboSettings />} />
-        <Route path="/settings/shortcuts" element={<ShortcutsPage />} />
-        <Route path="/settings/shortcut-language" element={<ShortcutLanguagePage />} />
+        <Route path="/settings/knowledge" element={<KnowledgeSettings />} />
         <Route path="/devtools" element={<DevToolsPage />} />
         <Route path="/vue-demo" element={<VueDemoPage />} />
+        <Route path="/knowledge/*" element={<KnowledgeBasePage />} />
       </Routes>
     </Suspense>
   );

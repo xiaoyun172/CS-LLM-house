@@ -6,7 +6,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { createSSEClient, SSEClient } from './sseClient';
 import { Capacitor } from '@capacitor/core';
-import { CapacitorHttp } from '@capacitor/core';
+import { needsCORSProxy, getPlatformUrl } from './universalFetch';
 
 export interface CustomSSETransportOptions {
   headers?: Record<string, string>;
@@ -25,7 +25,22 @@ export class CustomSSETransport implements Transport {
   constructor(url: URL, options: CustomSSETransportOptions = {}) {
     this.url = url;
     this.options = options;
-    this.sseClient = createSSEClient(url.toString(), {
+
+    // 在移动端，直接使用原始URL，因为我们有原生HTTP绕过CORS
+    // 在Web端，需要检查是否需要代理
+    let finalUrl = url.toString();
+
+    if (!Capacitor.isNativePlatform()) {
+      // Web端：检查是否需要CORS代理
+      if (needsCORSProxy(finalUrl)) {
+        finalUrl = getPlatformUrl(finalUrl);
+        console.log(`[Custom SSE Transport] Web端使用代理: ${url.toString()} -> ${finalUrl}`);
+      }
+    } else {
+      console.log(`[Custom SSE Transport] 移动端直接连接: ${finalUrl}`);
+    }
+
+    this.sseClient = createSSEClient(finalUrl, {
       headers: options.headers,
       withCredentials: options.withCredentials,
       heartbeatTimeout: options.heartbeatTimeout
@@ -82,43 +97,25 @@ export class CustomSSETransport implements Transport {
       // 构建发送 URL（通常是 SSE URL 去掉 /sse 后缀）
       const sendUrl = this.url.toString().replace(/\/sse\??.*$/, '/message');
 
-      if (Capacitor.isNativePlatform()) {
-        // 移动端：使用 Capacitor HTTP 原生请求，绕过 CORS
-        console.log(`[Custom SSE Transport] 使用原生 HTTP 发送消息`);
+      // 使用 universalFetch 自动处理 CORS 和平台差异
+      const { universalFetch } = await import('./universalFetch');
 
-        const response = await CapacitorHttp.request({
-          url: sendUrl,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'AetherLink-Mobile/1.0',
-            ...this.options.headers
-          },
-          data: message,
-          readTimeout: 30000,
-          connectTimeout: 30000
-        });
+      console.log(`[Custom SSE Transport] 使用 universalFetch 发送消息到: ${sendUrl}`);
 
-        if (response.status >= 400) {
-          throw new Error(`HTTP ${response.status}: ${response.data?.error || 'Request failed'}`);
-        }
-      } else {
-        // Web 端：使用标准 fetch
-        console.log(`[Custom SSE Transport] 使用标准 fetch 发送消息`);
+      const response = await universalFetch(sendUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'AetherLink-Mobile/1.0',
+          ...this.options.headers
+        },
+        body: JSON.stringify(message),
+        timeout: 30000
+      });
 
-        const response = await fetch(sendUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...this.options.headers
-          },
-          body: JSON.stringify(message),
-          credentials: this.options.withCredentials ? 'include' : 'same-origin'
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
       }
 
       console.log(`[Custom SSE Transport] 消息发送成功`);

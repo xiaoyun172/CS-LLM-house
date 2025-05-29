@@ -265,7 +265,7 @@ const MCPButton: React.FC<MCPButtonProps> = ({
                         </Typography>
                       }
                       secondary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                        <Box component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                           <Chip
                             label={server.type.toUpperCase()}
                             size="small"
@@ -288,6 +288,7 @@ const MCPButton: React.FC<MCPButtonProps> = ({
                           )}
                         </Box>
                       }
+                      secondaryTypographyProps={{ component: 'div' }}
                     />
                     <ListItemSecondaryAction>
                       <Switch

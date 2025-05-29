@@ -19,8 +19,10 @@ export interface Settings {
 export interface SettingItem {
   id: string;
   name: string;
-  defaultValue: boolean;
+  defaultValue: boolean | string;
   description: string;
+  type?: 'switch' | 'select';
+  options?: Array<{ value: string; label: string }>;
 }
 
 // 定义上下文类型
@@ -53,7 +55,7 @@ export interface SidebarContextType {
   // 设置管理
   settings: Settings;
   settingsArray: SettingItem[];
-  handleSettingChange: (settingId: string, value: boolean) => void;
+  handleSettingChange: (settingId: string, value: boolean | string) => void;
   handleContextLengthChange: (value: number) => void;
   handleContextCountChange: (value: number) => void;
   handleMathRendererChange: (value: any) => void;

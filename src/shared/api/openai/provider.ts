@@ -635,7 +635,13 @@ export class OpenAIProvider extends BaseOpenAIProvider {
         // 使用非流式响应处理
         return await this.handleNonStreamResponse(requestParams, onUpdate, onChunk, enableTools, mcpTools, abortSignal);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // 检查是否为中断错误
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.log('[OpenAIProvider.sendChatMessage] 请求被用户中断');
+        throw new DOMException('Operation aborted', 'AbortError');
+      }
+
       console.error('[OpenAIProvider.sendChatMessage] API请求失败:', error);
       throw error;
     }
@@ -720,16 +726,48 @@ export class OpenAIProvider extends BaseOpenAIProvider {
         console.log(`[OpenAIProvider] 提示词模式：移除 API 中的 tools 参数`);
       }
 
-      // 调用流式完成函数
-      const result = await streamCompletion(
-        this.client,
-        this.model.id,
-        currentMessages,
-        params.temperature,
-        params.max_tokens || params.max_completion_tokens,
-        enhancedCallback,
-        iterationParams
-      );
+      // 🔥 智能选择处理方式：
+      // 1. 如果有 onChunk 回调，说明是普通消息处理，使用 OpenAIStreamProcessor 分离思考标签
+      // 2. 如果只有 onUpdate 回调，说明可能是组合模型调用，使用 streamCompletion 保持推理内容
+      let result;
+      if (onChunk) {
+        console.log('[OpenAIProvider] 检测到 onChunk 回调，使用 OpenAIStreamProcessor 处理思考标签分离');
+
+        const { OpenAIStreamProcessor } = await import('./streamProcessor');
+
+        // 创建流式响应
+        const stream = await this.client.chat.completions.create({
+          ...iterationParams,
+          stream: true
+        });
+
+        // 使用 OpenAIStreamProcessor 处理流式响应
+        const processor = new OpenAIStreamProcessor({
+          model: this.model,
+          messageId: 'temp-message-id', // 临时ID，实际应该从上层传递
+          blockId: 'temp-block-id', // 临时ID，实际应该从上层传递
+          topicId: 'temp-topic-id', // 临时ID，实际应该从上层传递
+          enableReasoning: this.supportsReasoning(),
+          onUpdate: enhancedCallback,
+          onChunk: onChunk, // 🔥 传递onChunk回调，恢复流式输出
+          abortSignal: abortSignal
+        });
+
+        result = await processor.processStream(stream);
+      } else {
+        console.log('[OpenAIProvider] 未检测到 onChunk 回调，使用 streamCompletion 保持推理内容（组合模型兼容）');
+
+        // 调用流式完成函数（保持原有逻辑，用于组合模型）
+        result = await streamCompletion(
+          this.client,
+          this.model.id,
+          currentMessages,
+          params.temperature,
+          params.max_tokens || params.max_completion_tokens,
+          enhancedCallback,
+          iterationParams
+        );
+      }
 
       console.log(`[OpenAIProvider] 流式响应结果类型: ${typeof result}, hasToolCalls: ${typeof result === 'object' && (result as any)?.hasToolCalls}`);
 
@@ -846,16 +884,48 @@ export class OpenAIProvider extends BaseOpenAIProvider {
           console.log(`[OpenAIProvider] 无回调提示词模式：移除 API 中的 tools 参数`);
         }
 
-        // 使用streamCompletion函数处理流式响应
-        const result = await streamCompletion(
-          this.client,
-          this.model.id,
-          currentMessages,
-          params.temperature,
-          params.max_tokens || params.max_completion_tokens,
-          virtualCallback,
-          iterationParams
-        );
+        // 🔥 智能选择处理方式（无回调版本）：
+        // 1. 如果有 onChunk 回调，使用 OpenAIStreamProcessor 分离思考标签
+        // 2. 否则使用 streamCompletion 保持推理内容（组合模型兼容）
+        let result;
+        if (onChunk) {
+          console.log('[OpenAIProvider] 无回调模式：检测到 onChunk 回调，使用 OpenAIStreamProcessor');
+
+          const { OpenAIStreamProcessor } = await import('./streamProcessor');
+
+          // 创建流式响应
+          const stream = await this.client.chat.completions.create({
+            ...iterationParams,
+            stream: true
+          });
+
+          // 使用 OpenAIStreamProcessor 处理流式响应
+          const processor = new OpenAIStreamProcessor({
+            model: this.model,
+            messageId: 'temp-message-id', // 临时ID，实际应该从上层传递
+            blockId: 'temp-block-id', // 临时ID，实际应该从上层传递
+            topicId: 'temp-topic-id', // 临时ID，实际应该从上层传递
+            enableReasoning: this.supportsReasoning(),
+            onUpdate: virtualCallback,
+            onChunk: onChunk, // 🔥 传递onChunk回调，恢复流式输出
+            abortSignal: abortSignal
+          });
+
+          result = await processor.processStream(stream);
+        } else {
+          console.log('[OpenAIProvider] 无回调模式：使用 streamCompletion 保持推理内容（组合模型兼容）');
+
+          // 使用streamCompletion函数处理流式响应
+          result = await streamCompletion(
+            this.client,
+            this.model.id,
+            currentMessages,
+            params.temperature,
+            params.max_tokens || params.max_completion_tokens,
+            virtualCallback,
+            iterationParams
+          );
+        }
 
         // 检查是否有工具调用标记
         if (typeof result === 'object' && (result as any).hasToolCalls) {

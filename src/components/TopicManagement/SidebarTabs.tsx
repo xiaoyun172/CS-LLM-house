@@ -50,8 +50,7 @@ export default function SidebarTabs({
     currentAssistant,
     setCurrentAssistant,
     setUserAssistants,
-    currentTopic,
-    refreshTopics
+    currentTopic
   });
 
   // 话题管理

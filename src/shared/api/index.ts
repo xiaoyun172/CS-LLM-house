@@ -23,6 +23,8 @@ export interface ChatRequest {
   modelId: string;
   systemPrompt?: string;
   onChunk?: (chunk: string) => void;
+  abortSignal?: AbortSignal; // 添加中断信号支持
+  messageId?: string; // 添加消息ID用于中断控制
 }
 
 // 标准化的API请求接口
@@ -281,14 +283,20 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
       });
 
       console.log(`[processModelRequest] 准备发送API请求, 消息数量: ${apiMessages.length}`);
-      
+
       // 调用实际的API
-      console.log(`[processModelRequest] 开始发送API请求`, { 
-        modelId: model.id, 
-        hasCallback: !!onUpdate
+      console.log(`[processModelRequest] 开始发送API请求`, {
+        modelId: model.id,
+        hasCallback: !!onUpdate,
+        hasAbortSignal: !!options.abortSignal
       });
-      
-      const response = await api.sendChatRequest(apiMessages as any[], model, onUpdate);
+
+      // 检查是否已经被中断
+      if (options.abortSignal?.aborted) {
+        throw new DOMException('Operation aborted', 'AbortError');
+      }
+
+      const response = await api.sendChatRequest(apiMessages as any[], model, onUpdate, options.abortSignal);
       console.log(`[processModelRequest] 成功收到API响应`);
 
       // 如果返回值是对象（带有reasoning等属性），正确处理response
@@ -307,7 +315,7 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
       const errorMessage = error?.message || '未知错误';
       console.error('[processModelRequest] API调用失败:', errorMessage);
       console.error('[processModelRequest] 错误详细信息:', error);
-      
+
       // 提供更多错误上下文
       console.error('[processModelRequest] 错误上下文:', {
         modelId: model.id,
@@ -327,7 +335,7 @@ async function processModelRequest(model: Model, options: ChatRequest): Promise<
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[processModelRequest] 请求准备失败:', errorMessage);
     console.error('[processModelRequest] 错误堆栈:', error instanceof Error ? error.stack : '无堆栈信息');
-    
+
     // 记录更多上下文信息
     console.error('[processModelRequest] 请求上下文:', {
       modelId: model.id,

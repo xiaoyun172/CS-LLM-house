@@ -17,7 +17,9 @@ export const MessageBlockType = {
   TABLE: 'table',
   MULTI_MODEL: 'multi_model',
   CHART: 'chart',
-  MATH: 'math'
+  MATH: 'math',
+  SEARCH_RESULTS: 'search_results',
+  KNOWLEDGE_REFERENCE: 'knowledge_reference'
 } as const;
 
 export type MessageBlockType = typeof MessageBlockType[keyof typeof MessageBlockType];
@@ -202,6 +204,29 @@ export interface MathMessageBlock extends BaseMessageBlock {
   displayMode: boolean;
 }
 
+// 搜索结果块
+export interface SearchResultsMessageBlock extends BaseMessageBlock {
+  type: typeof MessageBlockType.SEARCH_RESULTS;
+  content: string;
+  searchResults: import('../types').WebSearchResult[];
+  query: string;
+}
+
+// 知识库引用块
+export interface KnowledgeReferenceMessageBlock extends BaseMessageBlock {
+  type: typeof MessageBlockType.KNOWLEDGE_REFERENCE;
+  content: string;
+  knowledgeBaseId: string;
+  source?: string;
+  similarity?: number;
+  metadata?: {
+    fileName?: string;
+    fileId?: string;
+    knowledgeDocumentId?: string;
+    searchQuery?: string;
+  };
+}
+
 // 消息块联合类型
 export type MessageBlock =
   | PlaceholderMessageBlock
@@ -218,7 +243,9 @@ export type MessageBlock =
   | MultiModelMessageBlock
   | ModelComparisonMessageBlock
   | ChartMessageBlock
-  | MathMessageBlock;
+  | MathMessageBlock
+  | SearchResultsMessageBlock
+  | KnowledgeReferenceMessageBlock;
 
 // 助手消息状态枚举
 export const AssistantMessageStatus = {
@@ -292,4 +319,5 @@ export type Message = {
   metrics?: Metrics
   blocks: MessageBlock['id'][]
   versions?: MessageVersion[]
+  currentVersionId?: string // 当前显示的版本ID
 }
