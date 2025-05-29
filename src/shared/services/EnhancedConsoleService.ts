@@ -27,7 +27,7 @@ class EnhancedConsoleService {
   private entries: ConsoleEntry[] = [];
   private maxEntries = 1000;
   private listeners: ((entries: ConsoleEntry[]) => void)[] = [];
-  private originalConsole: Record<string, Function> = {};
+  private originalConsole: Record<string, (...args: any[]) => void> = {};
   private isIntercepting = false;
   private groupLevel = 0;
   private counts: Map<string, number> = new Map();

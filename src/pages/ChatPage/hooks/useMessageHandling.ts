@@ -2,11 +2,9 @@ import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import store from '../../../shared/store';
 import { selectMessagesForTopic } from '../../../shared/store/selectors/messageSelectors';
-import { sendMessage, deleteMessage, regenerateMessage } from '../../../shared/store/thunks/messageThunk';
+import { sendMessage, deleteMessage, regenerateMessage, resendUserMessage } from '../../../shared/store/thunks/messageThunk';
 import { loadTopicMessagesThunk } from '../../../shared/store/slices/newMessagesSlice';
-import { dexieStorage } from '../../../shared/services/DexieStorageService';
 import { versionService } from '../../../shared/services/VersionService';
-import { getMainTextContent } from '../../../shared/utils/messageUtils';
 import type { SiliconFlowImageFormat } from '../../../shared/types';
 import type { AppDispatch } from '../../../shared/store';
 
@@ -135,57 +133,20 @@ export const useMessageHandling = (
     }
   }, [currentTopic]);
 
-  // 处理重新发送用户消息
+  // 处理重新发送用户消息 - 基于电脑版逻辑
   const handleResendMessage = useCallback(async (messageId: string) => {
     if (!currentTopic || !selectedModel) return null;
 
     try {
-      // 获取要重新发送的用户消息
-      const message = await dexieStorage.getMessage(messageId);
-      if (!message) {
-        console.error('找不到要重新发送的消息');
-        return null;
-      }
-
-      if (message.role !== 'user') {
-        console.error('只能重新发送用户消息');
-        return null;
-      }
-
-      // 获取消息内容
-      const content = getMainTextContent(message);
-      if (!content) {
-        console.error('消息内容为空');
-        return null;
-      }
-
-      // 获取消息中的图片
-      const blocks = await dexieStorage.getMessageBlocksByMessageId(messageId);
-      const imageBlocks = blocks.filter(block => block.type === 'image');
-      const images: SiliconFlowImageFormat[] = imageBlocks.map(block => ({
-        type: 'image_url',
-        image_url: {
-          url: 'url' in block ? (block as any).url : ('content' in block ? (block as any).content : '')
-        }
-      }));
-
-      // 获取消息中的文件
-      const fileBlocks = blocks.filter(block => block.type === 'file');
-      const files = fileBlocks.map(block => ({
-        name: 'fileName' in block ? block.fileName || 'file' : 'file',
-        content: 'content' in block ? block.content : '',
-        type: 'fileType' in block ? block.fileType || 'text/plain' : 'text/plain'
-      }));
-
-      // 重新发送消息
-      await handleSendMessage(content, images, false, files);
-
+      // 使用基于电脑版逻辑的重新发送 thunk
+      // 这个 thunk 不会创建新的用户消息，而是重置关联的助手消息
+      dispatch(resendUserMessage(messageId, currentTopic.id, selectedModel));
       return true;
     } catch (error) {
       console.error('重新发送消息失败:', error);
       return null;
     }
-  }, [currentTopic, selectedModel, handleSendMessage]);
+  }, [dispatch, currentTopic, selectedModel]);
 
   return {
     handleSendMessage,

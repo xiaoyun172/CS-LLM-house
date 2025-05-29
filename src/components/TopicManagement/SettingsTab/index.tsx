@@ -160,15 +160,38 @@ export default function SettingsTab({
   ];
 
   return (
-    <List sx={{ p: 0 }}>
-      <ListItem sx={{ px: 2, py: 1.5 }}>
+    <List
+      sx={{
+        p: 0,
+        // 优化滚动性能
+        contain: 'layout style paint', // 优化渲染性能
+        // 防止不必要的重绘
+        backfaceVisibility: 'hidden',
+        // 优化移动端滚动
+        '& .MuiListItem-root': {
+          // 优化列表项的触摸响应
+          touchAction: 'manipulation',
+          // 防止文本选择干扰滚动
+          userSelect: 'none',
+          // 优化点击反馈
+          '@media (hover: none)': {
+            '&:active': {
+              backgroundColor: 'rgba(0, 0, 0, 0.02)',
+              transition: 'background-color 0.1s ease-out'
+            }
+          }
+        }
+      }}
+    >
+      <ListItem sx={{ px: 2, py: 0.75 }}>
         <ListItemIcon sx={{ minWidth: '40px' }}>
           <SettingsIcon sx={{ color: 'primary.main' }} />
         </ListItemIcon>
         <ListItemText
           primary="助手设置"
           secondary="设置助手行为和外观"
-          primaryTypographyProps={{ fontWeight: 'medium' }}
+          primaryTypographyProps={{ fontWeight: 'medium', fontSize: '0.95rem', lineHeight: 1.2 }}
+          secondaryTypographyProps={{ fontSize: '0.75rem', lineHeight: 1.2 }}
         />
         <ListItemSecondaryAction>
           <Tooltip title="应用设置">
@@ -190,12 +213,12 @@ export default function SettingsTab({
         </ListItemSecondaryAction>
       </ListItem>
 
-      <Divider sx={{ my: 1 }} />
+      <Divider sx={{ my: 0.5 }} />
 
       {/* 用户头像设置区域 */}
       <ListItem sx={{
         px: 2,
-        py: 1.5,
+        py: 1,
         display: 'flex',
         justifyContent: 'space-between',
         bgcolor: 'rgba(255, 193, 7, 0.1)', // 黄色背景提示区域
@@ -205,8 +228,8 @@ export default function SettingsTab({
           <Avatar
             src={userAvatar}
             sx={{
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               mr: 1.5,
               bgcolor: userAvatar ? 'transparent' : '#87d068'
             }}
@@ -214,10 +237,10 @@ export default function SettingsTab({
             {!userAvatar && "我"}
           </Avatar>
           <Box>
-            <Typography variant="body2" fontWeight="medium">
+            <Typography variant="body2" fontWeight="medium" sx={{ fontSize: '0.9rem', lineHeight: 1.2 }}>
               用户头像
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', lineHeight: 1.2 }}>
               设置您的个人头像
             </Typography>
           </Box>
@@ -237,7 +260,7 @@ export default function SettingsTab({
         </Tooltip>
       </ListItem>
 
-      <Divider sx={{ my: 1 }} />
+      <Divider sx={{ my: 0.5 }} />
 
       {/* 使用SettingGroups渲染设置分组 */}
       <SettingGroups groups={settingGroups} onSettingChange={handleSettingChange} />
@@ -324,7 +347,7 @@ export default function SettingsTab({
         }}
       />
 
-      <Divider sx={{ my: 1 }} />
+      <Divider sx={{ my: 0.5 }} />
 
       {/* MCP 工具控制 */}
       <MCPSidebarControls

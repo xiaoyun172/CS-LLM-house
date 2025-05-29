@@ -9,7 +9,7 @@ import { newMessagesActions } from '../../store/slices/newMessagesSlice';
 import type { ErrorInfo } from '../../store/slices/newMessagesSlice';
 import { formatErrorMessage, getErrorType } from '../../utils/error';
 import { updateOneBlock, addOneBlock } from '../../store/slices/messageBlocksSlice';
-import { versionService } from '../VersionService';
+
 
 import type { Chunk } from '../../types/chunk';
 import { v4 as uuid } from 'uuid';
@@ -17,6 +17,8 @@ import { globalToolTracker } from '../../utils/toolExecutionSync';
 import { createToolBlock } from '../../utils/messageUtils';
 import { hasToolUseTags } from '../../utils/mcpToolParser';
 import { parseComparisonResult, createModelComparisonBlock } from '../../utils/modelComparisonUtils';
+import { isApiKeyError, retryApiKeyError, showApiKeyConfigHint } from '../../utils/apiKeyErrorHandler';
+import { TopicNamingService } from '../TopicNamingService';
 
 /**
  * 响应处理器配置类型
@@ -1042,8 +1044,6 @@ export function createResponseHandler({ messageId, blockId, topicId }: ResponseH
       try {
         // 异步执行话题命名，不阻塞主流程
         setTimeout(async () => {
-          const { TopicNamingService } = await import('../TopicNamingService');
-
           // 获取最新的话题数据
           const topic = await dexieStorage.topics.get(topicId);
           if (topic && TopicNamingService.shouldNameTopic(topic)) {

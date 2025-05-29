@@ -55,13 +55,18 @@ const ChatPage: React.FC = () => {
 
   // 创建记忆化的消息选择器
   const selectCurrentMessages = useMemo(
-    () => createSelector(
-      [
-        (state: RootState) => state,
-        () => currentTopic?.id
-      ],
-      (state, topicId) => topicId ? selectMessagesForTopic(state, topicId) : []
-    ),
+    () => {
+      if (!currentTopic?.id) {
+        return () => [];
+      }
+      return createSelector(
+        [(state: RootState) => selectMessagesForTopic(state, currentTopic.id)],
+        (messages) => {
+          // 添加转换逻辑避免直接返回输入
+          return messages ? [...messages] : [];
+        }
+      );
+    },
     [currentTopic?.id]
   );
 
@@ -73,13 +78,42 @@ const ChatPage: React.FC = () => {
     messagesRef.current = currentMessages;
   }, [currentMessages]);
 
-  // 使用新的选择器获取流式状态和加载状态
-  const isStreaming = useSelector((state: RootState) =>
-    currentTopic ? selectTopicStreaming(state, currentTopic.id) : false
+  // 创建记忆化的状态选择器
+  const selectCurrentTopicStreaming = useMemo(
+    () => {
+      if (!currentTopic?.id) {
+        return () => false;
+      }
+      return createSelector(
+        [(state: RootState) => selectTopicStreaming(state, currentTopic.id)],
+        (streaming) => {
+          // 添加转换逻辑避免直接返回输入
+          return Boolean(streaming);
+        }
+      );
+    },
+    [currentTopic?.id]
   );
-  const isLoading = useSelector((state: RootState) =>
-    currentTopic ? selectTopicLoading(state, currentTopic.id) : false
+
+  const selectCurrentTopicLoading = useMemo(
+    () => {
+      if (!currentTopic?.id) {
+        return () => false;
+      }
+      return createSelector(
+        [(state: RootState) => selectTopicLoading(state, currentTopic.id)],
+        (loading) => {
+          // 添加转换逻辑避免直接返回输入
+          return Boolean(loading);
+        }
+      );
+    },
+    [currentTopic?.id]
   );
+
+  // 使用记忆化的选择器获取状态
+  const isStreaming = useSelector(selectCurrentTopicStreaming);
+  const isLoading = useSelector(selectCurrentTopicLoading);
 
   // 布局相关钩子
   const {

@@ -122,13 +122,16 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const selectMessageBlocks = useMemo(
     () => createSelector(
       [
-        (state: RootState) => state,
+        (state: RootState) => state.messageBlocks.entities,
         () => message.blocks
       ],
-      (state, blockIds) =>
-        blockIds
-          .map((blockId: string) => messageBlocksSelectors.selectById(state, blockId))
-          .filter(Boolean) as MessageBlock[]
+      (blockEntities, blockIds) => {
+        // 添加转换逻辑避免直接返回输入
+        const blocks = blockIds
+          .map((blockId: string) => blockEntities[blockId])
+          .filter(Boolean) as MessageBlock[];
+        return [...blocks]; // 返回新数组避免直接返回输入
+      }
     ),
     [message.blocks] // 只有当 message.blocks 改变时才重新创建 selector
   );
@@ -327,8 +330,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
         {((isUserMessage && showUserAvatar) || (!isUserMessage && showModelAvatar)) && (
           <Avatar
             sx={{
-              width: 48,
-              height: 48,
+              width: 40,
+              height: 40,
               fontSize: '1.2rem',
               fontWeight: 600,
               background: isUserMessage
@@ -473,8 +476,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     src={userAvatar}
                     sx={{
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
                     }}
                   />
@@ -482,8 +485,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     sx={{
                       bgcolor: '#00c853', // 绿色背景
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
                     }}
                   >
@@ -538,8 +541,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     src={modelAvatar}
                     sx={{
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
                     }}
                   />
@@ -547,8 +550,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   <Avatar
                     sx={{
                       bgcolor: 'secondary.main',
-                      width: 36,
-                      height: 36,
+                      width: 30,
+                      height: 30,
                       borderRadius: '20%', // 更接近方形的头像
                       fontSize: '1rem',
                       fontWeight: 600

@@ -12,6 +12,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import SettingItem from './SettingItem';
+import { animationOptimization, createOptimizedClickHandler } from './scrollOptimization';
 
 interface Setting {
   id: string;
@@ -83,25 +84,40 @@ export default function SettingGroups({ groups, onSettingChange }: SettingGroups
           {/* 可折叠的分组标题栏 */}
           <ListItem
             component="div"
-            onClick={() => toggleGroup(group.id)}
+            onClick={createOptimizedClickHandler(() => toggleGroup(group.id))}
             sx={{
               px: 2,
-              py: 0.75,
+              py: 0.5,
               cursor: 'pointer',
               position: 'relative',
               zIndex: 1,
-              '&:hover': {
-                backgroundColor: 'transparent !important',
-                transform: 'none !important',
-                boxShadow: 'none !important'
+              // 优化触摸响应
+              touchAction: 'manipulation',
+              userSelect: 'none',
+              // 移动端优化
+              '@media (hover: none)': {
+                '&:active': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                  transform: 'scale(0.98)',
+                  transition: 'all 0.1s ease-out'
+                }
               },
-              '&:focus': {
-                backgroundColor: 'transparent !important'
-              },
-              '&:active': {
-                backgroundColor: 'rgba(0, 0, 0, 0.02)'
+              // 桌面端优化
+              '@media (hover: hover)': {
+                '&:hover': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  transform: 'none !important',
+                  boxShadow: 'none !important'
+                },
+                '&:focus': {
+                  backgroundColor: 'transparent !important'
+                },
+                '&:active': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                }
               },
               '& *': {
+                pointerEvents: 'none', // 防止子元素干扰点击
                 '&:hover': {
                   backgroundColor: 'transparent !important',
                   transform: 'none !important'
@@ -113,11 +129,11 @@ export default function SettingGroups({ groups, onSettingChange }: SettingGroups
             <ListItemText
               primary={group.title}
               secondary={getGroupDescription(group)}
-              primaryTypographyProps={{ fontWeight: 'medium', sx: { ml: 1.5 } }}
-              secondaryTypographyProps={{ fontSize: '0.75rem', sx: { ml: 1.5 } }}
+              primaryTypographyProps={{ fontWeight: 'medium', sx: { ml: 1.5 }, fontSize: '0.95rem', lineHeight: 1.2 }}
+              secondaryTypographyProps={{ fontSize: '0.75rem', sx: { ml: 1.5 }, lineHeight: 1.2 }}
             />
             <ListItemSecondaryAction>
-              <IconButton edge="end" size="small" sx={{ padding: '4px' }}>
+              <IconButton edge="end" size="small" sx={{ padding: '2px' }}>
                 {expandedGroups[group.id] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
               </IconButton>
             </ListItemSecondaryAction>
@@ -126,11 +142,16 @@ export default function SettingGroups({ groups, onSettingChange }: SettingGroups
           {/* 可折叠的设置项内容 */}
           <Collapse
             in={expandedGroups[group.id]}
-            timeout={{ enter: 300, exit: 200 }}
-            easing={{ enter: 'cubic-bezier(0.4, 0, 0.2, 1)', exit: 'cubic-bezier(0.4, 0, 0.6, 1)' }}
+            timeout={animationOptimization.timeout}
+            easing={animationOptimization.easing}
             unmountOnExit
+            sx={animationOptimization.sx}
           >
-            <Box sx={{ pb: 1 }}>
+            <Box sx={{
+              pb: 0.5,
+              // 优化内容渲染
+              contain: 'layout style paint',
+            }}>
               {/* 分组内的设置项 */}
               {group.settings.map(setting => (
                 <SettingItem
@@ -143,7 +164,7 @@ export default function SettingGroups({ groups, onSettingChange }: SettingGroups
           </Collapse>
 
           {/* 最后一个分组不需要底部外边距 */}
-          {index < groups.length - 1 && <Box sx={{ height: 8 }} />}
+          {index < groups.length - 1 && <Box sx={{ height: 4 }} />}
         </Box>
       ))}
     </Box>

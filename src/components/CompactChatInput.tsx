@@ -66,6 +66,7 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
   const [inputHeight, setInputHeight] = useState(40); // 输入框容器高度
   const [isFullExpanded, setIsFullExpanded] = useState(false); // 是否全展开
   const [isActivated, setIsActivated] = useState(false); // 冷激活状态
+  const [isIOS, setIsIOS] = useState(false); // 是否是iOS设备
 
   // 文件和图片上传相关状态
   const [images, setImages] = useState<ImageContent[]>([]);
@@ -137,7 +138,12 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     loadTopic();
   }, [currentTopicId]);
 
-
+  // 检测iOS设备
+  useEffect(() => {
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setIsIOS(isIOSDevice);
+  }, []);
 
   // 处理网络搜索按钮点击
   const handleWebSearchClick = () => {
@@ -188,7 +194,7 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
     if (textareaRef.current) {
       // 冷激活状态下使用固定的小高度
       if (!isActivated && !message.trim()) {
-        const coldHeight = 24; // 冷激活状态的固定高度
+        const coldHeight = 40; // 增加未激活状态下的高度到40px
         textareaRef.current.style.height = `${coldHeight}px`;
         setInputHeight(coldHeight + 16); // 容器高度
         return;
@@ -221,6 +227,39 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
   // 处理输入框激活
   const handleInputFocus = () => {
     setIsActivated(true);
+    
+    // iOS设备特殊处理
+    if (isIOS && textareaRef.current) {
+      // 延迟执行，确保输入法已弹出
+      setTimeout(() => {
+        // 滚动到输入框位置
+        textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // 额外处理：尝试滚动页面到底部
+        window.scrollTo({
+          top: document.body.scrollHeight,
+          behavior: 'smooth'
+        });
+        
+        // iOS特有：确保输入框在可视区域内
+        const viewportHeight = window.innerHeight;
+        const keyboardHeight = viewportHeight * 0.4; // 估计键盘高度约为视口的40%
+        
+        if (textareaRef.current) {
+          const inputRect = textareaRef.current.getBoundingClientRect();
+          const inputBottom = inputRect.bottom;
+          
+          // 如果输入框底部被键盘遮挡，则滚动页面
+          if (inputBottom > viewportHeight - keyboardHeight) {
+            const scrollAmount = inputBottom - (viewportHeight - keyboardHeight) + 20; // 额外20px空间
+            window.scrollBy({
+              top: scrollAmount,
+              behavior: 'smooth'
+            });
+          }
+        }
+      }, 400); // 增加延迟时间，确保键盘完全弹出
+    }
   };
 
   // 处理输入框失活
@@ -329,6 +368,13 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
       '& textarea::-webkit-scrollbar-thumb:hover': {
         background: isDarkMode ? '#666' : '#999',
       },
+      // 添加iOS设备上的特殊样式
+      ...(isIOS ? {
+        position: 'relative',
+        zIndex: 1000, // 确保输入框在较高层级
+        marginBottom: '34px', // 为iOS设备增加底部边距，避开底部返回横条
+        paddingBottom: '10px' // 额外的内边距
+      } : {})
     }}>
       {/* 知识库状态显示 */}
       {hasKnowledgeContext() && (
@@ -388,7 +434,7 @@ const CompactChatInput: React.FC<CompactChatInputProps> = ({
               lineHeight: '1.4',
               fontFamily: 'inherit',
               color: isDarkMode ? '#ffffff' : '#000000',
-              minHeight: '24px',
+              minHeight: isActivated ? '24px' : '40px', // 冷激活时使用更高的最小高度
               overflow: isActivated ? 'auto' : 'hidden', // 冷激活时隐藏滚动条
               padding: '0',
               scrollbarWidth: 'thin', // Firefox

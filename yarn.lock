@@ -233,6 +233,11 @@
   resolved "https://registry.npmmirror.com/@capacitor-community/native-audio/-/native-audio-7.0.0.tgz"
   integrity sha512-wi2l68tU6KDLJWKL6I0lPUKOdB+hNxlvF7RMe/jfkKOMZnd1eUq7kszmbMqyGFZFIxdNG/GMiZrEztZHDypf8A==
 
+"@capacitor-community/safe-area@^7.0.0-alpha.1":
+  version "7.0.0-alpha.1"
+  resolved "https://registry.npmmirror.com/@capacitor-community/safe-area/-/safe-area-7.0.0-alpha.1.tgz"
+  integrity sha512-N6ktkRiofqrt+N/vQzh4jcWY8IzJ4TVw1tKAPssvbddWFTyZzXzSdBeX/l/nracJF0PZqmLdA7JYTBfnOxXQYw==
+
 "@capacitor/android@^6.0.0", "@capacitor/android@^7.2.0":
   version "7.2.0"
   resolved "https://registry.npmjs.org/@capacitor/android/-/android-7.2.0.tgz"

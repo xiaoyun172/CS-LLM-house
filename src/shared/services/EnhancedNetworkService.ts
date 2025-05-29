@@ -178,12 +178,19 @@ class EnhancedNetworkService {
   }
 
   private interceptXHR(): void {
-    const self = this;
-    
+    const generateId = this.generateId.bind(this);
+    const getInitiator = this.getInitiator.bind(this);
+    const addEntry = this.addEntry.bind(this);
+    const updateEntry = this.updateEntry.bind(this);
+    const calculateSize = this.calculateSize.bind(this);
+    const serializeRequestBodySync = this.serializeRequestBodySync.bind(this);
+    const originalXHROpen = this.originalXHROpen;
+    const originalXHRSend = this.originalXHRSend;
+
     XMLHttpRequest.prototype.open = function(method: string, url: string | URL, async?: boolean, user?: string | null, password?: string | null) {
-      const id = self.generateId();
+      const id = generateId();
       const urlString = typeof url === 'string' ? url : url.toString();
-      
+
       const entry: NetworkEntry = {
         id,
         method: method.toUpperCase() as NetworkMethod,
@@ -193,12 +200,12 @@ class EnhancedNetworkService {
         requestHeaders: {},
         responseHeaders: {},
         type: 'xhr',
-        initiator: self.getInitiator()
+        initiator: getInitiator()
       };
 
       // 存储到XHR实例上
       (this as any).__networkEntry = entry;
-      self.addEntry(entry);
+      addEntry(entry);
 
       // 监听状态变化
       this.addEventListener('readystatechange', function() {
@@ -232,7 +239,7 @@ class EnhancedNetworkService {
             });
           }
 
-          self.updateEntry(entry.id, {
+          updateEntry(entry.id, {
             status: this.status >= 200 && this.status < 300 ? 'success' : 'error',
             statusCode: this.status,
             statusText: this.statusText,
@@ -240,7 +247,7 @@ class EnhancedNetworkService {
             duration: endTime - entry.startTime,
             responseHeaders,
             responseData,
-            responseSize: self.calculateSize(responseData)
+            responseSize: calculateSize(responseData)
           });
         }
       });
@@ -251,7 +258,7 @@ class EnhancedNetworkService {
         if (!entry) return;
 
         const endTime = performance.now();
-        self.updateEntry(entry.id, {
+        updateEntry(entry.id, {
           status: 'error',
           endTime,
           duration: endTime - entry.startTime,
@@ -267,14 +274,14 @@ class EnhancedNetworkService {
         if (!entry) return;
 
         const endTime = performance.now();
-        self.updateEntry(entry.id, {
+        updateEntry(entry.id, {
           status: 'cancelled',
           endTime,
           duration: endTime - entry.startTime
         });
       });
 
-      return self.originalXHROpen.call(this, method, url, async ?? true, user, password);
+      return originalXHROpen.call(this, method, url, async ?? true, user, password);
     };
 
     XMLHttpRequest.prototype.send = function(body?: any) {
@@ -282,14 +289,14 @@ class EnhancedNetworkService {
       if (entry && body) {
         // 同步处理请求体
         try {
-          entry.requestPayload = self.serializeRequestBodySync(body);
-          entry.requestSize = self.calculateSize(body);
+          entry.requestPayload = serializeRequestBodySync(body);
+          entry.requestSize = calculateSize(body);
         } catch (error) {
           entry.requestPayload = '[Failed to serialize request body]';
         }
       }
 
-      return self.originalXHRSend.call(this, body);
+      return originalXHRSend.call(this, body);
     };
 
     // 拦截 setRequestHeader

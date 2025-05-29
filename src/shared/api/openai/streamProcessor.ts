@@ -238,26 +238,19 @@ export class OpenAIStreamProcessor {
 
       this.reasoning += chunk.textDelta;
 
-      // 🔥 修复流式输出问题：优先使用onChunk发送thinking.delta事件
-      if (this.onChunk) {
-        this.onChunk({
-          type: 'thinking.delta',
-          text: chunk.textDelta,
-          thinking_millsec: Date.now() - this.reasoningStartTime,
-          messageId: this.messageId,
-          blockId: this.thinkingBlockId,
-          topicId: this.topicId
-        });
-      } else {
-        // 兼容旧的事件系统
-        EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_DELTA, {
-          text: chunk.textDelta,
-          thinking_millsec: Date.now() - this.reasoningStartTime,
-          messageId: this.messageId,
-          blockId: this.thinkingBlockId,
-          topicId: this.topicId
-        });
+      // 🔥 恢复思考内容的onUpdate处理 - 组合模型依赖这个机制
+      if (this.onUpdate) {
+        this.onUpdate(this.content, this.reasoning); // 传递完整的推理内容
       }
+
+      // 发送思考增量事件
+      EventEmitter.emit(EVENT_NAMES.STREAM_THINKING_DELTA, {
+        text: chunk.textDelta,
+        thinking_millsec: Date.now() - this.reasoningStartTime,
+        messageId: this.messageId,
+        blockId: this.thinkingBlockId,
+        topicId: this.topicId
+      });
 
       console.log(`[OpenAIStreamProcessor] 思考增量处理完成，长度: ${chunk.textDelta.length}`);
 
@@ -286,9 +279,9 @@ export class OpenAIStreamProcessor {
 
                 this.reasoning += args.thinking;
 
-                // 通知内容更新
+                // 🔥 修复组合模型问题：确保思考内容通过onUpdate传递
                 if (this.onUpdate) {
-                  this.onUpdate(this.content, this.reasoning);
+                  this.onUpdate('', args.thinking); // 推理内容通过reasoning参数传递
                 }
 
                 // 发送思考增量事件

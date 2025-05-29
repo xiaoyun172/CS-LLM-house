@@ -4,6 +4,7 @@
  */
 
 import { MobileKnowledgeService } from './MobileKnowledgeService';
+import { REFERENCE_PROMPT } from '../config/prompts';
 import type { KnowledgeSearchResult } from '../types/KnowledgeBase';
 
 export interface KnowledgeReference {
@@ -185,7 +186,6 @@ export class KnowledgeContextService {
 
     if (useReferencePrompt) {
       // 使用的REFERENCE_PROMPT格式
-      const { REFERENCE_PROMPT } = require('../config/prompts');
       const referenceContent = `\`\`\`json\n${this.formatKnowledgeReferencesToJSON(references)}\n\`\`\``;
       return REFERENCE_PROMPT
         .replace('{question}', messageContent)

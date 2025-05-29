@@ -149,6 +149,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
       '& a': {
         color: 'primary.main',
         textDecoration: 'none',
+        wordBreak: 'break-all', /* 新增：长链接换行 */
         '&:hover': { textDecoration: 'underline' }
       },
 
@@ -221,8 +222,8 @@ const Markdown: React.FC<MarkdownProps> = ({ content, allowHtml = false, mathEng
         py: 0.25,
         borderRadius: 0.5,
         color: isDarkMode ? '#e3e3e3' : 'inherit',
-        wordBreak: 'keep-all',
-        whiteSpace: 'pre'
+        wordBreak: 'break-all', /* 修改：允许长命令在任意字符处换行 */
+        whiteSpace: 'pre-wrap' /* 修改：允许在必要时换行 */
       },
 
       // 代码块容器样式

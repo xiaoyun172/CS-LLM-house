@@ -408,6 +408,8 @@ const ShikiCodeRenderer: React.FC<Props> = ({ code, language, onSave, codeBlockI
                     overflow: 'auto',
                     fontSize: '14px',
                     fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", Consolas, "Liberation Mono", Menlo, Courier, monospace',
+                    whiteSpace: 'pre-wrap', /* 新增：允许代码块换行 */
+                    wordBreak: 'break-word', /* 新增：长单词换行 */
                   },
                   '& .shiki-fallback': {
                     margin: 0,

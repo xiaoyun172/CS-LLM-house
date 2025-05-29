@@ -33,10 +33,10 @@ const config: CapacitorConfig = {
       resizeOnFullScreen: true
     },
     StatusBar: {
-      backgroundColor: '#475569',
-      style: 'DARK', // 使用正确的枚举值
-      overlaysWebView: false,
-      translucent: false
+      backgroundColor: '#475569', // 浅色模式默认颜色
+      style: 'DARK', // 深色文字适合浅色背景
+      overlaysWebView: false, // 确保背景色生效，避免内容被覆盖
+      translucent: false // 不透明状态栏
     },
     SplashScreen: {
       launchShowDuration: 0

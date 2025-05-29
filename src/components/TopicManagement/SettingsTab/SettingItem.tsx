@@ -6,7 +6,8 @@ import {
   Switch,
   FormControl,
   Select,
-  MenuItem
+  MenuItem,
+  Divider
 } from '@mui/material';
 import { getAppSettings } from '../../../shared/utils/settingsUtils';
 import { useAppSelector } from '../../../shared/store';
@@ -110,21 +111,25 @@ export default function SettingItem({ setting, onChange }: SettingItemProps) {
         checked={value as boolean}
         edge="end"
         onChange={handleSwitchChange}
+        size="small"
       />
     );
   };
 
   return (
-    <ListItem sx={{ px: 2, py: 1 }}>
-      <ListItemText
-        primary={setting.name}
-        secondary={setting.description}
-        primaryTypographyProps={{ fontSize: '0.95rem' }}
-        secondaryTypographyProps={{ fontSize: '0.8rem' }}
-      />
-      <ListItemSecondaryAction>
-        {renderControl()}
-      </ListItemSecondaryAction>
-    </ListItem>
+    <>
+      <ListItem sx={{ px: 2, py: 0.5 }}>
+        <ListItemText
+          primary={setting.name}
+          secondary={setting.description}
+          primaryTypographyProps={{ fontSize: '0.9rem', lineHeight: 1.2 }}
+          secondaryTypographyProps={{ fontSize: '0.75rem', lineHeight: 1.2, mt: 0.2 }}
+        />
+        <ListItemSecondaryAction>
+          {renderControl()}
+        </ListItemSecondaryAction>
+      </ListItem>
+      <Divider sx={{ opacity: 0.4 }} />
+    </>
   );
 }

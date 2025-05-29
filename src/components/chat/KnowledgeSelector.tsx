@@ -96,7 +96,7 @@ const KnowledgeSelector: React.FC<KnowledgeSelectorProps> = ({
 
     try {
       setSearchLoading(true);
-      const results = await MobileKnowledgeService.searchKnowledge(
+      const results = await MobileKnowledgeService.getInstance().searchKnowledge(
         selectedKB,
         localSearchQuery.trim(),
         5 // 限制返回5个结果
@@ -249,19 +249,20 @@ const KnowledgeSelector: React.FC<KnowledgeSelectorProps> = ({
                   <ListItemText
                     primary={kb.name}
                     secondary={
-                      <Box component="span" sx={{ display: 'block' }}>
+                      <span style={{ display: 'block' }}>
                         {kb.description && (
-                          <Typography variant="caption" display="block" component="span">
+                          <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.2 }}>
                             {kb.description}
-                          </Typography>
+                          </span>
                         )}
-                        <Box component="span" sx={{ display: 'inline-block', mt: 0.5 }}>
+                        <span style={{ display: 'inline-block', marginTop: '4px' }}>
                           <Chip
                             size="small"
                             label={`${kb.documentCount} 个文档`}
+                            component="span"
                           />
-                        </Box>
-                      </Box>
+                        </span>
+                      </span>
                     }
                   />
                 </ListItemButton>

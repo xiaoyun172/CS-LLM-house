@@ -64,6 +64,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [uploadMenuAnchorEl, setUploadMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [multiModelSelectorOpen, setMultiModelSelectorOpen] = useState(false);
+  const [isIOS, setIsIOS] = useState(false); // 新增: 是否是iOS设备
 
   // 文件和图片状态
   const [images, setImages] = useState<ImageContent[]>([]);
@@ -164,6 +165,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const textColor = isDarkMode ? '#E0E0E0' : '#000000';
   const disabledColor = isDarkMode ? '#555' : '#ccc';
 
+  // 检测iOS设备
+  useEffect(() => {
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setIsIOS(isIOSDevice);
+  }, []);
+
   // handleSubmit 现在由 useChatInputLogic hook 提供
 
   // 处理多模型发送
@@ -221,7 +229,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     detectUrlInMessage(e.target.value);
   };
 
-  // 添加焦点管理以确保复制粘贴功能正常工作，并处理键盘显示
+  // 增强的焦点处理，适应iOS设备
   useEffect(() => {
     // 设置一个延迟以确保组件挂载后聚焦生效
     const timer = setTimeout(() => {
@@ -239,6 +247,39 @@ const ChatInput: React.FC<ChatInputProps> = ({
     // 添加键盘显示检测
     const handleFocus = () => {
       setIsKeyboardVisible(true);
+      
+      // iOS设备特殊处理
+      if (isIOS && textareaRef.current) {
+        // 延迟执行，确保输入法已弹出
+        setTimeout(() => {
+          // 滚动到输入框位置
+          textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // 额外处理：尝试滚动页面到底部
+          window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: 'smooth'
+          });
+          
+          // iOS特有：确保输入框在可视区域内
+          const viewportHeight = window.innerHeight;
+          const keyboardHeight = viewportHeight * 0.4; // 估计键盘高度约为视口的40%
+          
+          if (textareaRef.current) {
+            const inputRect = textareaRef.current.getBoundingClientRect();
+            const inputBottom = inputRect.bottom;
+            
+            // 如果输入框底部被键盘遮挡，则滚动页面
+            if (inputBottom > viewportHeight - keyboardHeight) {
+              const scrollAmount = inputBottom - (viewportHeight - keyboardHeight) + 20; // 额外20px空间
+              window.scrollBy({
+                top: scrollAmount,
+                behavior: 'smooth'
+              });
+            }
+          }
+        }, 400); // 增加延迟时间，确保键盘完全弹出
+      }
     };
 
     const handleBlur = () => {
@@ -257,7 +298,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         textareaRef.current.removeEventListener('blur', handleBlur);
       }
     };
-  }, [isMobile, isTablet]); // 添加依赖项以响应屏幕尺寸变化
+  }, [isMobile, isTablet, isIOS]); // 添加isIOS作为依赖项
 
   // 处理上传菜单
   const handleOpenUploadMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -315,7 +356,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     if (isMobile) {
       return {
         paddingTop: '0px',
-        paddingBottom: '4px', // 减少底部padding，避免与屏幕底部间隙
+        paddingBottom: isIOS ? '34px' : '4px', // 为iOS设备增加底部padding
         maxWidth: 'calc(100% - 24px)', // 确保有足够的左右边距
         marginTop: '0',
         marginLeft: 'auto', // 水平居中
@@ -324,7 +365,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     } else if (isTablet) {
       return {
         paddingTop: '0px',
-        paddingBottom: '4px', // 减少底部padding，避免与屏幕底部间隙
+        paddingBottom: isIOS ? '34px' : '4px', // 为iOS设备增加底部padding
         maxWidth: 'calc(100% - 40px)', // 确保有足够的左右边距
         marginTop: '0',
         marginLeft: 'auto', // 水平居中
@@ -333,7 +374,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     } else {
       return {
         paddingTop: '0px',
-        paddingBottom: '6px', // 减少底部padding，避免与屏幕底部间隙
+        paddingBottom: isIOS ? '34px' : '6px', // 为iOS设备增加底部padding
         maxWidth: 'calc(100% - 32px)', // 确保有足够的左右边距
         marginTop: '0',
         marginLeft: 'auto', // 水平居中
@@ -357,7 +398,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       boxShadow: 'none',
       transition: 'all 0.3s ease',
       marginBottom: isKeyboardVisible ? '0' : (isMobile ? '0' : isTablet ? '0' : '0'),
-      paddingBottom: isKeyboardVisible && isMobile ? 'env(safe-area-inset-bottom)' : '0',
+      paddingBottom: isKeyboardVisible && isMobile ? 'env(safe-area-inset-bottom)' : (isIOS ? '34px' : '0'), // 为iOS设备增加底部安全区域
       // 确保没有任何背景色或边框
       border: 'none',
       outline: 'none',
@@ -368,7 +409,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
       minHeight: 'auto',
       maxHeight: '50vh', // 限制最大高度，避免遮挡过多内容
       overflow: 'visible',
-      boxSizing: 'border-box' // 确保padding计算正确
+      boxSizing: 'border-box', // 确保padding计算正确
+      // 为iOS设备添加额外样式
+      ...(isIOS ? {
+        position: 'relative',
+        zIndex: 1001, // 确保输入框在较高层级
+      } : {})
     }}>
       {/* URL解析状态显示 */}
       {urlScraperStatus !== 'idle' && (

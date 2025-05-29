@@ -13,6 +13,7 @@ import UpdateNoticeDialog from './components/UpdateNoticeDialog';
 import AppInitializer from './components/AppInitializer';
 import { App as CapApp } from '@capacitor/app';
 import { statusBarService } from './shared/services/StatusBarService';
+import { safeAreaService } from './shared/services/SafeAreaService';
 import { loadTopicMessagesThunk } from './shared/store/slices/newMessagesSlice';
 import { initGroups } from './shared/store/slices/groupsSlice';
 import { useSelector } from 'react-redux';
@@ -215,17 +216,23 @@ const AppContent = () => {
     // 声明清理函数变量
     let cleanup = () => {};
 
-    // 初始化状态栏
-    const setupStatusBar = async () => {
+    // 初始化状态栏和安全区域
+    const setupStatusBarAndSafeArea = async () => {
       try {
+        // 先初始化安全区域服务
+        await safeAreaService.initialize();
+        console.log('[App] 安全区域服务初始化完成');
+
+        // 然后初始化状态栏
         await statusBarService.initialize(mode);
+        console.log('[App] 状态栏服务初始化完成');
       } catch (error) {
-        console.error('[App] 状态栏初始化失败:', error);
+        console.error('[App] 状态栏或安全区域初始化失败:', error);
       }
     };
 
-    // 调用状态栏初始化
-    setupStatusBar();
+    // 调用初始化
+    setupStatusBarAndSafeArea();
 
     // 清理旧数据并准备新系统
     const prepareDatabase = async () => {

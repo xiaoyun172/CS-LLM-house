@@ -513,7 +513,7 @@ const ChatToolbar: React.FC<ChatToolbarProps> = ({
                 background: button.bgColor || toolbarStyles.buttonBg,
                 backdropFilter: toolbarStyles.backdropFilter,
                 WebkitBackdropFilter: toolbarStyles.backdropFilter,
-                color: isDarkMode ? '#FFFFFF' : button.id === 'new-topic' ? '#4CAF50' : button.id === 'clear-topic' ? (clearConfirmMode ? '#FFFFFF' : '#2196F3') : button.id === 'generate-image' ? (imageGenerationMode ? '#FFFFFF' : '#9C27B0') : button.id === 'web-search' ? (webSearchActive ? '#FFFFFF' : '#3b82f6') : button.color,
+                color: isDarkMode ? '#FFFFFF' : button.id === 'new-topic' ? '#4CAF50' : button.id === 'clear-topic' ? (clearConfirmMode ? '#FFFFFF' : '#2196F3') : button.id === 'generate-image' ? (imageGenerationMode ? '#FFFFFF' : '#9C27B0') : button.id === 'web-search' ? (webSearchActive ? '#FFFFFF' : '#3b82f6') : button.id === 'knowledge' ? '#059669' : button.color,
                 border: `1px solid ${toolbarStyles.buttonBorder}`,
                 borderRadius: toolbarStyles.borderRadius,
                 padding: '6px 12px',
